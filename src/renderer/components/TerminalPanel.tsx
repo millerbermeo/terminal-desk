@@ -1,23 +1,71 @@
-import { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useRef, useState, type MouseEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
+import { IconoCopiar, IconoPegar, IconoSeleccionar, IconoLimpiar } from './Iconos'
 
 interface Props {
   id: string
   cwd?: string
   proveedorId?: string
+  ptyExistente?: string // si viene de otra ventana: se adjunta a ese pty en vez de crear uno
+  onPty?: (id: string, ptyId: string) => void
   visible: boolean
   activa: boolean
   onActivar: (id: string) => void
 }
 
-export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId, visible, activa, onActivar }: Props) {
+/** ptys que pasan a otra ventana: al desmontar el panel no se matan. */
+export const transferidas = new Set<string>()
+
+export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId, ptyExistente, onPty, visible, activa, onActivar }: Props) {
   const contenedor = useRef<HTMLDivElement>(null)
   const term = useRef<Terminal | null>(null)
   const fit = useRef<FitAddon | null>(null)
+  const alPty = useRef(onPty)
+  alPty.current = onPty
+  const [menu, setMenu] = useState<{ x: number; y: number; haySeleccion: boolean } | null>(null)
+
+  // Menú contextual (clic derecho). Si el programa de la terminal usa el ratón (vim, tmux, htop…)
+  // el clic derecho es suyo; con Mayús+clic derecho se abre igualmente el menú.
+  const alMenuContextual = (e: MouseEvent): void => {
+    const t = term.current
+    if (!t) return
+    if (t.modes.mouseTrackingMode !== 'none' && !e.shiftKey) return
+    e.preventDefault()
+    onActivar(id)
+    setMenu({ x: e.clientX, y: e.clientY, haySeleccion: t.hasSelection() })
+  }
+
+  useEffect(() => {
+    if (!menu) return
+    const cerrar = (): void => setMenu(null)
+    const tecla = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') cerrar()
+    }
+    window.addEventListener('mousedown', cerrar)
+    window.addEventListener('keydown', tecla, true) // en captura: xterm no deja que la tecla suba hasta window
+    window.addEventListener('blur', cerrar)
+    window.addEventListener('resize', cerrar)
+    return () => {
+      window.removeEventListener('mousedown', cerrar)
+      window.removeEventListener('keydown', tecla, true)
+      window.removeEventListener('blur', cerrar)
+      window.removeEventListener('resize', cerrar)
+    }
+  }, [menu])
+
+  const accion = (f: (t: Terminal) => void): void => {
+    const t = term.current
+    setMenu(null)
+    if (t) {
+      f(t)
+      t.focus()
+    }
+  }
 
   useEffect(() => {
     const el = contenedor.current!
@@ -97,20 +145,48 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
     }
     f.fit()
     let enviado = { cols: t.cols, rows: t.rows } // tamaño con el que nace el pty
-    void window.api.terminal.crear({ cols: t.cols, rows: t.rows, cwd, proveedorId }).then((pid) => {
-      if (!vivo) {
-        window.api.terminal.cerrar(pid)
-        return
-      }
+    const conectar = (pid: string): void => {
       ptyId = pid
-      bajas.push(
-        window.api.terminal.onDatos((e) => e.id === pid && t.write(e.datos)),
-        window.api.terminal.onSalida((e) => e.id === pid && t.write('\r\n[proceso terminado]\r\n'))
-      )
       const entrada = t.onData((d) => window.api.terminal.escribir(pid, d))
       bajas.push(() => entrada.dispose())
-      ajustarYa()
-    })
+    }
+
+    if (ptyExistente) {
+      // Viene de otra ventana: se escucha primero (en cola), se repinta lo que ya mostraba y se suelta la cola.
+      const pid = ptyExistente
+      ptyId = pid
+      let cola: string[] | null = []
+      bajas.push(
+        window.api.terminal.onDatos((e) => {
+          if (e.id !== pid) return
+          if (cola) cola.push(e.datos)
+          else t.write(e.datos)
+        }),
+        window.api.terminal.onSalida((e) => e.id === pid && t.write('\r\n[proceso terminado]\r\n'))
+      )
+      void window.api.terminal.adjuntar(pid, t.cols, t.rows).then((historial) => {
+        if (!vivo) return
+        t.write(historial)
+        cola?.forEach((d) => t.write(d))
+        cola = null
+        conectar(pid)
+        ajustarYa()
+      })
+    } else {
+      void window.api.terminal.crear({ cols: t.cols, rows: t.rows, cwd, proveedorId }).then((pid) => {
+        if (!vivo) {
+          window.api.terminal.cerrar(pid)
+          return
+        }
+        bajas.push(
+          window.api.terminal.onDatos((e) => e.id === pid && t.write(e.datos)),
+          window.api.terminal.onSalida((e) => e.id === pid && t.write('\r\n[proceso terminado]\r\n'))
+        )
+        conectar(pid)
+        alPty.current?.(id, pid)
+        ajustarYa()
+      })
+    }
 
     const ro = new ResizeObserver(ajustar)
     ro.observe(el)
@@ -120,7 +196,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
       ro.disconnect()
       clearTimeout(temporizador)
       bajas.forEach((b) => b())
-      if (ptyId) window.api.terminal.cerrar(ptyId)
+      if (ptyId && !transferidas.delete(ptyId)) window.api.terminal.cerrar(ptyId)
       t.dispose()
     }
   }, [id])
@@ -129,6 +205,41 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
     if (visible && activa) term.current?.focus()
   }, [visible, activa])
 
-  return <div ref={contenedor} className="terminal" onMouseDown={() => onActivar(id)} />
+  return (
+    <>
+      <div ref={contenedor} className="terminal" onMouseDown={() => onActivar(id)} onContextMenu={alMenuContextual} />
+      {menu &&
+        createPortal(
+          <div
+            className="menu-ia menu-terminal"
+            role="menu"
+            style={{ left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 190) }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <button role="menuitem" disabled={!menu.haySeleccion} onClick={() => accion((t) => void navigator.clipboard.writeText(t.getSelection()))}>
+              <IconoCopiar />
+              <span>Copiar</span>
+              <kbd>Ctrl+Shift+C</kbd>
+            </button>
+            <button role="menuitem" onClick={() => accion((t) => void navigator.clipboard.readText().then((txt) => t.paste(txt)))}>
+              <IconoPegar />
+              <span>Pegar</span>
+              <kbd>Ctrl+Shift+V</kbd>
+            </button>
+            <div className="menu-sep" />
+            <button role="menuitem" onClick={() => accion((t) => t.selectAll())}>
+              <IconoSeleccionar />
+              <span>Seleccionar todo</span>
+            </button>
+            <button role="menuitem" onClick={() => accion((t) => t.clear())}>
+              <IconoLimpiar />
+              <span>Limpiar pantalla</span>
+            </button>
+          </div>,
+          document.body
+        )}
+    </>
+  )
 })
 

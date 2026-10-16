@@ -260,3 +260,20 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
 /* bolita con el nº de terminales abiertas de un proyecto */
 .insignia { flex: none; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: inline-grid; place-items: center; font-size: 11px; font-weight: 600; line-height: 1; color: #0f1115; background: var(--ok); box-shadow: 0 0 8px rgba(158, 206, 106, 0.45); animation: insignia-pop 260ms var(--ease) both; }
 @keyframes insignia-pop { from { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.18); } to { transform: scale(1); opacity: 1; } }
+
+/* pestaña arrastrada hacia una ventana nueva */
+.ventana-tab { touch-action: none; }
+.ventana-tab.arrastrada { opacity: 0.45; cursor: grabbing; }
+.ventana-tab .separar { opacity: 0; }
+.ventana-tab:hover .separar, .ventana-tab .separar:focus-visible { opacity: 1; }
+.ventana-tab .separar:disabled { display: none; }
+.pestana-fantasma { position: fixed; z-index: 30; pointer-events: none; transform: translate(14px, 14px); display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; background: var(--bg-elevado); border: 1px solid var(--acento); color: var(--texto); box-shadow: var(--sombra); animation: aparecer 120ms ease both; white-space: nowrap; }
+.ventana-sola { flex-direction: column; }
+
+/* menú contextual de las terminales (clic derecho) */
+.menu-terminal { min-width: 230px; z-index: 40; }
+.menu-terminal button { gap: 10px; }
+.menu-terminal button svg { color: var(--texto-suave); }
+.menu-terminal button:disabled { opacity: 0.4; }
+.menu-terminal kbd { margin-left: auto; font: 11px system-ui, sans-serif; color: var(--texto-suave); padding-left: 16px; }
+.menu-sep { height: 1px; background: var(--borde); margin: 4px 6px; }

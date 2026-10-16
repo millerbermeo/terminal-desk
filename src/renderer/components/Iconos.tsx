@@ -53,3 +53,18 @@ export const IconoLapiz = () => (
 export const IconoReiniciar = () => (
   <Icono width={14} height={14}><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5" /></Icono>
 )
+export const IconoVentana = () => (
+  <Icono width={14} height={14}><path d="M15 3h6v6M10 14 21 3M18 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5" /></Icono>
+)
+export const IconoCopiar = () => (
+  <Icono width={14} height={14}><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></Icono>
+)
+export const IconoPegar = () => (
+  <Icono width={14} height={14}><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /></Icono>
+)
+export const IconoSeleccionar = () => (
+  <Icono width={14} height={14}><path d="M4 4h4M4 4v4M20 4h-4M20 4v4M4 20h4M4 20v-4M20 20h-4M20 20v-4M9 12h6" /></Icono>
+)
+export const IconoLimpiar = () => (
+  <Icono width={14} height={14}><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></Icono>
+)
