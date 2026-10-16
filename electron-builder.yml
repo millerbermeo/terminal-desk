@@ -1,0 +1,16 @@
+appId: dev.centro-proyectos.app
+productName: Centro de Proyectos
+directories:
+  output: dist
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - node_modules/node-pty/**
+linux:
+  target: [AppImage, deb]
+  category: Development
+mac:
+  target: dmg
+win:
+  target: nsis
