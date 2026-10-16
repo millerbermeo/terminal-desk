@@ -23,6 +23,13 @@ function nombreDeRuta(ruta: string): string {
   return ruta.trim().replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''
 }
 
+/** Si el IPC falla (p. ej. main/preload desactualizados) se muestra como error, no se queda cargando. */
+function validar(ruta: string, cb: (v: ValidacionRuta) => void): void {
+  window.api.proyectos.validarRuta(ruta).then(cb, () =>
+    cb({ ok: false, ruta, mensaje: 'No se pudo validar. Reinicia la app (pnpm dev)' })
+  )
+}
+
 export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
   const [grupo, setGrupo] = useState(SIN_GRUPO)
   const [grupoNuevo, setGrupoNuevo] = useState('')
@@ -59,8 +66,8 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
     temporizadores.current.set(
       i,
       window.setTimeout(() => {
-        void window.api.proyectos.validarRuta(ruta).then((validacion) =>
-          // descarta resultados de una ruta que ya cambió
+        // descarta resultados de una ruta que ya cambió
+        validar(ruta, (validacion) =>
           setFilas((fs) => fs.map((f, j) => (j === i && f.ruta === ruta ? { ...f, validacion } : f)))
         )
       }, 300)
@@ -78,11 +85,10 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
     setFilas(resto.map((f) => ({ ...f, validacion: undefined })))
     resto.forEach((f, j) => f.ruta.trim() && cambiarRutaDiferida(j, f.ruta))
   }
-  const cambiarRutaDiferida = (j: number, ruta: string): void => {
-    void window.api.proyectos.validarRuta(ruta).then((validacion) =>
+  const cambiarRutaDiferida = (j: number, ruta: string): void =>
+    validar(ruta, (validacion) =>
       setFilas((fs) => fs.map((f, k) => (k === j && f.ruta === ruta ? { ...f, validacion } : f)))
     )
-  }
 
   const usadas = filas.map((f, i) => (f.nombre.trim() || f.ruta.trim() ? i : -1)).filter((i) => i >= 0)
   const duplicada = (i: number): boolean => {
