@@ -11,6 +11,10 @@ interface Props {
   abiertos: Set<string> // claves de grupo con pestaña abierta
   terminalesPorProyecto: Record<string, number> // terminales abiertas de cada proyecto
   onNueva: () => void
+  /** Diálogo nativo para elegir carpetas y agregarlas como proyectos. */
+  onAbrirCarpeta: () => void
+  /** Formulario para escribir o pegar una ruta. */
+  onAgregarRuta: () => void
   proveedores: ProveedorEstado[]
   onAbrirConProveedor: (p: Proyecto, prov: ProveedorEstado) => void
   vista: Vista
@@ -29,7 +33,7 @@ interface MenuIA {
   left: number
 }
 
-export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente, onAbrirAsistente }: Props) {
+export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, onAbrirCarpeta, onAgregarRuta, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente, onAbrirAsistente }: Props) {
   const [cerrados, setCerrados] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<MenuIA | null>(null)
 
@@ -125,6 +129,14 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
         <button className="btn-nueva" onClick={onNueva}>
           <IconoMas /> Nueva terminal
         </button>
+        <div className="acciones-proyecto">
+          <button onClick={onAbrirCarpeta} title="Elegir una carpeta con el explorador de archivos y agregarla como proyecto">
+            <IconoCarpeta /> Abrir carpeta
+          </button>
+          <button onClick={onAgregarRuta} title="Escribir o pegar la ruta de un proyecto (con autocompletado)">
+            <IconoMas /> Agregar ruta
+          </button>
+        </div>
       </div>
       <nav className="lista">
         {datos.grupos.map((g) =>

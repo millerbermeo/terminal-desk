@@ -8,6 +8,7 @@ import { escucharSolicitudes, useSolicitudes } from './agente/solicitudes'
 import { ConfigAgentes } from './components/ConfigAgentes'
 import { ConfigProveedores } from './components/ConfigProveedores'
 import { ConfigProyectos } from './components/ConfigProyectos'
+import { ModalAgregar } from './components/ModalAgregar'
 import { ModalConfirmar } from './components/ModalConfirmar'
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
 import { transferidas } from './components/TerminalPanel'
@@ -63,6 +64,13 @@ function tituloUnico(base: string, existentes: TerminalInfo[]): string {
 
 export function App() {
   const [datos, setDatos] = useState<DatosProyectos>({ grupos: [], proyectos: [] })
+  const [modalAgregar, setModalAgregar] = useState<{ rutas: string[] } | null>(null)
+
+  /** «Abrir carpeta»: explorador nativo y, con lo elegido, el formulario ya relleno (grupo y nombre editables). */
+  const abrirCarpeta = async (): Promise<void> => {
+    const rutas = await window.api.proyectos.elegirCarpetas()
+    if (rutas.length > 0) setModalAgregar({ rutas })
+  }
   const [ventanas, setVentanas] = useState<Ventana[]>([])
   const [ventanaActiva, setVentanaActiva] = useState<string | null>(null)
   const [vista, setVista] = useState<Vista>('terminales')
@@ -297,6 +305,8 @@ export function App() {
         abiertos={abiertos}
         terminalesPorProyecto={terminalesPorProyecto}
         onNueva={abrirLibre}
+        onAbrirCarpeta={() => void abrirCarpeta()}
+        onAgregarRuta={() => setModalAgregar({ rutas: [] })}
         proveedores={proveedores}
         onAbrirConProveedor={abrirProyecto}
         vista={vista}
@@ -304,6 +314,17 @@ export function App() {
         pendientesAsistente={solicitudes.length}
         onAbrirAsistente={abrirAsistente}
       />
+      {modalAgregar && (
+        <ModalAgregar
+          datos={datos}
+          rutasIniciales={modalAgregar.rutas}
+          onCerrar={() => setModalAgregar(null)}
+          onGuardado={(d) => {
+            setDatos(d)
+            setVista('terminales')
+          }}
+        />
+      )}
       {vista === 'config' && <ConfigProyectos datos={datos} onDatos={setDatos} />}
       {vista === 'agentes' && <ConfigAgentes datos={datos} biblioteca={biblioteca} onBiblioteca={setBiblioteca} />}
       {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}

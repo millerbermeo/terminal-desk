@@ -105,7 +105,7 @@ Se elimina la carpeta de instalación (incluidos el Node.js y pnpm privados), el
 ## Primeros pasos
 
 1. Abre la app. Si no existe `~/.centro-proyectos/proyectos.json`, se crea con datos de ejemplo.
-2. Añade tus proyectos y grupos desde la barra lateral, o edita el archivo:
+2. Añade tus proyectos desde la barra lateral con **Abrir carpeta** (explorador nativo, admite varias carpetas) o **Agregar ruta** (escribe o pega una ruta, con autocompletado y botón «Examinar»). También puedes editar el archivo:
 
    ```json
    {

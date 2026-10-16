@@ -22,6 +22,8 @@ export const Canales = {
   proyectosListar: 'proyectos:listar',
   proyectosValidarRuta: 'proyectos:validar-ruta',
   proyectosAgregar: 'proyectos:agregar',
+  proyectosElegirCarpetas: 'proyectos:elegir-carpetas',
+  proyectosSugerirRutas: 'proyectos:sugerir-rutas',
   proyectosEliminar: 'proyectos:eliminar',
   grupoEliminar: 'grupo:eliminar',
   terminalCrear: 'terminal:crear',
@@ -274,6 +276,10 @@ export interface ApiCentro {
     listar(): Promise<DatosProyectos>
     validarRuta(ruta: string): Promise<ValidacionRuta>
     agregar(solicitud: SolicitudAgregar): Promise<ResultadoAgregar>
+    /** Diálogo nativo para elegir una o varias carpetas; devuelve [] si se cancela. */
+    elegirCarpetas(): Promise<string[]>
+    /** Carpetas que empiezan por lo escrito (autocompletado de rutas), hasta 30. */
+    sugerirRutas(prefijo: string): Promise<string[]>
     eliminar(id: string): Promise<DatosProyectos>
     /** Exige la contraseña del usuario del sistema. */
     eliminarGrupo(id: string, password: string): Promise<ResultadoEliminarGrupo>

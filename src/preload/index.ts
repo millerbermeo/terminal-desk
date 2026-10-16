@@ -85,6 +85,8 @@ const api: ApiCentro = {
     listar: () => ipcRenderer.invoke(Canales.proyectosListar),
     validarRuta: (ruta) => ipcRenderer.invoke(Canales.proyectosValidarRuta, ruta),
     agregar: (solicitud) => ipcRenderer.invoke(Canales.proyectosAgregar, solicitud),
+    elegirCarpetas: () => ipcRenderer.invoke(Canales.proyectosElegirCarpetas),
+    sugerirRutas: (prefijo) => ipcRenderer.invoke(Canales.proyectosSugerirRutas, prefijo),
     eliminar: (id) => ipcRenderer.invoke(Canales.proyectosEliminar, id),
     eliminarGrupo: (id, password) => ipcRenderer.invoke(Canales.grupoEliminar, id, password)
   },

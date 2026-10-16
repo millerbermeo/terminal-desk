@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { IconoCerrar, IconoCheck, IconoMas } from './Iconos'
+import { IconoCarpeta, IconoCerrar, IconoCheck, IconoMas } from './Iconos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { ErrorProyecto, ValidacionRuta } from '@shared/ipc'
 
@@ -7,6 +7,8 @@ interface Props {
   datos: DatosProyectos
   onGuardado: (d: DatosProyectos) => void
   onCerrar: () => void
+  /** Rutas con las que se abre el formulario (p. ej. las elegidas con «Abrir carpeta»). */
+  rutasIniciales?: string[]
 }
 
 interface Fila {
@@ -30,10 +32,11 @@ function validar(ruta: string, cb: (v: ValidacionRuta) => void): void {
   )
 }
 
-export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
+export function ModalAgregar({ datos, onGuardado, onCerrar, rutasIniciales }: Props) {
   const [grupo, setGrupo] = useState(SIN_GRUPO)
   const [grupoNuevo, setGrupoNuevo] = useState('')
-  const [filas, setFilas] = useState<Fila[]>([filaVacia()])
+  const [filas, setFilas] = useState<Fila[]>(() => (rutasIniciales?.length ? rutasIniciales.map((ruta) => ({ nombre: '', ruta })) : [filaVacia()]))
+  const [sugerencias, setSugerencias] = useState<string[]>([])
   const [errores, setErrores] = useState<ErrorProyecto[]>([])
   const [guardando, setGuardando] = useState(false)
   const [cerrando, setCerrando] = useState(false)
@@ -53,6 +56,37 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
     return () => window.removeEventListener('keydown', tecla)
   }, [salir])
 
+  // Las rutas con las que se abre el formulario se validan al montar.
+  useEffect(() => {
+    rutasIniciales?.forEach((ruta, i) =>
+      validar(ruta, (validacion) => setFilas((fs) => fs.map((f, j) => (j === i && f.ruta === ruta ? { ...f, validacion } : f))))
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Autocompletado de la ruta que se está escribiendo.
+  const pedirSugerencias = useRef(0)
+  const sugerir = (ruta: string): void => {
+    window.clearTimeout(pedirSugerencias.current)
+    if (!ruta.trim()) return setSugerencias([])
+    pedirSugerencias.current = window.setTimeout(() => void window.api.proyectos.sugerirRutas(ruta).then(setSugerencias, () => setSugerencias([])), 150)
+  }
+
+  /** Diálogo nativo: la primera carpeta rellena la fila y las demás añaden filas. */
+  const examinar = async (i: number): Promise<void> => {
+    const rutas = await window.api.proyectos.elegirCarpetas()
+    if (rutas.length === 0) return
+    setErrores([])
+    setFilas((fs) => {
+      const nuevas = fs.map((f, j) => (j === i ? { ...f, ruta: rutas[0]!, validacion: undefined } : f))
+      return [...nuevas, ...rutas.slice(1).map((ruta) => ({ nombre: '', ruta }))]
+    })
+    rutas.forEach((ruta, k) => {
+      const fila = k === 0 ? i : filas.length + k - 1
+      validar(ruta, (validacion) => setFilas((fs) => fs.map((f, j) => (j === fila && f.ruta === ruta ? { ...f, validacion } : f))))
+    })
+  }
+
   useEffect(() => {
     const temps = temporizadores.current
     return () => temps.forEach((t) => clearTimeout(t))
@@ -60,6 +94,7 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
 
   const cambiarRuta = (i: number, ruta: string): void => {
     setErrores([])
+    sugerir(ruta)
     setFilas((fs) => fs.map((f, j) => (j === i ? { ...f, ruta, validacion: undefined } : f)))
     clearTimeout(temporizadores.current.get(i))
     if (!ruta.trim()) return
@@ -158,6 +193,11 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
           <input placeholder="Nombre del nuevo grupo" value={grupoNuevo} onChange={(e) => setGrupoNuevo(e.target.value)} autoFocus />
         )}
 
+        <datalist id="sugerencias-rutas">
+          {sugerencias.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
         <div className="modal-filas">
           {filas.map((f, i) => (
             <div key={i}>
@@ -168,8 +208,13 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
                   placeholder="Ruta completa o relativa al home (dev/app, ~/dev/app, /opt/app)"
                   value={f.ruta}
                   onChange={(e) => cambiarRuta(i, e.target.value)}
-                  autoFocus={i === 0 && grupo !== NUEVO}
+                  list="sugerencias-rutas"
+                  autoFocus={i === 0 && grupo !== NUEVO && !rutasIniciales?.length}
+                  spellCheck={false}
                 />
+                <button type="button" title="Elegir carpeta…" onClick={() => void examinar(i)}>
+                  <IconoCarpeta /> Examinar
+                </button>
                 <button type="button" className="icono" title="Quitar fila" disabled={filas.length === 1} onClick={() => quitarFila(i)}>
                   <IconoCerrar />
                 </button>

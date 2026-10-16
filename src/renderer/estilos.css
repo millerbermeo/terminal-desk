@@ -517,6 +517,7 @@ button.peligro-solido:hover:not(:disabled) { background: #cf4660; }
   .marca { padding: 10px 10px 6px; }
   .marca h1, .barra-info { display: none; }
   .acciones { padding: 4px 8px 8px; }
+  .acciones-proyecto { flex-direction: column; }
   .lista { padding: 0 4px 6px; }
   .config { padding: 14px; }
   .ag-vista.scroll { padding: 12px; }
@@ -623,3 +624,7 @@ button.peligro-solido:hover:not(:disabled) { background: #cf4660; }
 .ag-cuenta-error { color: #f7768e; flex-basis: 100%; }
 .ag-cuenta-btn { padding: 3px 10px; }
 .ag-cuenta-btn.primario { background: var(--acento-fuerte); border-color: var(--acento); color: #fff; }
+
+/* Accesos «Abrir carpeta» y «Agregar ruta» del menú lateral */
+.acciones-proyecto { display: flex; gap: 6px; margin-top: 6px; }
+.acciones-proyecto button { flex: 1; min-width: 0; padding: 6px 8px; font-size: 12px; white-space: nowrap; }

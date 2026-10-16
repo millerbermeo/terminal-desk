@@ -1,7 +1,7 @@
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { access, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import type { DatosProyectos } from '@shared/modelos'
 import type { ErrorProyecto, ResultadoAgregar, SolicitudAgregar, ValidacionRuta } from '@shared/ipc'
@@ -69,6 +69,26 @@ export async function validarRuta(entrada: string): Promise<ValidacionRuta> {
   const repetido = (await leerProyectos()).proyectos.find((p) => p.ruta === ruta)
   if (repetido) return { ok: false, ruta, mensaje: `Ya agregado como «${repetido.nombre}»` }
   return { ok: true, ruta }
+}
+
+/** Autocompletado de rutas: subcarpetas de la carpeta escrita cuyo nombre empieza por lo que falta (sin ocultas salvo que se escriba el punto). */
+export async function sugerirRutas(prefijo: string): Promise<string[]> {
+  const entrada = prefijo.trim()
+  if (!entrada || entrada.length > 500) return []
+  const termina = /[\\/]$/.test(entrada)
+  const base = resolverRuta(termina ? entrada : entrada.replace(/[^\\/]*$/, '') || '~/')
+  const parcial = termina ? '' : (entrada.match(/[^\\/]*$/)?.[0] ?? '')
+  if (entrada === '~') return [homedir()]
+  try {
+    const nombres = await readdir(base, { withFileTypes: true })
+    return nombres
+      .filter((d) => (d.isDirectory() || d.isSymbolicLink()) && d.name.toLowerCase().startsWith(parcial.toLowerCase()) && (parcial.startsWith('.') || !d.name.startsWith('.')))
+      .map((d) => join(base, d.name))
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, 30)
+  } catch {
+    return []
+  }
 }
 
 function idUnico(base: string, usados: Set<string>): string {

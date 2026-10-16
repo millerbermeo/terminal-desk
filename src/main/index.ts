@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, shell, webContents } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell, webContents } from 'electron'
 import { randomUUID } from 'node:crypto'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import icono from '../../resources/icon.png?asset'
 import type { Proveedor, Recurso } from '@shared/modelos'
@@ -10,7 +11,7 @@ import { GestorTerminales } from './terminales'
 import { eliminarProveedor, guardarProveedor, listarProveedores, obtenerProveedor } from './proveedores'
 import { verificarPassword } from './autenticacion'
 import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones } from './agentes'
-import { agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, validarRuta } from './proyectos'
+import { agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, sugerirRutas, validarRuta } from './proyectos'
 
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto')
@@ -101,6 +102,13 @@ function registrarIpc(): void {
   ipcMain.handle(Canales.proyectosListar, () => leerProyectos())
   ipcMain.handle(Canales.proyectosValidarRuta, (_e, ruta: string) => validarRuta(ruta))
   ipcMain.handle(Canales.proyectosAgregar, (_e, sol: SolicitudAgregar) => agregarProyectos(sol))
+  ipcMain.handle(Canales.proyectosElegirCarpetas, async (e) => {
+    const ventana = BrowserWindow.fromWebContents(e.sender)
+    const opciones = { title: 'Abrir carpeta', defaultPath: homedir(), properties: ['openDirectory', 'multiSelections', 'createDirectory'] as ('openDirectory' | 'multiSelections' | 'createDirectory')[] }
+    const r = ventana ? await dialog.showOpenDialog(ventana, opciones) : await dialog.showOpenDialog(opciones)
+    return r.canceled ? [] : r.filePaths
+  })
+  ipcMain.handle(Canales.proyectosSugerirRutas, (_e, prefijo: string) => sugerirRutas(String(prefijo ?? '')))
   ipcMain.handle(Canales.proyectosEliminar, (_e, id: string) => eliminarProyecto(id))
   ipcMain.handle(Canales.grupoEliminar, async (_e, id: string, password: string): Promise<ResultadoEliminarGrupo> => {
     const auth = await verificarPassword(String(password ?? ''))
