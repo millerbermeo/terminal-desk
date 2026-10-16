@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar } from './components/Iconos'
+import { IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, IconoVolver } from './components/Iconos'
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
 import type { TerminalInfo } from './App'
 
@@ -8,6 +8,7 @@ let contador = 0
 /** Ventana aparte con las terminales de una pestaña: sin barra lateral ni pestañas. */
 export function VentanaSeparada({ token }: { token: string }) {
   const [nombre, setNombre] = useState('')
+  const [ventanaId, setVentanaId] = useState('')
   const [terminales, setTerminales] = useState<TerminalInfo[] | null>(null)
   const [activa, setActiva] = useState<string | null>(null)
   const [modo, setModo] = useState<Modo>('rejilla')
@@ -18,6 +19,7 @@ export function VentanaSeparada({ token }: { token: string }) {
     void window.api.ventana.tomar(token).then((p) => {
       if (!p) return setTerminales([])
       setNombre(p.nombre)
+      setVentanaId(p.ventanaId)
       setModo(p.modo)
       setTerminales(p.terminales)
       setActiva(p.terminales[0]?.id ?? null)
@@ -30,6 +32,21 @@ export function VentanaSeparada({ token }: { token: string }) {
     setTerminales((ts) => [...(ts ?? []), { id, titulo: `Terminal ${contador}` }])
     setActiva(id)
   }, [])
+
+  const alPty = useCallback((id: string, ptyId: string) => {
+    setTerminales((ts) => (ts ?? []).map((t) => (t.id === id ? { ...t, ptyId } : t)))
+  }, [])
+
+  // Devuelve las terminales a la ventana principal (los procesos siguen vivos) y esta ventana se cierra.
+  const devolver = (): void => {
+    const lista = (terminales ?? []).filter((t): t is TerminalInfo & { ptyId: string } => !!t.ptyId)
+    window.api.ventana.devolver({
+      ventanaId: ventanaId || 'devueltas',
+      nombre,
+      modo,
+      terminales: lista.map((t) => ({ id: t.id, titulo: t.titulo, ptyId: t.ptyId, cwd: t.cwd, proveedorId: t.proveedorId, proyectoId: t.proyectoId }))
+    })
+  }
 
   const cerrar = useCallback((id: string) => {
     setTerminales((ts) => {
@@ -49,6 +66,9 @@ export function VentanaSeparada({ token }: { token: string }) {
             <span className="punto" /> {nombre} · {terminales.length} {terminales.length === 1 ? 'terminal' : 'terminales'}
           </span>
           <div className="barra-acciones">
+            <button onClick={devolver} title="Devolver estas terminales a la ventana principal (como pestaña)">
+              <IconoVolver /> Devolver a la principal
+            </button>
             <button onClick={agregar} title="Terminal nueva (carpeta personal)">
               <IconoMas /> Terminal
             </button>
@@ -75,6 +95,7 @@ export function VentanaSeparada({ token }: { token: string }) {
           onPersonalizado={setPersonalizado}
           onActivar={setActiva}
           onCerrar={cerrar}
+          onPty={alPty}
         />
       </main>
     </div>

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { Canales, type ApiCentro, type DatosTerminal, type SalidaTerminal } from '@shared/ipc'
+import { Canales, type ApiCentro, type DatosTerminal, type PayloadVentana, type SalidaTerminal } from '@shared/ipc'
 
 function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
   const handler = (_: unknown, e: T): void => cb(e)
@@ -10,7 +10,9 @@ function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
 const api: ApiCentro = {
   ventana: {
     separar: (payload, pos) => ipcRenderer.send(Canales.ventanaSeparar, payload, pos),
-    tomar: (token) => ipcRenderer.invoke(Canales.ventanaTomar, token)
+    tomar: (token) => ipcRenderer.invoke(Canales.ventanaTomar, token),
+    devolver: (payload) => ipcRenderer.send(Canales.ventanaDevolver, payload),
+    onRecibir: (cb) => suscribir<PayloadVentana>(Canales.ventanaRecibir, cb)
   },
   proveedores: {
     listar: () => ipcRenderer.invoke(Canales.proveedoresListar),

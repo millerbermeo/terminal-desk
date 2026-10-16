@@ -155,19 +155,20 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
       // Viene de otra ventana: se escucha primero (en cola), se repinta lo que ya mostraba y se suelta la cola.
       const pid = ptyExistente
       ptyId = pid
-      let cola: string[] | null = []
+      let cola: { datos: string; fin: number }[] | null = []
       bajas.push(
         window.api.terminal.onDatos((e) => {
           if (e.id !== pid) return
-          if (cola) cola.push(e.datos)
+          if (cola) cola.push({ datos: e.datos, fin: e.fin })
           else t.write(e.datos)
         }),
         window.api.terminal.onSalida((e) => e.id === pid && t.write('\r\n[proceso terminado]\r\n'))
       )
-      void window.api.terminal.adjuntar(pid, t.cols, t.rows).then((historial) => {
+      void window.api.terminal.adjuntar(pid, t.cols, t.rows).then(({ texto, fin }) => {
         if (!vivo) return
-        t.write(historial)
-        cola?.forEach((d) => t.write(d))
+        t.write(texto)
+        // lo que ya viene incluido en el historial (fin <= histórico) no se vuelve a escribir
+        cola?.forEach((d) => d.fin > fin && t.write(d.datos))
         cola = null
         conectar(pid)
         ajustarYa()

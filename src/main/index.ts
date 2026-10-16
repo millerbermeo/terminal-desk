@@ -24,7 +24,7 @@ const enviarA = (ptyId: string, canal: string, carga: unknown): void => {
 }
 
 const terminales = new GestorTerminales({
-  onDatos: (id, datos) => enviarA(id, Canales.terminalDatos, { id, datos }),
+  onDatos: (id, datos, fin) => enviarA(id, Canales.terminalDatos, { id, datos, fin }),
   onSalida: (id, codigo) => {
     enviarA(id, Canales.terminalSalida, { id, codigo })
     duenos.delete(id)
@@ -118,6 +118,18 @@ function registrarIpc(): void {
       titulo: `${payload.nombre} · Centro de Proyectos`,
       ...(pos ? { x: Math.round(pos.x - 120), y: Math.round(pos.y - 20) } : {})
     })
+  })
+  // Devolver: los ptys pasan a ser de la ventana principal (así cerrar la separada no los mata),
+  // se avisa a la principal para que los adjunte como pestaña y se cierra la ventana separada.
+  ipcMain.on(Canales.ventanaDevolver, (e, payload: PayloadVentana) => {
+    const origen = BrowserWindow.fromWebContents(e.sender)
+    if (principal && !principal.isDestroyed()) {
+      for (const t of payload.terminales) duenos.set(t.ptyId, principal.webContents.id)
+      principal.webContents.send(Canales.ventanaRecibir, payload)
+      if (principal.isMinimized()) principal.restore()
+      principal.focus()
+    }
+    origen?.close()
   })
   ipcMain.handle(Canales.ventanaTomar, (_e, token: string) => {
     const payload = pendientes.get(token) ?? null

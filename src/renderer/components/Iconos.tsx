@@ -68,3 +68,6 @@ export const IconoSeleccionar = () => (
 export const IconoLimpiar = () => (
   <Icono width={14} height={14}><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></Icono>
 )
+export const IconoVolver = () => (
+  <Icono width={14} height={14}><path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 5 5v6" /></Icono>
+)

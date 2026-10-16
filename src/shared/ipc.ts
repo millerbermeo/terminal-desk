@@ -16,6 +16,8 @@ export const Canales = {
   terminalAdjuntar: 'terminal:adjuntar',
   ventanaSeparar: 'ventana:separar',
   ventanaTomar: 'ventana:tomar',
+  ventanaDevolver: 'ventana:devolver',
+  ventanaRecibir: 'ventana:recibir',
   terminalDatos: 'terminal:datos',
   terminalSalida: 'terminal:salida'
 } as const
@@ -35,6 +37,12 @@ export interface SalidaTerminal {
 export interface DatosTerminal {
   id: string
   datos: string
+  fin: number // posición acumulada de la salida tras este trozo (para no duplicar al adjuntar)
+}
+
+export interface HistorialTerminal {
+  texto: string
+  fin: number // el historial incluye la salida hasta esta posición
 }
 
 export interface NuevoProyecto {
@@ -67,6 +75,7 @@ export type ResultadoProveedor = { ok: true; proveedores: ProveedorEstado[] } | 
 
 /** Pestaña que se pasa a una ventana nueva: las terminales siguen vivas (mismo pty). */
 export interface PayloadVentana {
+  ventanaId: string // id de la pestaña de origen (clave del grupo)
   nombre: string
   modo: 'rejilla' | 'pestanas'
   terminales: { id: string; titulo: string; ptyId: string; cwd?: string; proveedorId?: string; proyectoId?: string }[]
@@ -85,6 +94,10 @@ export interface ApiCentro {
     separar(payload: PayloadVentana, pos?: { x: number; y: number }): void
     /** En una ventana separada: recoge lo que se le pasó (una sola vez). */
     tomar(token: string): Promise<PayloadVentana | null>
+    /** Devuelve las terminales a la ventana principal (como pestaña) y cierra esta ventana sin matar los procesos. */
+    devolver(payload: PayloadVentana): void
+    /** En la ventana principal: llegan terminales devueltas desde una ventana separada. */
+    onRecibir(cb: (payload: PayloadVentana) => void): () => void
   }
   proveedores: {
     listar(): Promise<ProveedorEstado[]>
@@ -103,7 +116,7 @@ export interface ApiCentro {
   terminal: {
     crear(opciones: OpcionesTerminal): Promise<string>
     /** Toma el control de un pty existente: devuelve lo ya mostrado (para repintarlo) y desde ahí recibe sus datos. */
-    adjuntar(ptyId: string, cols: number, rows: number): Promise<string>
+    adjuntar(ptyId: string, cols: number, rows: number): Promise<HistorialTerminal>
     escribir(id: string, datos: string): void
     redimensionar(id: string, cols: number, rows: number): void
     cerrar(id: string): void

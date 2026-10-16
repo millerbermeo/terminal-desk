@@ -7,7 +7,7 @@ import type { OpcionesTerminal } from '@shared/ipc'
 const LIMITE_HISTORIAL = 512 * 1024 // caracteres por terminal
 
 interface Callbacks {
-  onDatos(id: string, datos: string): void
+  onDatos(id: string, datos: string, fin: number): void
   onSalida(id: string, codigo: number): void
 }
 
@@ -22,7 +22,7 @@ function shellPorDefecto(): { shell: string; args: string[] } {
 export class GestorTerminales {
   private terminales = new Map<string, pty.IPty>()
   // Lo último que mostró cada terminal: sirve para repintarla si pasa a otra ventana.
-  private historial = new Map<string, { trozos: string[]; largo: number }>()
+  private historial = new Map<string, { trozos: string[]; largo: number; fin: number }>()
 
   constructor(private cb: Callbacks) {}
 
@@ -40,14 +40,15 @@ export class GestorTerminales {
     this.terminales.set(id, proc)
     // Se escribe en el shell interactivo (no se hace spawn directo) para heredar PATH/nvm/etc. y que la terminal siga viva al salir del CLI.
     if (extra?.comando) proc.write(extra.comando + '\r')
-    const hist = { trozos: [] as string[], largo: 0 }
+    const hist = { trozos: [] as string[], largo: 0, fin: 0 }
     this.historial.set(id, hist)
     proc.onData((d) => {
       // se guardan los trozos tal cual y se descartan los más antiguos al pasar el límite (sin copiar todo cada vez)
       hist.trozos.push(d)
       hist.largo += d.length
+      hist.fin += d.length
       while (hist.largo > LIMITE_HISTORIAL && hist.trozos.length > 1) hist.largo -= hist.trozos.shift()!.length
-      this.cb.onDatos(id, d)
+      this.cb.onDatos(id, d, hist.fin)
     })
     proc.onExit(({ exitCode }) => {
       this.historial.delete(id)
@@ -56,8 +57,9 @@ export class GestorTerminales {
     return id
   }
 
-  historialDe(id: string): string {
-    return this.historial.get(id)?.trozos.join('') ?? ''
+  historialDe(id: string): { texto: string; fin: number } {
+    const h = this.historial.get(id)
+    return { texto: h?.trozos.join('') ?? '', fin: h?.fin ?? 0 }
   }
 
   escribir(id: string, datos: string): void {

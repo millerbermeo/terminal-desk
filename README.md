@@ -70,7 +70,7 @@ Cada grupo se abre en su propia pestaña (arriba) con sus terminales; al abrir o
 
 ## Ventanas separadas
 
-Arrastra una pestaña hacia abajo, fuera de la barra de pestañas, para abrirla en una ventana nueva (o usa el icono ⧉ de la pestaña). La ventana nueva solo contiene las terminales: los mismos procesos siguen vivos (no se reinician) y se repinta lo que mostraban. Cerrar esa ventana cierra sus procesos; cerrar la ventana principal cierra toda la app. Límite: de momento no se puede devolver una ventana separada a la principal.
+Arrastra una pestaña hacia abajo, fuera de la barra de pestañas, para abrirla en una ventana nueva (o usa el icono ⧉ de la pestaña). La ventana nueva solo contiene las terminales: los mismos procesos siguen vivos (no se reinician) y se repinta lo que mostraban. «Devolver a la principal» (barra de la ventana separada) las trae de vuelta como pestaña, con sus procesos e historial. Cerrar la ventana separada con la × cierra sus procesos; cerrar la ventana principal cierra toda la app.
 
 ## Rejilla de terminales
 

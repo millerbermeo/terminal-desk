@@ -206,6 +206,7 @@ export function App() {
       terminales.forEach((t) => transferidas.add(t.ptyId))
       window.api.ventana.separar(
         {
+          ventanaId: v.id,
           nombre: v.nombre,
           modo: v.modo,
           terminales: terminales.map((t) => ({ id: t.id, titulo: t.titulo, ptyId: t.ptyId, cwd: t.cwd, proveedorId: t.proveedorId, proyectoId: t.proyectoId }))
@@ -242,6 +243,24 @@ export function App() {
     if (!d.movido) setVentanaActiva(v.id)
     else if (fueraDeBarra(e)) separar(v, { x: e.screenX, y: e.screenY })
   }
+
+  // Terminales devueltas desde una ventana separada: vuelven como pestaña (o se suman a la de su grupo).
+  useEffect(
+    () =>
+      window.api.ventana.onRecibir((p) => {
+        const terminales: TerminalInfo[] = p.terminales.map((t) => ({ ...t }))
+        if (terminales.length === 0) return
+        setVentanas((vs) => {
+          const existe = vs.some((v) => v.id === p.ventanaId)
+          return existe
+            ? vs.map((v) => (v.id === p.ventanaId ? { ...v, terminales: [...v.terminales, ...terminales], activa: terminales[0].id } : v))
+            : [...vs, { ...nuevaVentana(p.ventanaId, p.nombre, terminales), modo: p.modo }]
+        })
+        setVentanaActiva(p.ventanaId)
+        setVista('terminales')
+      }),
+    []
+  )
 
   const pedirCierre = (v: Ventana): void => (v.terminales.length > 0 ? setPorCerrar(v.id) : cerrarVentana(v.id))
   const abiertos = new Set(ventanas.map((v) => v.id))
