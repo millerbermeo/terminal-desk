@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { Proveedor, Recurso } from '@shared/modelos'
 import { Canales, type DestinoActivacion, type OpcionesTerminal, type PayloadVentana, type ResultadoEliminarGrupo, type SolicitudAgregar } from '@shared/ipc'
+import { Nucleo, registrarIpcCore } from './core'
 import { GestorTerminales } from './terminales'
 import { eliminarProveedor, guardarProveedor, listarProveedores, obtenerProveedor } from './proveedores'
 import { verificarPassword } from './autenticacion'
@@ -31,6 +32,9 @@ const terminales = new GestorTerminales({
     duenos.delete(id)
   }
 })
+
+// Núcleo de agentes (Fase 1): sin aprobador, solo herramientas de lectura. La Fase 4 añade confirmación humana.
+const nucleo = new Nucleo()
 
 /** Cierra las terminales de una ventana (se recargó o se cerró). */
 function cerrarDe(webContentsId: number): void {
@@ -86,6 +90,7 @@ function crearVentana(opciones: { token?: string; x?: number; y?: number; titulo
 }
 
 function registrarIpc(): void {
+  registrarIpcCore(nucleo)
   ipcMain.handle(Canales.proyectosListar, () => leerProyectos())
   ipcMain.handle(Canales.proyectosValidarRuta, (_e, ruta: string) => validarRuta(ruta))
   ipcMain.handle(Canales.proyectosAgregar, (_e, sol: SolicitudAgregar) => agregarProyectos(sol))
@@ -153,6 +158,7 @@ function registrarIpc(): void {
 app.whenReady().then(() => {
   registrarIpc()
   void limpiarSesiones()
+  void nucleo.iniciarMcp()
   principal = crearVentana()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) principal = crearVentana()
@@ -164,7 +170,10 @@ app.on('window-all-closed', () => {
   app.quit()
 })
 
-app.on('before-quit', () => terminales.cerrarTodas())
+app.on('before-quit', () => {
+  terminales.cerrarTodas()
+  void nucleo.detener()
+})
 app.on('will-quit', () => terminales.cerrarTodas())
 
 for (const senal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {

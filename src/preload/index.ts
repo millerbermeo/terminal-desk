@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { EventoAgente } from '@shared/core/agente'
 import { Canales, type ApiCentro, type DatosTerminal, type PayloadVentana, type SalidaTerminal } from '@shared/ipc'
 
 function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
@@ -8,6 +9,27 @@ function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
 }
 
 const api: ApiCentro = {
+  core: {
+    ejecutar: (solicitud) => ipcRenderer.invoke(Canales.coreEjecutar, solicitud),
+    cancelar: (id) => ipcRenderer.invoke(Canales.coreCancelar, id),
+    responder: (solicitudId, decision) => ipcRenderer.invoke(Canales.coreResponder, solicitudId, decision),
+    worktreesListar: (proyectoId) => ipcRenderer.invoke(Canales.coreWorktreesListar, proyectoId),
+    worktreeDescartar: (proyectoId, id) => ipcRenderer.invoke(Canales.coreWorktreeDescartar, proyectoId, id),
+    worktreePublicar: (proyectoId, id) => ipcRenderer.invoke(Canales.coreWorktreePublicar, proyectoId, id),
+    trazasListar: (limite) => ipcRenderer.invoke(Canales.coreTrazasListar, limite),
+    trazaObtener: (id) => ipcRenderer.invoke(Canales.coreTrazaObtener, id),
+    trazaEliminar: (id) => ipcRenderer.invoke(Canales.coreTrazaEliminar, id),
+    evalsSuites: () => ipcRenderer.invoke(Canales.coreEvalsSuites),
+    evalsEjecutar: (suiteId, casos) => ipcRenderer.invoke(Canales.coreEvalsEjecutar, suiteId, casos),
+    evalsInformes: (suiteId) => ipcRenderer.invoke(Canales.coreEvalsInformes, suiteId),
+    sesionBorrar: (id) => ipcRenderer.invoke(Canales.coreSesionBorrar, id),
+    memoriaListar: (proyectoId) => ipcRenderer.invoke(Canales.coreMemoriaListar, proyectoId),
+    memoriaGuardar: (entrada, proyectoId) => ipcRenderer.invoke(Canales.coreMemoriaGuardar, entrada, proyectoId),
+    memoriaEliminar: (id, proyectoId) => ipcRenderer.invoke(Canales.coreMemoriaEliminar, id, proyectoId),
+    mcpEstado: () => ipcRenderer.invoke(Canales.coreMcpEstado),
+    mcpReiniciar: () => ipcRenderer.invoke(Canales.coreMcpReiniciar),
+    onEvento: (cb) => suscribir<EventoAgente>(Canales.coreEvento, cb)
+  },
   agentes: {
     listar: () => ipcRenderer.invoke(Canales.agentesListar),
     guardar: (r) => ipcRenderer.invoke(Canales.agentesGuardar, r),

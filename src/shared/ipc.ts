@@ -1,3 +1,7 @@
+import type { DecisionHumana, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, ResultadoPublicar, SolicitudAgente } from './core/agente'
+import type { InfoSuite, InformeEval, ResultadoEvals } from './core/evals'
+import type { ResumenTraza, Traza } from './core/traza'
+import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
 import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso } from './modelos'
 
 export const Canales = {
@@ -22,6 +26,25 @@ export const Canales = {
   ventanaTomar: 'ventana:tomar',
   ventanaDevolver: 'ventana:devolver',
   ventanaRecibir: 'ventana:recibir',
+  coreEjecutar: 'core:ejecutar',
+  coreCancelar: 'core:cancelar',
+  coreMcpEstado: 'core:mcp-estado',
+  coreMcpReiniciar: 'core:mcp-reiniciar',
+  coreEvento: 'core:evento',
+  coreResponder: 'core:responder',
+  coreWorktreesListar: 'core:worktrees-listar',
+  coreWorktreeDescartar: 'core:worktree-descartar',
+  coreWorktreePublicar: 'core:worktree-publicar',
+  coreTrazasListar: 'core:trazas-listar',
+  coreTrazaObtener: 'core:traza-obtener',
+  coreTrazaEliminar: 'core:traza-eliminar',
+  coreEvalsSuites: 'core:evals-suites',
+  coreEvalsEjecutar: 'core:evals-ejecutar',
+  coreEvalsInformes: 'core:evals-informes',
+  coreSesionBorrar: 'core:sesion-borrar',
+  coreMemoriaListar: 'core:memoria-listar',
+  coreMemoriaGuardar: 'core:memoria-guardar',
+  coreMemoriaEliminar: 'core:memoria-eliminar',
   terminalDatos: 'terminal:datos',
   terminalSalida: 'terminal:salida'
 } as const
@@ -101,6 +124,36 @@ export interface ResultadoAgregar {
 
 /** API expuesta en window.api por el preload. */
 export interface ApiCentro {
+  core: {
+    /** Lanza el agente. El progreso y el resultado llegan por onEvento. */
+    ejecutar(solicitud: SolicitudAgente): Promise<EjecucionIniciada>
+    /** Responde a una `solicitud_humana` (aprobar/rechazar un plan o un resultado). */
+    responder(solicitudId: string, decision: DecisionHumana): Promise<boolean>
+    worktreesListar(proyectoId: string): Promise<InfoWorktree[]>
+    /** Elimina el worktree y su rama (se pierde lo no integrado): la UI debe confirmarlo. */
+    worktreeDescartar(proyectoId: string, id: string): Promise<InfoWorktree[]>
+    /** `git push` de la rama; pide confirmación humana por onEvento (solicitud_humana). */
+    worktreePublicar(proyectoId: string, id: string): Promise<ResultadoPublicar>
+    /** Observabilidad: trazas de ejecuciones (prompts, herramientas, tiempos y tokens), más recientes primero. */
+    trazasListar(limite?: number): Promise<ResumenTraza[]>
+    trazaObtener(id: string): Promise<Traza | undefined>
+    trazaEliminar(id: string): Promise<void>
+    /** Evals: suites disponibles, ejecución (puede tardar minutos y consume tokens) e historial de informes. */
+    evalsSuites(): Promise<InfoSuite[]>
+    evalsEjecutar(suiteId: string, casos?: string[]): Promise<ResultadoEvals>
+    evalsInformes(suiteId: string): Promise<InformeEval[]>
+    /** Olvida una conversación (memoria de corto plazo). */
+    sesionBorrar(sesionId: string): Promise<void>
+    /** Memoria de largo plazo: proyectoId vacío = global (todos los proyectos). */
+    memoriaListar(proyectoId?: string): Promise<EntradaMemoria[]>
+    memoriaGuardar(entrada: NuevaEntradaMemoria, proyectoId?: string): Promise<EntradaMemoria[]>
+    memoriaEliminar(id: string, proyectoId?: string): Promise<EntradaMemoria[]>
+    cancelar(ejecucionId: string): Promise<void>
+    mcpEstado(): Promise<InfoServidorMcp[]>
+    /** Relee mcp.json y reconecta los servidores. */
+    mcpReiniciar(): Promise<InfoServidorMcp[]>
+    onEvento(cb: (e: EventoAgente) => void): () => void
+  }
   agentes: {
     listar(): Promise<BibliotecaAgentes>
     /** id vacío = crear */
