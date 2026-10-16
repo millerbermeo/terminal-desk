@@ -14,9 +14,11 @@ interface Props {
   onAbrirConProveedor: (p: Proyecto, prov: ProveedorEstado) => void
   vista: Vista
   onVista: (v: Vista) => void
+  /** Confirmaciones que el asistente está esperando (insignia en el acceso al asistente). */
+  pendientesAsistente: number
 }
 
-export type Vista = 'terminales' | 'config' | 'proveedores' | 'agentes'
+export type Vista = 'terminales' | 'config' | 'proveedores' | 'agentes' | 'asistente'
 
 interface MenuIA {
   proyecto: Proyecto
@@ -24,7 +26,7 @@ interface MenuIA {
   left: number
 }
 
-export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, proveedores, onAbrirConProveedor, vista, onVista }: Props) {
+export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente }: Props) {
   const [cerrados, setCerrados] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<MenuIA | null>(null)
 
@@ -128,6 +130,11 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
         {sinGrupo.length > 0 && seccion('__sin-grupo__', 'Sin grupo', sinGrupo)}
       </nav>
       <footer>
+        <button className={`item item-config${vista === 'asistente' ? ' activo' : ''}`} onClick={() => onVista(vista === 'asistente' ? 'terminales' : 'asistente')}>
+          <IconoChispa />
+          <span>Asistente</span>
+          {pendientesAsistente > 0 && <span className="insignia" title="El asistente espera tu confirmación">{pendientesAsistente}</span>}
+        </button>
         <button className={`item item-config${vista === 'agentes' ? ' activo' : ''}`} onClick={() => onVista(vista === 'agentes' ? 'terminales' : 'agentes')}>
           <IconoAgente />
           <span>Agentes y skills</span>

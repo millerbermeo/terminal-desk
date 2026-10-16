@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BibliotecaAgentes, DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
 import { IconoCerrar, IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, IconoTerminal, IconoVentana } from './components/Iconos'
 import { Sidebar, type Vista } from './components/Sidebar'
+import { Asistente } from './components/Asistente'
+import { ModalSolicitud } from './components/ModalSolicitud'
+import { useAgente } from './agente/useAgente'
 import { ConfigAgentes } from './components/ConfigAgentes'
 import { ConfigProveedores } from './components/ConfigProveedores'
 import { ConfigProyectos } from './components/ConfigProyectos'
@@ -62,6 +65,7 @@ export function App() {
   const [ventanas, setVentanas] = useState<Ventana[]>([])
   const [ventanaActiva, setVentanaActiva] = useState<string | null>(null)
   const [vista, setVista] = useState<Vista>('terminales')
+  const agente = useAgente() // vive aquí para no perder eventos al cambiar de pantalla
   const [proveedores, setProveedores] = useState<ProveedorEstado[]>([])
   const [biblioteca, setBiblioteca] = useState<BibliotecaAgentes>({ recursos: [], activaciones: { proyectos: {}, grupos: {} } })
   const [porCerrar, setPorCerrar] = useState<string | null>(null)
@@ -284,10 +288,12 @@ export function App() {
         onAbrirConProveedor={abrirProyecto}
         vista={vista}
         onVista={setVista}
+        pendientesAsistente={agente.solicitudes.length}
       />
       {vista === 'config' && <ConfigProyectos datos={datos} onDatos={setDatos} />}
       {vista === 'agentes' && <ConfigAgentes datos={datos} biblioteca={biblioteca} onBiblioteca={setBiblioteca} />}
       {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}
+      <Asistente datos={datos} agente={agente} visible={vista === 'asistente'} />
       {/* siempre montado (oculto en las pantallas de configuración) para no matar los procesos de las terminales */}
       <main className="principal" style={{ display: vista !== 'terminales' ? 'none' : 'flex' }}>
         <div className="ventanas" role="tablist" ref={barraPestanas}>
@@ -416,6 +422,16 @@ export function App() {
           </section>
         ))}
       </main>
+
+      {agente.solicitudes[0] && (
+        <ModalSolicitud
+          solicitud={agente.solicitudes[0]}
+          pendientes={agente.solicitudes.length}
+          onResponder={(aprobado, comentario, recordar) =>
+            agente.responder(agente.solicitudes[0]!, { aprobado, ...(comentario ? { comentario } : {}), ...(recordar ? { recordar: true } : {}) })
+          }
+        />
+      )}
 
       {ventanaConfirmar && (
         <ModalConfirmar
