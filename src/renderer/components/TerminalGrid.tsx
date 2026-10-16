@@ -25,6 +25,7 @@ interface Props {
   onPersonalizado: (v: boolean) => void
   onActivar: (id: string) => void
   onCerrar: (id: string) => void
+  onPty?: (terminalId: string, ptyId: string) => void
 }
 
 const MIN_ANCHO = 260 // px
@@ -42,7 +43,7 @@ interface Arrastre {
   caja: { left: number; top: number; width: number; height: number }
 }
 
-export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPersonalizado, onActivar, onCerrar }: Props) {
+export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPersonalizado, onActivar, onCerrar, onPty }: Props) {
   const ids = terminales.map((t) => t.id)
   const contenedor = useRef<HTMLDivElement>(null)
   const [estado, setEstado] = useState<{ arbol: Nodo | null; personalizado: boolean }>({ arbol: null, personalizado: false })
@@ -191,6 +192,8 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPers
                 id={t.id}
                 cwd={t.cwd}
                 proveedorId={t.proveedorId}
+                ptyExistente={t.ptyId}
+                onPty={onPty}
                 visible={visible}
                 activa={t.id === activa}
                 onActivar={onActivar}

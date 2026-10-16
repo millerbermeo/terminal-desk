@@ -8,6 +8,10 @@ function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
 }
 
 const api: ApiCentro = {
+  ventana: {
+    separar: (payload, pos) => ipcRenderer.send(Canales.ventanaSeparar, payload, pos),
+    tomar: (token) => ipcRenderer.invoke(Canales.ventanaTomar, token)
+  },
   proveedores: {
     listar: () => ipcRenderer.invoke(Canales.proveedoresListar),
     guardar: (p) => ipcRenderer.invoke(Canales.proveedoresGuardar, p),
@@ -22,6 +26,7 @@ const api: ApiCentro = {
   },
   terminal: {
     crear: (opciones) => ipcRenderer.invoke(Canales.terminalCrear, opciones),
+    adjuntar: (ptyId, cols, rows) => ipcRenderer.invoke(Canales.terminalAdjuntar, ptyId, cols, rows),
     escribir: (id, datos) => ipcRenderer.send(Canales.terminalEscribir, id, datos),
     redimensionar: (id, cols, rows) => ipcRenderer.send(Canales.terminalRedimensionar, id, cols, rows),
     cerrar: (id) => ipcRenderer.send(Canales.terminalCerrar, id),

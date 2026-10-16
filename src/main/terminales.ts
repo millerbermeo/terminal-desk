@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto'
 import * as pty from 'node-pty'
 import type { OpcionesTerminal } from '@shared/ipc'
 
+const LIMITE_HISTORIAL = 512 * 1024 // caracteres por terminal
+
 interface Callbacks {
   onDatos(id: string, datos: string): void
   onSalida(id: string, codigo: number): void
@@ -19,6 +21,8 @@ function shellPorDefecto(): { shell: string; args: string[] } {
 
 export class GestorTerminales {
   private terminales = new Map<string, pty.IPty>()
+  // Lo último que mostró cada terminal: sirve para repintarla si pasa a otra ventana.
+  private historial = new Map<string, { trozos: string[]; largo: number }>()
 
   constructor(private cb: Callbacks) {}
 
@@ -36,11 +40,24 @@ export class GestorTerminales {
     this.terminales.set(id, proc)
     // Se escribe en el shell interactivo (no se hace spawn directo) para heredar PATH/nvm/etc. y que la terminal siga viva al salir del CLI.
     if (extra?.comando) proc.write(extra.comando + '\r')
-    proc.onData((d) => this.cb.onDatos(id, d))
+    const hist = { trozos: [] as string[], largo: 0 }
+    this.historial.set(id, hist)
+    proc.onData((d) => {
+      // se guardan los trozos tal cual y se descartan los más antiguos al pasar el límite (sin copiar todo cada vez)
+      hist.trozos.push(d)
+      hist.largo += d.length
+      while (hist.largo > LIMITE_HISTORIAL && hist.trozos.length > 1) hist.largo -= hist.trozos.shift()!.length
+      this.cb.onDatos(id, d)
+    })
     proc.onExit(({ exitCode }) => {
+      this.historial.delete(id)
       if (this.terminales.delete(id)) this.cb.onSalida(id, exitCode)
     })
     return id
+  }
+
+  historialDe(id: string): string {
+    return this.historial.get(id)?.trozos.join('') ?? ''
   }
 
   escribir(id: string, datos: string): void {
@@ -60,12 +77,14 @@ export class GestorTerminales {
     const proc = this.terminales.get(id)
     if (!proc) return
     this.terminales.delete(id)
+    this.historial.delete(id)
     this.matar(proc)
   }
 
   cerrarTodas(): void {
     for (const proc of this.terminales.values()) this.matar(proc)
     this.terminales.clear()
+    this.historial.clear()
   }
 
   private matar(proc: pty.IPty): void {

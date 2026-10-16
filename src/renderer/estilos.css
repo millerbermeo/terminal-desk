@@ -268,7 +268,7 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
 .ventana-tab:hover .separar, .ventana-tab .separar:focus-visible { opacity: 1; }
 .ventana-tab .separar:disabled { display: none; }
 .pestana-fantasma { position: fixed; z-index: 30; pointer-events: none; transform: translate(14px, 14px); display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; background: var(--bg-elevado); border: 1px solid var(--acento); color: var(--texto); box-shadow: var(--sombra); animation: aparecer 120ms ease both; white-space: nowrap; }
-.ventana-sola { flex-direction: column; }
+.ventana-sola .principal { display: flex; }
 
 /* menú contextual de las terminales (clic derecho) */
 .menu-terminal { min-width: 230px; z-index: 40; }

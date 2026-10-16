@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
-import { IconoCerrar, IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, IconoTerminal } from './components/Iconos'
+import { IconoCerrar, IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, IconoTerminal, IconoVentana } from './components/Iconos'
 import { Sidebar, type Vista } from './components/Sidebar'
 import { ConfigProveedores } from './components/ConfigProveedores'
 import { ConfigProyectos } from './components/ConfigProyectos'
 import { ModalConfirmar } from './components/ModalConfirmar'
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
+import { transferidas } from './components/TerminalPanel'
 
 export interface TerminalInfo {
   id: string
@@ -13,6 +14,7 @@ export interface TerminalInfo {
   cwd?: string
   proveedorId?: string
   proyectoId?: string // proyecto de origen (para no duplicar al hacer clic de nuevo)
+  ptyId?: string // proceso real (lo informa el panel al crearlo; también viene así de otra ventana)
 }
 
 /** Una pestaña de la app: normalmente un grupo de proyectos con sus terminales. */
@@ -61,6 +63,8 @@ export function App() {
   const [vista, setVista] = useState<Vista>('terminales')
   const [proveedores, setProveedores] = useState<ProveedorEstado[]>([])
   const [porCerrar, setPorCerrar] = useState<string | null>(null)
+  const [separando, setSeparando] = useState<{ id: string; x: number; y: number } | null>(null) // pestaña arrastrada fuera de la barra
+  const drag = useRef<{ id: string; x0: number; y0: number; movido: boolean } | null>(null)
   const [menuNueva, setMenuNueva] = useState<string | null>(null) // id de la pestaña con el menú «+ Terminal» abierto
 
   useEffect(() => {
@@ -188,6 +192,57 @@ export function App() {
     }
   }, [menuNueva])
 
+  const alPty = useCallback(
+    (ventanaId: string, termId: string, ptyId: string) =>
+      cambiar(ventanaId, (v) => ({ ...v, terminales: v.terminales.map((t) => (t.id === termId ? { ...t, ptyId } : t)) })),
+    [cambiar]
+  )
+
+  // Pasa la pestaña a una ventana nueva: los procesos siguen vivos (se transfiere el pty, no se reinicia).
+  const separar = useCallback(
+    (v: Ventana, pos?: { x: number; y: number }) => {
+      const terminales = v.terminales.filter((t): t is TerminalInfo & { ptyId: string } => !!t.ptyId)
+      if (terminales.length === 0) return
+      terminales.forEach((t) => transferidas.add(t.ptyId))
+      window.api.ventana.separar(
+        {
+          nombre: v.nombre,
+          modo: v.modo,
+          terminales: terminales.map((t) => ({ id: t.id, titulo: t.titulo, ptyId: t.ptyId, cwd: t.cwd, proveedorId: t.proveedorId, proyectoId: t.proyectoId }))
+        },
+        pos
+      )
+      cerrarVentana(v.id)
+    },
+    [cerrarVentana]
+  )
+
+  // Arrastrar una pestaña fuera de la barra la abre en una ventana aparte; un clic sin mover la activa.
+  const barraPestanas = useRef<HTMLDivElement>(null)
+  const fueraDeBarra = (e: React.PointerEvent): boolean => {
+    const r = barraPestanas.current?.getBoundingClientRect()
+    return !!r && (e.clientY > r.bottom + 30 || e.clientY < r.top - 30 || e.clientX < 0 || e.clientX > window.innerWidth || e.clientY < 0 || e.clientY > window.innerHeight)
+  }
+  const pestanaAbajo = (e: React.PointerEvent, v: Ventana): void => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return
+    drag.current = { id: v.id, x0: e.clientX, y0: e.clientY, movido: false }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const pestanaMueve = (e: React.PointerEvent): void => {
+    const d = drag.current
+    if (!d) return
+    if (!d.movido && Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > 6) d.movido = true
+    setSeparando(d.movido && fueraDeBarra(e) ? { id: d.id, x: e.clientX, y: e.clientY } : null)
+  }
+  const pestanaSuelta = (e: React.PointerEvent, v: Ventana): void => {
+    const d = drag.current
+    drag.current = null
+    setSeparando(null)
+    if (!d) return
+    if (!d.movido) setVentanaActiva(v.id)
+    else if (fueraDeBarra(e)) separar(v, { x: e.screenX, y: e.screenY })
+  }
+
   const pedirCierre = (v: Ventana): void => (v.terminales.length > 0 ? setPorCerrar(v.id) : cerrarVentana(v.id))
   const abiertos = new Set(ventanas.map((v) => v.id))
   const terminalesPorProyecto: Record<string, number> = {}
@@ -212,16 +267,22 @@ export function App() {
       {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}
       {/* siempre montado (oculto en las pantallas de configuración) para no matar los procesos de las terminales */}
       <main className="principal" style={{ display: vista !== 'terminales' ? 'none' : 'flex' }}>
-        <div className="ventanas" role="tablist">
+        <div className="ventanas" role="tablist" ref={barraPestanas}>
           {ventanas.map((v) => (
             <div
               key={v.id}
               role="tab"
               aria-selected={v.id === ventanaActiva}
               tabIndex={0}
-              className={`ventana-tab${v.id === ventanaActiva ? ' activa' : ''}`}
-              title={v.nombre}
-              onClick={() => setVentanaActiva(v.id)}
+              className={`ventana-tab${v.id === ventanaActiva ? ' activa' : ''}${separando?.id === v.id ? ' arrastrada' : ''}`}
+              title={`${v.nombre} · arrastra hacia abajo para abrirla en otra ventana`}
+              onPointerDown={(e) => pestanaAbajo(e, v)}
+              onPointerMove={pestanaMueve}
+              onPointerUp={(e) => pestanaSuelta(e, v)}
+              onPointerCancel={() => {
+                drag.current = null
+                setSeparando(null)
+              }}
               onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setVentanaActiva(v.id)}
               onAuxClick={(e) => {
                 if (e.button === 1) {
@@ -233,6 +294,17 @@ export function App() {
               <IconoTerminal />
               <span className="ventana-nombre">{v.nombre}</span>
               <span className="contador">{v.terminales.length}</span>
+              <button
+                className="cerrar separar"
+                title="Abrir en una ventana nueva"
+                disabled={v.terminales.length === 0 || v.terminales.some((t) => !t.ptyId)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  separar(v)
+                }}
+              >
+                <IconoVentana />
+              </button>
               <button
                 className="cerrar"
                 title="Cerrar pestaña"
@@ -249,6 +321,12 @@ export function App() {
             <IconoMas />
           </button>
         </div>
+
+        {separando && (
+          <div className="pestana-fantasma" style={{ left: separando.x, top: separando.y }}>
+            <IconoVentana /> Soltar para abrir «{ventanas.find((v) => v.id === separando.id)?.nombre}» en una ventana nueva
+          </div>
+        )}
 
         {ventanas.length === 0 && (
           <div className="vacio vacio-global">
@@ -310,6 +388,7 @@ export function App() {
               onPersonalizado={(p) => cambiar(v.id, (x) => (x.personalizado === p ? x : { ...x, personalizado: p }))}
               onActivar={(t) => cambiar(v.id, (x) => (x.activa === t ? x : { ...x, activa: t }))}
               onCerrar={(t) => cerrarTerminal(v.id, t)}
+              onPty={(t, pty) => alPty(v.id, t, pty)}
             />
           </section>
         ))}

@@ -13,6 +13,9 @@ export const Canales = {
   terminalEscribir: 'terminal:escribir',
   terminalRedimensionar: 'terminal:redimensionar',
   terminalCerrar: 'terminal:cerrar',
+  terminalAdjuntar: 'terminal:adjuntar',
+  ventanaSeparar: 'ventana:separar',
+  ventanaTomar: 'ventana:tomar',
   terminalDatos: 'terminal:datos',
   terminalSalida: 'terminal:salida'
 } as const
@@ -62,6 +65,13 @@ export type ResultadoEliminarGrupo =
 
 export type ResultadoProveedor = { ok: true; proveedores: ProveedorEstado[] } | { ok: false; mensaje: string }
 
+/** Pestaña que se pasa a una ventana nueva: las terminales siguen vivas (mismo pty). */
+export interface PayloadVentana {
+  nombre: string
+  modo: 'rejilla' | 'pestanas'
+  terminales: { id: string; titulo: string; ptyId: string; cwd?: string; proveedorId?: string; proyectoId?: string }[]
+}
+
 /** Si hay errores no se agrega nada (todo o nada). */
 export interface ResultadoAgregar {
   datos: DatosProyectos
@@ -70,6 +80,12 @@ export interface ResultadoAgregar {
 
 /** API expuesta en window.api por el preload. */
 export interface ApiCentro {
+  ventana: {
+    /** Abre una ventana nueva con estas terminales (opcionalmente en la posición de pantalla indicada). */
+    separar(payload: PayloadVentana, pos?: { x: number; y: number }): void
+    /** En una ventana separada: recoge lo que se le pasó (una sola vez). */
+    tomar(token: string): Promise<PayloadVentana | null>
+  }
   proveedores: {
     listar(): Promise<ProveedorEstado[]>
     /** id vacío = crear. */
@@ -86,6 +102,8 @@ export interface ApiCentro {
   }
   terminal: {
     crear(opciones: OpcionesTerminal): Promise<string>
+    /** Toma el control de un pty existente: devuelve lo ya mostrado (para repintarlo) y desde ahí recibe sus datos. */
+    adjuntar(ptyId: string, cols: number, rows: number): Promise<string>
     escribir(id: string, datos: string): void
     redimensionar(id: string, cols: number, rows: number): void
     cerrar(id: string): void

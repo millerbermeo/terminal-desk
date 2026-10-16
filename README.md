@@ -68,9 +68,17 @@ Un proveedor es un CLI que se ejecuta dentro de una terminal (Claude Code, Codex
 
 Cada grupo se abre en su propia pestaña (arriba) con sus terminales; al abrir otro grupo se crea otra pestaña y las anteriores siguen vivas en segundo plano, con sus procesos. ▶ en un grupo abre una terminal por proyecto (si ya tiene pestaña, va a ella); un clic en un proyecto lo abre en la pestaña de su grupo, o te lleva a su terminal si ya la tiene (no duplica); para una terminal extra usa «+ Terminal» dentro de la pestaña (proyecto del grupo o terminal vacía); «+» (arriba) crea una pestaña suelta. Cerrar una pestaña (× o clic central) pide confirmación y cierra sus procesos. Cada pestaña tiene su propio layout.
 
+## Ventanas separadas
+
+Arrastra una pestaña hacia abajo, fuera de la barra de pestañas, para abrirla en una ventana nueva (o usa el icono ⧉ de la pestaña). La ventana nueva solo contiene las terminales: los mismos procesos siguen vivos (no se reinician) y se repinta lo que mostraban. Cerrar esa ventana cierra sus procesos; cerrar la ventana principal cierra toda la app. Límite: de momento no se puede devolver una ventana separada a la principal.
+
 ## Rejilla de terminales
 
 Layout en árbol de divisiones (como tmux/VSCode): siempre cubre todo el área, sin huecos. Arrastra un divisor para mover esa línea completa (cada terminal conserva como mínimo 260×150 px); doble clic en un divisor lo centra. Arrastra la barra de título sobre otra terminal para intercambiarlas. Al cerrar una, su vecino ocupa el sitio; al abrir una, se parte la más grande. «Reorganizar» vuelve a la cuadrícula automática.
+
+## Clic derecho en una terminal
+
+Menú con Copiar, Pegar, Seleccionar todo y Limpiar pantalla. Si el programa que corre dentro usa el ratón (vim, tmux, htop…) el clic derecho es suyo; con Mayús+clic derecho se abre el menú igualmente.
 
 ## Atajos
 
