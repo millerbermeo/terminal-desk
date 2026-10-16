@@ -64,6 +64,10 @@ Un proveedor es un CLI que se ejecuta dentro de una terminal (Claude Code, Codex
 - «No detectado» = el ejecutable no está en el PATH de la app; puede funcionar igual si tu shell lo carga.
 - `env` se guarda en texto plano: si ya iniciaste sesión en el CLI no hace falta poner claves.
 
+## Rejilla de terminales
+
+Mosaico sin huecos: cada terminal tiene su propio tamaño. Arrastra bordes/esquinas para redimensionar (los vecinos se encogen hasta 260×150 px y luego se desplazan), arrastra la barra de título sobre otra terminal para intercambiarlas. Al cerrar una, un vecino ocupa su sitio; al abrir una, se parte la más grande. «Reorganizar» vuelve a la cuadrícula automática.
+
 ## Atajos
 
 - `Ctrl+Shift+C` copiar · `Ctrl+Shift+V` pegar

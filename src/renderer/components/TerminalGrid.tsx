@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } fr
 import { IconoCerrar, IconoTerminal } from './Iconos'
 import { TerminalPanel } from './TerminalPanel'
 import type { TerminalInfo } from '../App'
-import { GRID, aplicarArrastre, reconciliar, type Asa, type Rect, type Rects } from '../layout'
+import { GRID, intercambiar, reconciliar, redimensionar, type Asa, type Rects } from '../layout'
 
 export type Modo = 'rejilla' | 'pestanas'
 
@@ -36,9 +36,12 @@ interface Arrastre {
   tipo: 'mover' | Asa
   x0: number
   y0: number
-  rect0: Rect
+  rects0: Rects // layout al empezar: cada movimiento se calcula desde aquí
   unidadX: number // px por unidad de cuadrícula
   unidadY: number
+  ultimo: string // último (dx,dy) calculado: si no cambia, no se recalcula
+  izq: number // origen del contenedor (px), para convertir el puntero a unidades
+  arriba: number
 }
 
 export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPersonalizado, onActivar, onCerrar }: Props) {
@@ -64,9 +67,8 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPers
 
   const empezar = (e: PointerEvent<HTMLElement>, id: string, tipo: 'mover' | Asa): void => {
     const caja = contenedor.current?.getBoundingClientRect()
-    const rect0 = efectivo.rects[id]
-    if (!caja || !rect0) return
-    arrastre.current = { id, tipo, x0: e.clientX, y0: e.clientY, rect0, unidadX: caja.width / GRID, unidadY: caja.height / GRID }
+    if (!caja || !efectivo.rects[id]) return
+    arrastre.current = { id, tipo, x0: e.clientX, y0: e.clientY, rects0: efectivo.rects, unidadX: caja.width / GRID, unidadY: caja.height / GRID, ultimo: '', izq: caja.left, arriba: caja.top }
     setMoviendo(id)
     onActivar(id)
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -78,13 +80,22 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPers
     if (!a) return
     const dx = Math.round((e.clientX - a.x0) / a.unidadX)
     const dy = Math.round((e.clientY - a.y0) / a.unidadY)
-    const otros = Object.entries(efectivo.rects).filter(([k]) => k !== a.id).map(([, r]) => r)
+    const clave = a.tipo === 'mover' ? `${Math.floor((e.clientX - a.izq) / a.unidadX)},${Math.floor((e.clientY - a.arriba) / a.unidadY)}` : `${dx},${dy}`
+    if (clave === a.ultimo) return
+    a.ultimo = clave
     const minW = Math.min(GRID, Math.ceil(MIN_ANCHO / a.unidadX))
     const minH = Math.min(GRID, Math.ceil(MIN_ALTO / a.unidadY))
-    const nuevo = aplicarArrastre(a.rect0, a.tipo, dx, dy, otros, minW, minH)
-    const actual = efectivo.rects[a.id]
-    if (nuevo.x === actual.x && nuevo.y === actual.y && nuevo.w === actual.w && nuevo.h === actual.h) return
-    setEstado({ rects: { ...efectivo.rects, [a.id]: nuevo }, personalizado: true })
+    const nuevo =
+      a.tipo === 'mover'
+        ? intercambiar(a.rects0, a.id, { x: (e.clientX - a.izq) / a.unidadX, y: (e.clientY - a.arriba) / a.unidadY })
+        : redimensionar(a.rects0, a.id, a.tipo, dx, dy, minW, minH)
+    const igual = Object.keys(nuevo).every((k) => {
+      const p = nuevo[k]
+      const q = efectivo.rects[k]
+      return q && p.x === q.x && p.y === q.y && p.w === q.w && p.h === q.h
+    })
+    if (igual) return
+    setEstado({ rects: nuevo, personalizado: true })
   }
 
   const terminar = (): void => {
