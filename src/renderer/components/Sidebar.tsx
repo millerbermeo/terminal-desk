@@ -4,9 +4,11 @@ interface Props {
   datos: DatosProyectos
   onAbrir: (p: Proyecto) => void
   onNueva: () => void
+  onConfig: () => void
+  configActiva: boolean
 }
 
-export function Sidebar({ datos, onAbrir, onNueva }: Props) {
+export function Sidebar({ datos, onAbrir, onNueva, onConfig, configActiva }: Props) {
   const sinGrupo = datos.proyectos.filter((p) => !p.grupo || !datos.grupos.some((g) => g.id === p.grupo))
 
   const lista = (proyectos: Proyecto[]) =>
@@ -21,6 +23,9 @@ export function Sidebar({ datos, onAbrir, onNueva }: Props) {
       <h1>Centro de Proyectos</h1>
       <button className="nueva" onClick={onNueva}>
         + Nueva terminal
+      </button>
+      <button className={`nueva${configActiva ? ' on' : ''}`} onClick={onConfig}>
+        ⚙ Configurar proyectos
       </button>
       {datos.grupos.map((g) => (
         <section key={g.id}>

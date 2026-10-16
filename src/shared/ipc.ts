@@ -2,6 +2,9 @@ import type { DatosProyectos } from './modelos'
 
 export const Canales = {
   proyectosListar: 'proyectos:listar',
+  proyectosAgregar: 'proyectos:agregar',
+  proyectosEliminar: 'proyectos:eliminar',
+  grupoEliminar: 'grupo:eliminar',
   terminalCrear: 'terminal:crear',
   terminalEscribir: 'terminal:escribir',
   terminalRedimensionar: 'terminal:redimensionar',
@@ -26,10 +29,35 @@ export interface DatosTerminal {
   datos: string
 }
 
+export interface NuevoProyecto {
+  nombre: string
+  ruta: string // absoluta, relativa al home, o con ~
+}
+
+export interface SolicitudAgregar {
+  grupoId?: string // grupo existente
+  grupoNuevo?: string // o nombre de grupo a crear
+  proyectos: NuevoProyecto[]
+}
+
+export interface ErrorProyecto {
+  indice: number
+  mensaje: string
+}
+
+/** Si hay errores no se agrega nada (todo o nada). */
+export interface ResultadoAgregar {
+  datos: DatosProyectos
+  errores: ErrorProyecto[]
+}
+
 /** API expuesta en window.api por el preload. */
 export interface ApiCentro {
   proyectos: {
     listar(): Promise<DatosProyectos>
+    agregar(solicitud: SolicitudAgregar): Promise<ResultadoAgregar>
+    eliminar(id: string): Promise<DatosProyectos>
+    eliminarGrupo(id: string): Promise<DatosProyectos>
   }
   terminal: {
     crear(opciones: OpcionesTerminal): Promise<string>
