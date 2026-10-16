@@ -13,5 +13,5 @@
     "types": ["node"],
     "paths": { "@shared/*": ["./src/shared/*"] }
   },
-  "include": ["src", "electron.vite.config.ts"]
+  "include": ["src", "tests", "evals", "electron.vite.config.ts", "vitest.config.mts", "vitest.evals.config.mts"]
 }

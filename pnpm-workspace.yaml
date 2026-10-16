@@ -2,3 +2,5 @@ allowBuilds:
   electron: true
   electron-winstaller: false
   node-pty: true
+minimumReleaseAgeExclude:
+  - electron@44.8.0
