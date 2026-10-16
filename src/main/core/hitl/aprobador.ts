@@ -2,6 +2,8 @@ import type { EventoAgente } from '@shared/core/agente'
 import type { LlamadaHerramienta } from '@shared/core/herramientas'
 import type { Aprobador } from '../agents/harness'
 import { esDestructiva } from '../guardrails/destructivo'
+import type { NuevaRegla, ReglaPermiso } from '@shared/core/permisos'
+import { decidir, reglaDe } from '../permisos/reglas'
 import type { PuertaHumana } from '../orchestrator/puerta'
 
 export interface DepsAprobador {
@@ -9,6 +11,10 @@ export interface DepsAprobador {
   ejecucionId: string
   alEvento: (e: EventoAgente) => void
   senal?: AbortSignal
+  /** Reglas persistentes vigentes (se consultan en cada llamada, así una regla nueva se aplica de inmediato). */
+  reglas?: () => Promise<readonly ReglaPermiso[]>
+  /** Guarda una regla nueva cuando el usuario elige «Permitir siempre». */
+  guardarRegla?: (r: NuevaRegla) => Promise<void>
 }
 
 const MAX_DETALLE = 1500
@@ -36,6 +42,10 @@ export function crearAprobadorHumano(d: DepsAprobador): Aprobador {
   const recordadas = new Set<string>()
   return async (llamada, riesgo, agente) => {
     const razon = esDestructiva(llamada.nombre, llamada.entrada)
+    // Reglas persistentes: lo destructivo nunca se autoriza por regla (decidir() ya lo excluye).
+    const regla = d.reglas ? decidir(await d.reglas(), llamada) : null
+    if (regla === 'permitir') return true
+    if (regla === 'denegar') return false
     if (!razon && recordadas.has(llamada.nombre)) return true
     try {
       const decision = await d.puerta.solicitar(
@@ -44,12 +54,17 @@ export function crearAprobadorHumano(d: DepsAprobador): Aprobador {
           contenido: describirLlamada(llamada),
           detalle: `${agente} quiere usar «${llamada.nombre}» (${riesgo})${razon ? ` — ACCIÓN DESTRUCTIVA: ${razon}` : ''}`,
           herramienta: llamada.nombre,
-          ...(razon ? { destructivo: true } : {})
+          ...(razon ? { destructivo: true } : {}),
+          ...(!razon && d.guardarRegla && reglaDe(llamada) ? { puedeSiempre: true } : {})
         },
         (solicitudId, s) => d.alEvento({ ejecucionId: d.ejecucionId, agente, profundidad: 0, tipo: 'solicitud_humana', solicitudId, ...s }),
         d.senal
       )
       if (decision.aprobado && decision.recordar && !razon) recordadas.add(llamada.nombre)
+      if (decision.aprobado && decision.siempre && !razon && d.guardarRegla) {
+        const nueva = reglaDe(llamada)
+        if (nueva) await d.guardarRegla(nueva).catch(() => undefined) // si no se puede guardar, la acción de ahora sigue aprobada
+      }
       return decision.aprobado
     } catch {
       return false

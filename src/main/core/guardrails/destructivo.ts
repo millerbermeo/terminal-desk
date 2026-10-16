@@ -24,6 +24,8 @@ const BINARIOS: Record<string, string> = {
 const PUBLICAR = new Set(['publish', 'deploy', 'unpublish'])
 
 function destructivoGit(args: readonly string[]): string | null {
+  // `git -c clave=valor` y similares permiten ejecutar programas arbitrarios (core.pager, alias con «!»…).
+  if (args.some((a) => a === '-c' || a.startsWith('--exec-path') || a.startsWith('--config-env') || a === '--upload-pack')) return 'cambia la configuración de git en línea (puede ejecutar programas)'
   const [sub = '', ...resto] = args
   switch (sub) {
     case 'push':

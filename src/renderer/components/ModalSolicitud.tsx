@@ -4,7 +4,7 @@ import { responderSolicitud, useSolicitudes, type Solicitud } from '../agente/so
 interface Props {
   solicitud: Solicitud
   pendientes: number // cuántas hay en cola (incluida esta)
-  onResponder: (aprobado: boolean, comentario?: string, recordar?: boolean) => void
+  onResponder: (aprobado: boolean, comentario?: string, recordar?: boolean, siempre?: boolean) => void
 }
 
 const TITULOS = { plan: 'Aprobar el plan', confirmacion: 'Confirmar el resultado', accion: 'Confirmar una acción' } as const
@@ -13,10 +13,12 @@ const TITULOS = { plan: 'Aprobar el plan', confirmacion: 'Confirmar el resultado
 export function ModalSolicitud({ solicitud: s, pendientes, onResponder }: Props) {
   const [comentario, setComentario] = useState('')
   const [recordar, setRecordar] = useState(false)
+  const [siempre, setSiempre] = useState(false)
 
   useEffect(() => {
     setComentario('')
     setRecordar(false)
+    setSiempre(false)
   }, [s.solicitudId])
 
   useEffect(() => {
@@ -55,8 +57,14 @@ export function ModalSolicitud({ solicitud: s, pendientes, onResponder }: Props)
             No volver a preguntar por «{s.herramienta}» en esta ejecución
           </label>
         )}
+        {s.puedeSiempre && (
+          <label className="ag-recordar">
+            <input type="checkbox" checked={siempre} onChange={(e) => setSiempre(e.target.checked)} />
+            Permitir siempre en este proyecto (guarda una regla; puedes quitarla en Permisos)
+          </label>
+        )}
         <div className="cfg-acciones">
-          <button className={s.destructivo ? 'peligro-solido' : 'primario'} autoFocus={!s.destructivo} onClick={() => onResponder(true, comentario || undefined, recordar)}>
+          <button className={s.destructivo ? 'peligro-solido' : 'primario'} autoFocus={!s.destructivo} onClick={() => onResponder(true, comentario || undefined, recordar, siempre)}>
             {s.clase === 'plan' ? 'Aprobar plan' : s.clase === 'confirmacion' ? 'Aceptar resultado' : s.destructivo ? 'Permitir (destructiva)' : 'Permitir'}
           </button>
           <button autoFocus={s.destructivo} onClick={() => onResponder(false, comentario || undefined)}>
@@ -77,8 +85,8 @@ export function ModalSolicitudGlobal() {
     <ModalSolicitud
       solicitud={s}
       pendientes={solicitudes.length}
-      onResponder={(aprobado, comentario, recordar) =>
-        responderSolicitud(s, { aprobado, ...(comentario ? { comentario } : {}), ...(recordar ? { recordar: true } : {}) })
+      onResponder={(aprobado, comentario, recordar, siempre) =>
+        responderSolicitud(s, { aprobado, ...(comentario ? { comentario } : {}), ...(recordar ? { recordar: true } : {}), ...(siempre ? { siempre: true } : {}) })
       }
     />
   )

@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { ipcMain } from 'electron'
 import type { InfoSuite, ResultadoEvals } from '@shared/core/evals'
 import type { TurnoGuardado } from '@shared/core/sesion'
+import type { NuevaRegla } from '@shared/core/permisos'
 import type { ResumenTraza, Traza } from '@shared/core/traza'
 import type { DecisionHumana, EstadoFlujo, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, Mensaje, ResultadoPublicar, SolicitudAgente } from '@shared/core/agente'
 import type { NuevaEntradaMemoria } from '@shared/core/memoria'
@@ -10,7 +11,7 @@ import { Canales } from '@shared/ipc'
 import { leerProveedores } from '../proveedores'
 import { DIR, leerProyectos } from '../proyectos'
 import { Agente } from './agents/agente'
-import { Harness, type Aprobador } from './agents/harness'
+import { Harness, type Aprobador, type Validador } from './agents/harness'
 import { ProveedorAnthropic } from './agents/llm/anthropic'
 import type { ProveedorLLM } from './agents/llm/proveedor'
 import type { Proyecto } from '@shared/modelos'
@@ -29,6 +30,7 @@ import { AlmacenTrazas } from './tracing/almacen'
 import { LlmTrazado } from './tracing/llm-trazado'
 import { Trazador } from './tracing/trazador'
 import { crearAprobadorHumano } from './hitl/aprobador'
+import { decidir, PermisosStore } from './permisos/reglas'
 import { MODELOS_POR_DEFECTO, Router } from './router/router'
 import { CompresorContexto } from './context/compresion'
 import { MonitorContexto } from './context/monitor'
@@ -75,6 +77,12 @@ export class Nucleo {
   readonly trazas = new AlmacenTrazas(join(DIR, 'trazas'))
   readonly trazador = new Trazador(this.trazas)
   private readonly informes = new AlmacenInformes(join(DIR, 'evals'))
+  readonly permisos = new PermisosStore(join(DIR, 'permisos'))
+
+  /** Guardrails + reglas de denegación del proyecto: lo bloqueado no llega a preguntarse al usuario. */
+  private readonly validar: Validador = async (llamada, _riesgo, _agente, ctx) =>
+    (await this.guardrails.validarLlamada(llamada)) ??
+    (decidir(await this.permisos.efectivas(ctx.proyectoId), llamada) === 'denegar' ? 'una regla de permisos de este proyecto lo deniega' : null)
   readonly worktrees = new GestorWorktrees(join(DIR, 'worktrees'))
   readonly mcp = new OrquestadorMcp(this.registro)
   private readonly agentes = new Map(AGENTES_BASE.map((d) => [d.nombre, new Agente(d)]))
@@ -129,9 +137,16 @@ export class Nucleo {
       this.trazador.registrarEvento(e)
       entregar(e)
     }
-    const harness = new Harness({ llm, registro: this.registro, validar: this.guardrails.validarLlamada, trazador: this.trazador, ...(this.aprobar ? { aprobar: this.aprobar } : {}) })
+    const harness = new Harness({ llm, registro: this.registro, validar: this.validar, trazador: this.trazador, ...(this.aprobar ? { aprobar: this.aprobar } : {}) })
     // Human-in-the-loop: escrituras y ejecuciones esperan la confirmación del usuario (salvo un aprobador inyectado).
-    const aprobarHumano = this.aprobar ?? crearAprobadorHumano({ puerta: this.puerta, ejecucionId: id, alEvento, senal: ctl.signal })
+    const aprobarHumano = this.aprobar ?? crearAprobadorHumano({
+        puerta: this.puerta,
+        ejecucionId: id,
+        alEvento,
+        senal: ctl.signal,
+        reglas: () => this.permisos.efectivas(sol.proyectoId),
+        guardarRegla: async (r) => void (await this.permisos.agregar(r, sol.proyectoId ?? 'global'))
+      })
     // Contexto del prompt: memoria de largo plazo relevante (reglas + decisiones).
     const sistemaExtra = await this.memoria.contextoPara(sol.prompt, sol.proyectoId)
     const contexto = new CompresorContexto(this.monitor, { llm, modeloResumen: MODELO_RESUMEN })
@@ -385,6 +400,9 @@ export function registrarIpcCore(nucleo: Nucleo): void {
   ipcMain.handle(Canales.coreEvalsSuites, () => nucleo.evalsSuites())
   ipcMain.handle(Canales.coreEvalsEjecutar, (_e, suiteId: string, casos?: string[]) => nucleo.ejecutarEvals(String(suiteId), Array.isArray(casos) ? casos.map(String) : undefined))
   ipcMain.handle(Canales.coreEvalsInformes, (_e, suiteId: string) => nucleo.evalsInformes(suiteId))
+  ipcMain.handle(Canales.corePermisosListar, (_e, ambito?: string) => nucleo.permisos.listar(ambito || undefined))
+  ipcMain.handle(Canales.corePermisosAgregar, (_e, regla: NuevaRegla, ambito?: string) => nucleo.permisos.agregar(regla, ambito || undefined))
+  ipcMain.handle(Canales.corePermisosEliminar, (_e, id: string, ambito?: string) => nucleo.permisos.eliminar(String(id), ambito || undefined))
   ipcMain.handle(Canales.coreSesionesListar, (_e, proyectoId?: string) => nucleo.sesiones.listar(proyectoId ? String(proyectoId) : undefined))
   ipcMain.handle(Canales.coreSesionObtener, (_e, id: string) => nucleo.sesiones.transcripcion(validarId(String(id))))
   ipcMain.handle(Canales.coreSesionTranscripcion, (_e, id: string, turnos: TurnoGuardado[], proyectoId?: string) =>

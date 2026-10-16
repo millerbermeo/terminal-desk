@@ -4,14 +4,16 @@ import { useAgente } from '../agente/useAgente'
 import { ChatAgente } from './ChatAgente'
 import { EvalsAgente } from './EvalsAgente'
 import { MemoriaAgente } from './MemoriaAgente'
+import { PermisosAgente } from './PermisosAgente'
 import { RamasAgente } from './RamasAgente'
 import { TrazasAgente } from './TrazasAgente'
 
-type Pestana = 'chat' | 'trazas' | 'memoria' | 'ramas' | 'evals'
+type Pestana = 'chat' | 'trazas' | 'memoria' | 'permisos' | 'ramas' | 'evals'
 const PESTANAS: { id: Pestana; nombre: string }[] = [
   { id: 'chat', nombre: 'Conversación' },
   { id: 'trazas', nombre: 'Trazas' },
   { id: 'memoria', nombre: 'Memoria' },
+  { id: 'permisos', nombre: 'Permisos' },
   { id: 'ramas', nombre: 'Ramas' },
   { id: 'evals', nombre: 'Evals' }
 ]
@@ -45,6 +47,9 @@ export function Asistente({ datos, visible }: Props) {
         <div className="ag-vista scroll" style={{ display: pestana === 'memoria' ? 'block' : 'none' }}>
           <MemoriaAgente datos={datos} visible={visible && pestana === 'memoria'} />
         </div>
+        <div className="ag-vista scroll" style={{ display: pestana === 'permisos' ? 'block' : 'none' }}>
+          <PermisosGlobal datos={datos} visible={visible && pestana === 'permisos'} />
+        </div>
         <div className="ag-vista scroll" style={{ display: pestana === 'ramas' ? 'block' : 'none' }}>
           <RamasAgente datos={datos} visible={visible && pestana === 'ramas'} />
         </div>
@@ -53,5 +58,23 @@ export function Asistente({ datos, visible }: Props) {
         </div>
       </div>
     </main>
+  )
+}
+
+/** Pestaña «Permisos»: elige el ámbito (global o un proyecto) y edita sus reglas. */
+function PermisosGlobal({ datos, visible }: { datos: DatosProyectos; visible: boolean }) {
+  const [ambito, setAmbito] = useState('')
+  return (
+    <div className="mem">
+      <div className="ag-opciones">
+        <select value={ambito} onChange={(e) => setAmbito(e.target.value)} aria-label="Ámbito">
+          <option value="">Global (todos los proyectos)</option>
+          {datos.proyectos.map((p) => (
+            <option key={p.id} value={p.id}>{p.nombre}</option>
+          ))}
+        </select>
+      </div>
+      <PermisosAgente {...(ambito ? { proyectoId: ambito } : {})} visible={visible} />
+    </div>
   )
 }

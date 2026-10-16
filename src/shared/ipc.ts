@@ -1,6 +1,7 @@
 import type { DecisionHumana, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, ResultadoPublicar, SolicitudAgente } from './core/agente'
 import type { InfoSuite, InformeEval, ResultadoEvals } from './core/evals'
 import type { ResumenTraza, Traza } from './core/traza'
+import type { NuevaRegla, ReglaPermiso } from './core/permisos'
 import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion'
 import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
 import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso } from './modelos'
@@ -42,6 +43,9 @@ export const Canales = {
   coreEvalsSuites: 'core:evals-suites',
   coreEvalsEjecutar: 'core:evals-ejecutar',
   coreEvalsInformes: 'core:evals-informes',
+  corePermisosListar: 'core:permisos-listar',
+  corePermisosAgregar: 'core:permisos-agregar',
+  corePermisosEliminar: 'core:permisos-eliminar',
   coreSesionesListar: 'core:sesiones-listar',
   coreSesionObtener: 'core:sesion-obtener',
   coreSesionTranscripcion: 'core:sesion-transcripcion',
@@ -146,6 +150,10 @@ export interface ApiCentro {
     evalsSuites(): Promise<InfoSuite[]>
     evalsEjecutar(suiteId: string, casos?: string[]): Promise<ResultadoEvals>
     evalsInformes(suiteId: string): Promise<InformeEval[]>
+    /** Reglas de permisos persistentes. `ambito` vacío = globales (valen para todos los proyectos). */
+    permisosListar(ambito?: string): Promise<ReglaPermiso[]>
+    permisosAgregar(regla: NuevaRegla, ambito?: string): Promise<ReglaPermiso[]>
+    permisosEliminar(id: string, ambito?: string): Promise<ReglaPermiso[]>
     /** Historial: conversaciones guardadas (del proyecto, o de todos si se omite), más recientes primero. */
     sesionesListar(proyectoId?: string): Promise<ResumenSesion[]>
     /** Lo que se veía en pantalla en una conversación guardada, para retomarla. */

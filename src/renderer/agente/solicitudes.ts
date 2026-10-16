@@ -10,6 +10,7 @@ export interface Solicitud {
   detalle?: string
   destructivo?: boolean
   herramienta?: string
+  puedeSiempre?: boolean // se puede ofrecer «Permitir siempre»
   destino?: string // proyecto o celda que la originó (si se conoce)
 }
 
@@ -35,7 +36,7 @@ export function escucharSolicitudes(): () => void {
       ...solicitudes,
       {
         solicitudId: e.solicitudId, ejecucionId: e.ejecucionId, agente: e.agente, clase: e.clase, contenido: e.contenido,
-        ...(e.detalle ? { detalle: e.detalle } : {}), ...(e.destructivo ? { destructivo: true } : {}), ...(e.herramienta ? { herramienta: e.herramienta } : {}),
+        ...(e.detalle ? { detalle: e.detalle } : {}), ...(e.destructivo ? { destructivo: true } : {}), ...(e.herramienta ? { herramienta: e.herramienta } : {}), ...(e.puedeSiempre ? { puedeSiempre: true } : {}),
         ...(destino ? { destino } : {})
       }
     ])

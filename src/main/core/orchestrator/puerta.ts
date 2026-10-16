@@ -7,6 +7,8 @@ export interface SolicitudHumana {
   detalle?: string
   destructivo?: boolean
   herramienta?: string
+  /** Se puede ofrecer «Permitir siempre» (hay una regla exacta que guardar). */
+  puedeSiempre?: boolean
 }
 
 interface Pendiente {
@@ -46,7 +48,7 @@ export class PuertaHumana {
     const p = this.pendientes.get(solicitudId)
     if (!p) return false
     this.pendientes.delete(solicitudId)
-    p.resolver({ aprobado: decision.aprobado === true, ...(decision.comentario ? { comentario: String(decision.comentario).slice(0, 2000) } : {}), ...(decision.recordar === true ? { recordar: true } : {}) })
+    p.resolver({ aprobado: decision.aprobado === true, ...(decision.comentario ? { comentario: String(decision.comentario).slice(0, 2000) } : {}), ...(decision.recordar === true ? { recordar: true } : {}), ...(decision.siempre === true ? { siempre: true } : {}) })
     return true
   }
 }
