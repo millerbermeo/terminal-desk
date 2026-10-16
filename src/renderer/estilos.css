@@ -137,6 +137,30 @@ input:focus, select:focus { border-color: var(--acento); box-shadow: 0 0 0 3px r
 .vacio-icono { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; background: var(--bg-elevado); border: 1px solid var(--borde-fuerte); color: var(--acento); margin-bottom: 6px; }
 .vacio-icono svg { width: 24px; height: 24px; }
 
+/* proveedores de IA */
+.fila-proyecto { display: flex; align-items: center; gap: 2px; }
+.fila-proyecto .item { flex: 1; min-width: 0; }
+.abrir-ia { opacity: 0; color: var(--texto-suave); }
+.fila-proyecto:hover .abrir-ia, .abrir-ia:focus-visible { opacity: 1; }
+.abrir-ia:hover:not(:disabled) { color: #bb9af7; background: rgba(187, 154, 247, 0.14); }
+.menu-ia { position: fixed; z-index: 20; min-width: 200px; background: var(--bg-elevado); border: 1px solid var(--borde-fuerte); border-radius: 8px; padding: 4px; box-shadow: var(--sombra); animation: menu-entrar 140ms var(--ease) both; transform-origin: top left; }
+.menu-ia-tit { padding: 6px 10px 4px; font-size: 11px; color: var(--texto-suave); }
+.menu-ia button { width: 100%; justify-content: flex-start; gap: 8px; background: transparent; border-color: transparent; padding: 6px 10px; }
+.menu-ia button svg { color: #bb9af7; }
+.menu-ia button:hover:not(:disabled) { background: var(--bg-hover); border-color: transparent; }
+.menu-ia small { margin-left: auto; color: var(--texto-suave); }
+.cfg-intro { color: var(--texto-suave); margin: -8px 0 18px; max-width: 640px; }
+.chip { font-size: 10px; padding: 1px 8px; border-radius: 10px; background: var(--bg); color: var(--texto-suave); border: 1px solid var(--borde-fuerte); white-space: nowrap; }
+.chip-ok { color: var(--ok); border-color: rgba(158, 206, 106, 0.4); }
+.chip-aviso { color: #e0af68; border-color: rgba(224, 175, 104, 0.4); }
+.modal .ancho { max-width: none; }
+.mono { font-family: 'JetBrains Mono', 'DejaVu Sans Mono', monospace; font-size: 12px; }
+.ayuda { color: var(--texto-suave); font-size: 11px; }
+.env { display: flex; flex-direction: column; gap: 8px; }
+.env-cab { display: flex; justify-content: space-between; align-items: center; color: var(--texto-suave); font-size: 12px; }
+.cfg-proyecto .icono { opacity: 0; }
+.cfg-proyecto:hover .icono, .cfg-proyecto .icono:focus-visible { opacity: 1; }
+
 /* configuración */
 .config { flex: 1; min-width: 0; overflow-y: auto; padding: 24px 32px; animation: aparecer var(--medio) var(--ease) both; }
 .config > :not(.modal-fondo) { max-width: 920px; }
@@ -193,6 +217,7 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
 @keyframes modal-salir { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(14px) scale(0.97); } }
 @keyframes fondo-salir { from { opacity: 1; } to { opacity: 0; } }
 @keyframes sacudir { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+@keyframes menu-entrar { from { opacity: 0; transform: scale(0.96) translateY(-4px); } to { opacity: 1; transform: none; } }
 @keyframes girar { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) {

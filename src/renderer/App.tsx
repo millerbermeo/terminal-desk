@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { DatosProyectos, Proyecto } from '@shared/modelos'
+import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
 import { IconoPestanas, IconoRejilla } from './components/Iconos'
-import { Sidebar } from './components/Sidebar'
+import { Sidebar, type Vista } from './components/Sidebar'
+import { ConfigProveedores } from './components/ConfigProveedores'
 import { ConfigProyectos } from './components/ConfigProyectos'
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
 
@@ -9,6 +10,7 @@ export interface TerminalInfo {
   id: string
   titulo: string
   cwd?: string
+  proveedorId?: string
 }
 
 let contador = 0
@@ -18,15 +20,24 @@ export function App() {
   const [terminales, setTerminales] = useState<TerminalInfo[]>([])
   const [activa, setActiva] = useState<string | null>(null)
   const [modo, setModo] = useState<Modo>('rejilla')
-  const [vista, setVista] = useState<'terminales' | 'config'>('terminales')
+  const [vista, setVista] = useState<Vista>('terminales')
+  const [proveedores, setProveedores] = useState<ProveedorEstado[]>([])
 
   useEffect(() => {
     void window.api.proyectos.listar().then(setDatos)
+    void window.api.proveedores.listar().then(setProveedores).catch(() => undefined)
   }, [])
 
   const abrir = useCallback((titulo: string, cwd?: string) => {
     const id = `t${++contador}`
     setTerminales((ts) => [...ts, { id, titulo, cwd }])
+    setActiva(id)
+    setVista('terminales')
+  }, [])
+
+  const abrirConProveedor = useCallback((p: Proyecto, prov: ProveedorEstado) => {
+    const id = `t${++contador}`
+    setTerminales((ts) => [...ts, { id, titulo: `${p.nombre} · ${prov.nombre}`, cwd: p.ruta, proveedorId: prov.id }])
     setActiva(id)
     setVista('terminales')
   }, [])
@@ -51,12 +62,15 @@ export function App() {
     <div className="app">
       <Sidebar datos={datos} onAbrir={(p: Proyecto) => abrir(p.nombre, p.ruta)} onAbrirVarios={abrirVarios}
         onNueva={() => abrir('Terminal')}
-        onConfig={() => setVista(vista === 'config' ? 'terminales' : 'config')}
-        configActiva={vista === 'config'}
+        proveedores={proveedores}
+        onAbrirConProveedor={abrirConProveedor}
+        vista={vista}
+        onVista={setVista}
       />
       {vista === 'config' && <ConfigProyectos datos={datos} onDatos={setDatos} />}
+      {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}
       {/* siempre montado (oculto en config) para no matar los procesos de las terminales */}
-      <main className="principal" style={{ display: vista === 'config' ? 'none' : 'flex' }}>
+      <main className="principal" style={{ display: vista !== 'terminales' ? 'none' : 'flex' }}>
         <div className="barra">
           <span className="barra-info">
             <span className="punto" /> {terminales.length} {terminales.length === 1 ? 'terminal' : 'terminales'}

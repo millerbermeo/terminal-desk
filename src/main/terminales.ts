@@ -22,7 +22,7 @@ export class GestorTerminales {
 
   constructor(private cb: Callbacks) {}
 
-  crear({ cwd, cols, rows }: OpcionesTerminal): string {
+  crear({ cwd, cols, rows }: OpcionesTerminal, extra?: { comando: string; env: Record<string, string> }): string {
     const id = randomUUID()
     const { shell, args } = shellPorDefecto()
     const dir = cwd && existsSync(cwd) ? cwd : homedir()
@@ -31,9 +31,11 @@ export class GestorTerminales {
       cols: Math.max(cols, 2),
       rows: Math.max(rows, 1),
       cwd: dir,
-      env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' } as Record<string, string>
+      env: { ...process.env, ...extra?.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' } as Record<string, string>
     })
     this.terminales.set(id, proc)
+    // Se escribe en el shell interactivo (no se hace spawn directo) para heredar PATH/nvm/etc. y que la terminal siga viva al salir del CLI.
+    if (extra?.comando) proc.write(extra.comando + '\r')
     proc.onData((d) => this.cb.onDatos(id, d))
     proc.onExit(({ exitCode }) => {
       if (this.terminales.delete(id)) this.cb.onSalida(id, exitCode)

@@ -1,6 +1,9 @@
-import type { DatosProyectos } from './modelos'
+import type { DatosProyectos, Proveedor, ProveedorEstado } from './modelos'
 
 export const Canales = {
+  proveedoresListar: 'proveedores:listar',
+  proveedoresGuardar: 'proveedores:guardar',
+  proveedoresEliminar: 'proveedores:eliminar',
   proyectosListar: 'proyectos:listar',
   proyectosValidarRuta: 'proyectos:validar-ruta',
   proyectosAgregar: 'proyectos:agregar',
@@ -16,6 +19,7 @@ export const Canales = {
 
 export interface OpcionesTerminal {
   cwd?: string
+  proveedorId?: string // si se indica, se ejecuta su comando al abrir
   cols: number
   rows: number
 }
@@ -56,6 +60,8 @@ export type ResultadoEliminarGrupo =
   | { ok: true; datos: DatosProyectos }
   | { ok: false; motivo: 'incorrecta' | 'no-disponible' }
 
+export type ResultadoProveedor = { ok: true; proveedores: ProveedorEstado[] } | { ok: false; mensaje: string }
+
 /** Si hay errores no se agrega nada (todo o nada). */
 export interface ResultadoAgregar {
   datos: DatosProyectos
@@ -64,6 +70,12 @@ export interface ResultadoAgregar {
 
 /** API expuesta en window.api por el preload. */
 export interface ApiCentro {
+  proveedores: {
+    listar(): Promise<ProveedorEstado[]>
+    /** id vacío = crear. */
+    guardar(proveedor: Proveedor): Promise<ResultadoProveedor>
+    eliminar(id: string): Promise<ProveedorEstado[]>
+  }
   proyectos: {
     listar(): Promise<DatosProyectos>
     validarRuta(ruta: string): Promise<ValidacionRuta>

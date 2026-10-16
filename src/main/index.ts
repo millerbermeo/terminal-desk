@@ -1,7 +1,9 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
+import type { Proveedor } from '@shared/modelos'
 import { Canales, type OpcionesTerminal, type ResultadoEliminarGrupo, type SolicitudAgregar } from '@shared/ipc'
 import { GestorTerminales } from './terminales'
+import { eliminarProveedor, guardarProveedor, listarProveedores, obtenerProveedor } from './proveedores'
 import { verificarPassword } from './autenticacion'
 import { agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, validarRuta } from './proyectos'
 
@@ -61,7 +63,14 @@ function registrarIpc(): void {
     if (!auth.ok) return auth
     return { ok: true, datos: await eliminarGrupo(id) }
   })
-  ipcMain.handle(Canales.terminalCrear, (_e, op: OpcionesTerminal) => terminales.crear(op))
+  ipcMain.handle(Canales.proveedoresListar, () => listarProveedores())
+  ipcMain.handle(Canales.proveedoresGuardar, (_e, p: Proveedor) => guardarProveedor(p))
+  ipcMain.handle(Canales.proveedoresEliminar, (_e, id: string) => eliminarProveedor(id))
+  ipcMain.handle(Canales.terminalCrear, async (_e, op: OpcionesTerminal) => {
+    // El renderer solo envía el id: el comando se resuelve aquí, desde la config guardada.
+    const prov = op.proveedorId ? await obtenerProveedor(op.proveedorId) : undefined
+    return terminales.crear(op, prov && { comando: prov.comando, env: prov.env })
+  })
   ipcMain.on(Canales.terminalEscribir, (_e, id: string, datos: string) => terminales.escribir(id, datos))
   ipcMain.on(Canales.terminalRedimensionar, (_e, id: string, cols: number, rows: number) =>
     terminales.redimensionar(id, cols, rows)

@@ -69,6 +69,7 @@ export function TerminalGrid({ terminales, activa, modo, onActivar, onCerrar }: 
               <TerminalPanel
                 id={t.id}
                 cwd={t.cwd}
+                proveedorId={t.proveedorId}
                 visible={visible}
                 activa={t.id === activa}
                 onFoco={() => onActivar(t.id)}

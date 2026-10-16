@@ -8,12 +8,13 @@ import '@xterm/xterm/css/xterm.css'
 interface Props {
   id: string
   cwd?: string
+  proveedorId?: string
   visible: boolean
   activa: boolean
   onFoco: () => void
 }
 
-export function TerminalPanel({ id, cwd, visible, activa, onFoco }: Props) {
+export function TerminalPanel({ id, cwd, proveedorId, visible, activa, onFoco }: Props) {
   const contenedor = useRef<HTMLDivElement>(null)
   const term = useRef<Terminal | null>(null)
   const fit = useRef<FitAddon | null>(null)
@@ -80,7 +81,7 @@ export function TerminalPanel({ id, cwd, visible, activa, onFoco }: Props) {
     }
 
     f.fit()
-    void window.api.terminal.crear({ cols: t.cols, rows: t.rows, cwd }).then((pid) => {
+    void window.api.terminal.crear({ cols: t.cols, rows: t.rows, cwd, proveedorId }).then((pid) => {
       if (!vivo) {
         window.api.terminal.cerrar(pid)
         return

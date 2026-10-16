@@ -1,18 +1,45 @@
-import { useState } from 'react'
-import type { DatosProyectos, Proyecto } from '@shared/modelos'
-import { IconoCarpeta, IconoAbrirTodas, IconoChevron, IconoEngranaje, IconoMas } from './Iconos'
+import { useEffect, useState } from 'react'
+import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
+import { IconoCarpeta, IconoAbrirTodas, IconoChevron, IconoChispa, IconoEngranaje, IconoMas } from './Iconos'
 
 interface Props {
   datos: DatosProyectos
   onAbrir: (p: Proyecto) => void
   onAbrirVarios: (p: Proyecto[]) => void
   onNueva: () => void
-  onConfig: () => void
-  configActiva: boolean
+  proveedores: ProveedorEstado[]
+  onAbrirConProveedor: (p: Proyecto, prov: ProveedorEstado) => void
+  vista: Vista
+  onVista: (v: Vista) => void
 }
 
-export function Sidebar({ datos, onAbrir, onAbrirVarios, onNueva, onConfig, configActiva }: Props) {
+export type Vista = 'terminales' | 'config' | 'proveedores'
+
+interface MenuIA {
+  proyecto: Proyecto
+  top: number
+  left: number
+}
+
+export function Sidebar({ datos, onAbrir, onAbrirVarios, onNueva, proveedores, onAbrirConProveedor, vista, onVista }: Props) {
   const [cerrados, setCerrados] = useState<Set<string>>(new Set())
+  const [menu, setMenu] = useState<MenuIA | null>(null)
+
+  useEffect(() => {
+    if (!menu) return
+    const cerrar = (): void => setMenu(null)
+    const tecla = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') cerrar()
+    }
+    window.addEventListener('mousedown', cerrar)
+    window.addEventListener('keydown', tecla)
+    window.addEventListener('blur', cerrar)
+    return () => {
+      window.removeEventListener('mousedown', cerrar)
+      window.removeEventListener('keydown', tecla)
+      window.removeEventListener('blur', cerrar)
+    }
+  }, [menu])
   const sinGrupo = datos.proyectos.filter((p) => !p.grupo || !datos.grupos.some((g) => g.id === p.grupo))
 
   const alternar = (id: string): void =>
@@ -44,10 +71,24 @@ export function Sidebar({ datos, onAbrir, onAbrirVarios, onNueva, onConfig, conf
         <ul>
           {proyectos.map((p) => (
             <li key={p.id}>
-              <button className="item" title={p.ruta} onClick={() => onAbrir(p)}>
-                <IconoCarpeta />
-                <span>{p.nombre}</span>
-              </button>
+              <div className="fila-proyecto">
+                <button className="item" title={p.ruta} onClick={() => onAbrir(p)}>
+                  <IconoCarpeta />
+                  <span>{p.nombre}</span>
+                </button>
+                <button
+                  className="icono abrir-ia"
+                  title="Abrir con un proveedor de IA"
+                  aria-label={`Abrir ${p.nombre} con un proveedor de IA`}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect()
+                    setMenu({ proyecto: p, top: r.bottom + 4, left: r.left })
+                  }}
+                >
+                  <IconoChispa />
+                </button>
+              </div>
             </li>
           ))}
           {proyectos.length === 0 && <li className="item-vacio">Sin proyectos</li>}
@@ -74,11 +115,37 @@ export function Sidebar({ datos, onAbrir, onAbrirVarios, onNueva, onConfig, conf
         {sinGrupo.length > 0 && seccion('__sin-grupo__', 'Sin grupo', sinGrupo)}
       </nav>
       <footer>
-        <button className={`item item-config${configActiva ? ' activo' : ''}`} onClick={onConfig}>
+        <button className={`item item-config${vista === 'proveedores' ? ' activo' : ''}`} onClick={() => onVista(vista === 'proveedores' ? 'terminales' : 'proveedores')}>
+          <IconoChispa />
+          <span>Proveedores de IA</span>
+        </button>
+        <button className={`item item-config${vista === 'config' ? ' activo' : ''}`} onClick={() => onVista(vista === 'config' ? 'terminales' : 'config')}>
           <IconoEngranaje />
           <span>Configurar proyectos</span>
         </button>
       </footer>
+      {menu && (
+        <div className="menu-ia" style={{ top: menu.top, left: menu.left }} onMouseDown={(e) => e.stopPropagation()} role="menu">
+          <div className="menu-ia-tit">Abrir «{menu.proyecto.nombre}» con</div>
+          {proveedores.map((prov) => (
+            <button
+              key={prov.id}
+              role="menuitem"
+              onClick={() => {
+                onAbrirConProveedor(menu.proyecto, prov)
+                setMenu(null)
+              }}
+            >
+              <IconoChispa />
+              <span>{prov.nombre}</span>
+              {!prov.disponible && <small title="No encontrado en el PATH de la app">?</small>}
+            </button>
+          ))}
+          {proveedores.length === 0 && (
+            <button onClick={() => { onVista('proveedores'); setMenu(null) }}>Configurar proveedores…</button>
+          )}
+        </div>
+      )}
     </aside>
   )
 }

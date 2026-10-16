@@ -6,7 +6,7 @@ import { constants } from 'node:fs'
 import type { DatosProyectos } from '@shared/modelos'
 import type { ErrorProyecto, ResultadoAgregar, SolicitudAgregar, ValidacionRuta } from '@shared/ipc'
 
-const DIR = join(homedir(), '.centro-proyectos')
+export const DIR = join(homedir(), '.centro-proyectos')
 const ARCHIVO = join(DIR, 'proyectos.json')
 
 function ejemplo(): DatosProyectos {

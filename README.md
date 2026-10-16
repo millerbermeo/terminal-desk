@@ -51,6 +51,19 @@ Se leen de `~/.centro-proyectos/proyectos.json` (se crea con datos de ejemplo si
 
 `grupo` es opcional. Se lee al iniciar la app (reiniciar para ver cambios).
 
+## Proveedores de IA
+
+Un proveedor es un CLI que se ejecuta dentro de una terminal (Claude Code, Codex, Gemini, Ollama…). Se gestionan en **Proveedores de IA** (barra lateral) y se guardan en `~/.centro-proyectos/proveedores.json` (permisos 600; se crea con `claude`, `codex` y `gemini`).
+
+```json
+[{ "id": "claude", "nombre": "Claude Code", "comando": "claude --model sonnet", "env": { "VAR": "valor" } }]
+```
+
+- `comando` se escribe tal cual en el shell interactivo del proyecto, así hereda PATH, nvm, etc. Al salir del CLI la terminal sigue viva.
+- Uso: pasa el ratón sobre un proyecto en la barra lateral y pulsa ✦ para elegir proveedor.
+- «No detectado» = el ejecutable no está en el PATH de la app; puede funcionar igual si tu shell lo carga.
+- `env` se guarda en texto plano: si ya iniciaste sesión en el CLI no hace falta poner claves.
+
 ## Atajos
 
 - `Ctrl+Shift+C` copiar · `Ctrl+Shift+V` pegar
