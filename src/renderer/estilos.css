@@ -121,21 +121,35 @@ input:focus, select:focus { border-color: var(--acento); box-shadow: 0 0 0 3px r
 
 /* paneles */
 .paneles { flex: 1; min-height: 0; position: relative; }
-.paneles.rejilla { display: grid; }
-.paneles.arrastrando-col { cursor: col-resize; }
-.paneles.arrastrando-fila { cursor: row-resize; }
-.paneles.arrastrando-col .terminal, .paneles.arrastrando-fila .terminal { pointer-events: none; user-select: none; }
+.paneles.rejilla { overflow: hidden; }
+.paneles.arrastrando .terminal { pointer-events: none; user-select: none; }
+.paneles.arrastrando { user-select: none; }
 
-/* divisores de la rejilla */
-.divisor { position: absolute; z-index: 2; touch-action: none; outline: none; }
-.divisor-col { cursor: col-resize; }
-.divisor-fila { cursor: row-resize; }
-.divisor::after { content: ''; position: absolute; border-radius: 2px; background: transparent; transition: background var(--rapido); }
-.divisor-col::after { left: 50%; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); }
-.divisor-fila::after { top: 50%; left: 0; right: 0; height: 2px; transform: translateY(-50%); }
-.divisor:hover::after, .divisor:focus-visible::after, .divisor.activo::after { background: var(--acento); }
-.paneles.pestanas { display: flex; }
+/* asas de redimensionado de cada panel */
+.asa { position: absolute; z-index: 3; touch-action: none; }
+.asa-n, .asa-s { left: 12px; right: 12px; height: 8px; cursor: ns-resize; }
+.asa-e, .asa-w { top: 12px; bottom: 12px; width: 8px; cursor: ew-resize; }
+.asa-n { top: 0; } .asa-s { bottom: 0; } .asa-e { right: 0; } .asa-w { left: 0; }
+.asa-ne, .asa-nw, .asa-se, .asa-sw { width: 16px; height: 16px; }
+.asa-ne { top: 0; right: 0; cursor: nesw-resize; }
+.asa-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.asa-nw { top: 0; left: 0; cursor: nwse-resize; }
+.asa-se { bottom: 0; right: 0; cursor: nwse-resize; }
+.asa::after { content: ''; position: absolute; background: transparent; border-radius: 2px; transition: background var(--rapido); }
+.asa-n::after, .asa-s::after { left: 0; right: 0; height: 2px; }
+.asa-n::after { top: 0; } .asa-s::after { bottom: 0; }
+.asa-e::after, .asa-w::after { top: 0; bottom: 0; width: 2px; }
+.asa-e::after { right: 0; } .asa-w::after { left: 0; }
+.asa-ne::after, .asa-nw::after, .asa-se::after, .asa-sw::after { inset: 0; border-radius: 4px; }
+.asa:hover::after { background: var(--acento); }
+.asa-ne:hover::after, .asa-nw:hover::after, .asa-se:hover::after, .asa-sw:hover::after { background: rgba(122, 162, 247, 0.5); }
+.barra-acciones { display: flex; align-items: center; gap: 10px; }
+.panel-barra { cursor: grab; user-select: none; }
+.panel.en-mano .panel-barra { cursor: grabbing; }
+.panel.en-mano { z-index: 4; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(122, 162, 247, 0.5); }
 .panel { flex-direction: column; min-width: 0; min-height: 0; flex: 1; background: var(--bg); border: 1px solid var(--borde); border-radius: var(--radio); overflow: hidden; animation: entrar-panel var(--medio) var(--ease) both; transition: border-color var(--medio), box-shadow var(--medio); }
+.paneles.rejilla .panel { position: absolute; transition: left 160ms var(--ease), top 160ms var(--ease), width 160ms var(--ease), height 160ms var(--ease), border-color var(--medio), box-shadow var(--medio); }
+.paneles.rejilla.arrastrando .panel { transition: border-color var(--medio), box-shadow var(--medio); }
 .paneles.pestanas .panel { border-radius: 0; border: none; }
 .panel.activa { border-color: rgba(122, 162, 247, 0.55); box-shadow: 0 0 0 1px rgba(122, 162, 247, 0.2), 0 4px 18px rgba(0, 0, 0, 0.35); }
 .paneles.pestanas .panel.activa { box-shadow: none; }

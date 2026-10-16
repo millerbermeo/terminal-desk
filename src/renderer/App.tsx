@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
-import { IconoPestanas, IconoRejilla } from './components/Iconos'
+import { IconoPestanas, IconoRejilla, IconoReiniciar } from './components/Iconos'
 import { Sidebar, type Vista } from './components/Sidebar'
 import { ConfigProveedores } from './components/ConfigProveedores'
 import { ConfigProyectos } from './components/ConfigProyectos'
@@ -21,6 +21,8 @@ export function App() {
   const [activa, setActiva] = useState<string | null>(null)
   const [modo, setModo] = useState<Modo>('rejilla')
   const [vista, setVista] = useState<Vista>('terminales')
+  const [reiniciarLayout, setReiniciarLayout] = useState(0)
+  const [personalizado, setPersonalizado] = useState(false)
   const [proveedores, setProveedores] = useState<ProveedorEstado[]>([])
 
   useEffect(() => {
@@ -75,6 +77,12 @@ export function App() {
           <span className="barra-info">
             <span className="punto" /> {terminales.length} {terminales.length === 1 ? 'terminal' : 'terminales'}
           </span>
+          <div className="barra-acciones">
+          {modo === 'rejilla' && personalizado && (
+            <button onClick={() => setReiniciarLayout((n) => n + 1)} title="Volver a la cuadrícula automática">
+              <IconoReiniciar /> Reorganizar
+            </button>
+          )}
           <div className="segmentado" role="group" aria-label="Vista">
             <button className={modo === 'rejilla' ? 'on' : ''} onClick={() => setModo('rejilla')} title="Rejilla">
               <IconoRejilla /> Rejilla
@@ -83,8 +91,17 @@ export function App() {
               <IconoPestanas /> Pestañas
             </button>
           </div>
+          </div>
         </div>
-        <TerminalGrid terminales={terminales} activa={activa} modo={modo} onActivar={setActiva} onCerrar={cerrar} />
+        <TerminalGrid
+          terminales={terminales}
+          activa={activa}
+          modo={modo}
+          reiniciarLayout={reiniciarLayout}
+          onPersonalizado={setPersonalizado}
+          onActivar={setActiva}
+          onCerrar={cerrar}
+        />
       </main>
     </div>
   )

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -11,10 +11,10 @@ interface Props {
   proveedorId?: string
   visible: boolean
   activa: boolean
-  onFoco: () => void
+  onActivar: (id: string) => void
 }
 
-export function TerminalPanel({ id, cwd, proveedorId, visible, activa, onFoco }: Props) {
+export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId, visible, activa, onActivar }: Props) {
   const contenedor = useRef<HTMLDivElement>(null)
   const term = useRef<Terminal | null>(null)
   const fit = useRef<FitAddon | null>(null)
@@ -74,13 +74,29 @@ export function TerminalPanel({ id, cwd, proveedorId, visible, activa, onFoco }:
     let ptyId: string | null = null
     const bajas: Array<() => void> = []
 
-    const ajustar = (): void => {
+    // Redimensionar un panel dispara muchos eventos: se ajusta como mucho cada INTERVALO ms
+    // (con ajuste final garantizado) para no saturar ni el render de xterm ni el SIGWINCH del shell.
+    const INTERVALO = 50
+    let ultimo = 0
+    let temporizador = 0
+    const ajustarYa = (): void => {
+      ultimo = performance.now()
       if (!el.offsetWidth || !el.offsetHeight) return
       f.fit()
-      if (ptyId) window.api.terminal.redimensionar(ptyId, t.cols, t.rows)
+      // solo se avisa al pty si el tamaño en celdas cambió respecto al último enviado
+      if (ptyId && (t.cols !== enviado.cols || t.rows !== enviado.rows)) {
+        enviado = { cols: t.cols, rows: t.rows }
+        window.api.terminal.redimensionar(ptyId, t.cols, t.rows)
+      }
     }
-
+    const ajustar = (): void => {
+      clearTimeout(temporizador)
+      const espera = INTERVALO - (performance.now() - ultimo)
+      if (espera <= 0) requestAnimationFrame(ajustarYa)
+      else temporizador = window.setTimeout(ajustarYa, espera)
+    }
     f.fit()
+    let enviado = { cols: t.cols, rows: t.rows } // tamaño con el que nace el pty
     void window.api.terminal.crear({ cols: t.cols, rows: t.rows, cwd, proveedorId }).then((pid) => {
       if (!vivo) {
         window.api.terminal.cerrar(pid)
@@ -93,7 +109,7 @@ export function TerminalPanel({ id, cwd, proveedorId, visible, activa, onFoco }:
       )
       const entrada = t.onData((d) => window.api.terminal.escribir(pid, d))
       bajas.push(() => entrada.dispose())
-      ajustar()
+      ajustarYa()
     })
 
     const ro = new ResizeObserver(ajustar)
@@ -102,6 +118,7 @@ export function TerminalPanel({ id, cwd, proveedorId, visible, activa, onFoco }:
     return () => {
       vivo = false
       ro.disconnect()
+      clearTimeout(temporizador)
       bajas.forEach((b) => b())
       if (ptyId) window.api.terminal.cerrar(ptyId)
       t.dispose()
@@ -112,6 +129,6 @@ export function TerminalPanel({ id, cwd, proveedorId, visible, activa, onFoco }:
     if (visible && activa) term.current?.focus()
   }, [visible, activa])
 
-  return <div ref={contenedor} className="terminal" onMouseDown={onFoco} />
-}
+  return <div ref={contenedor} className="terminal" onMouseDown={() => onActivar(id)} />
+})
 
