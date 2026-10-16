@@ -253,3 +253,6 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
 .ventana { flex: 1; min-height: 0; flex-direction: column; background: var(--bg); animation: aparecer var(--medio) var(--ease) both; }
 .vacio-global { flex: 1; }
 .punto-abierto { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px rgba(158, 206, 106, 0.7); }
+
+.menu-nueva { position: relative; }
+.menu-nueva-lista { position: absolute; top: calc(100% + 4px); right: 0; left: auto; min-width: 240px; max-height: 60vh; overflow-y: auto; transform-origin: top right; }

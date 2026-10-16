@@ -66,7 +66,7 @@ Un proveedor es un CLI que se ejecuta dentro de una terminal (Claude Code, Codex
 
 ## Pestañas por grupo
 
-Cada grupo se abre en su propia pestaña (arriba) con sus terminales; al abrir otro grupo se crea otra pestaña y las anteriores siguen vivas en segundo plano, con sus procesos. ▶ en un grupo abre una terminal por proyecto (si ya tiene pestaña, va a ella); un clic en un proyecto lo abre en la pestaña de su grupo; «Nueva terminal» la añade a la pestaña activa; «+» crea una pestaña suelta. Cerrar una pestaña (× o clic central) pide confirmación y cierra sus procesos. Cada pestaña tiene su propio layout.
+Cada grupo se abre en su propia pestaña (arriba) con sus terminales; al abrir otro grupo se crea otra pestaña y las anteriores siguen vivas en segundo plano, con sus procesos. ▶ en un grupo abre una terminal por proyecto (si ya tiene pestaña, va a ella); un clic en un proyecto lo abre en la pestaña de su grupo, o te lleva a su terminal si ya la tiene (no duplica); para una terminal extra usa «+ Terminal» dentro de la pestaña (proyecto del grupo o terminal vacía); «+» (arriba) crea una pestaña suelta. Cerrar una pestaña (× o clic central) pide confirmación y cierra sus procesos. Cada pestaña tiene su propio layout.
 
 ## Rejilla de terminales
 

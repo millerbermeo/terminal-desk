@@ -12,6 +12,7 @@ export interface TerminalInfo {
   titulo: string
   cwd?: string
   proveedorId?: string
+  proyectoId?: string // proyecto de origen (para no duplicar al hacer clic de nuevo)
 }
 
 /** Una pestaña de la app: normalmente un grupo de proyectos con sus terminales. */
@@ -38,12 +39,20 @@ const nuevaVentana = (id: string, nombre: string, terminales: TerminalInfo[] = [
   reiniciarLayout: 0,
   personalizado: false
 })
-const nuevaTerminal = (titulo: string, cwd?: string, proveedorId?: string): TerminalInfo => ({
+const nuevaTerminal = (titulo: string, cwd?: string, proveedorId?: string, proyectoId?: string): TerminalInfo => ({
   id: `t${++contador}`,
   titulo,
   cwd,
-  proveedorId
+  proveedorId,
+  proyectoId
 })
+
+/** "Backend", "Backend · 2", … para distinguir varias terminales del mismo proyecto. */
+function tituloUnico(base: string, existentes: TerminalInfo[]): string {
+  const usados = new Set(existentes.map((t) => t.titulo))
+  if (!usados.has(base)) return base
+  for (let n = 2; ; n++) if (!usados.has(`${base} · ${n}`)) return `${base} · ${n}`
+}
 
 export function App() {
   const [datos, setDatos] = useState<DatosProyectos>({ grupos: [], proyectos: [] })
@@ -52,6 +61,7 @@ export function App() {
   const [vista, setVista] = useState<Vista>('terminales')
   const [proveedores, setProveedores] = useState<ProveedorEstado[]>([])
   const [porCerrar, setPorCerrar] = useState<string | null>(null)
+  const [menuNueva, setMenuNueva] = useState<string | null>(null) // id de la pestaña con el menú «+ Terminal» abierto
 
   useEffect(() => {
     void window.api.proyectos.listar().then(setDatos)
@@ -81,26 +91,52 @@ export function App() {
     [datos.grupos]
   )
 
-  // Un proyecto se abre en la pestaña de su grupo.
+  const enfocar = useCallback((ventanaId: string, termId: string): void => {
+    cambiar(ventanaId, (v) => ({ ...v, activa: termId }))
+    setVentanaActiva(ventanaId)
+    setVista('terminales')
+  }, [cambiar])
+
+  // Clic en un proyecto: si ya tiene terminal en la pestaña de su grupo, se va a ella (no se abre otra).
+  // Con proveedor de IA (✦) sí se abre una terminal nueva, porque es una acción explícita.
   const abrirProyecto = useCallback(
     (p: Proyecto, prov?: ProveedorEstado) => {
       const { id, nombre } = claveDe(p)
-      agregar(id, nombre, [nuevaTerminal(prov ? `${p.nombre} · ${prov.nombre}` : p.nombre, p.ruta, prov?.id)])
+      const ventana = ventanas.find((v) => v.id === id)
+      if (!prov) {
+        const existente = ventana?.terminales.find((t) => t.proyectoId === p.id && !t.proveedorId)
+        if (ventana && existente) return enfocar(id, existente.id)
+      }
+      const titulo = tituloUnico(prov ? `${p.nombre} · ${prov.nombre}` : p.nombre, ventana?.terminales ?? [])
+      agregar(id, nombre, [nuevaTerminal(titulo, p.ruta, prov?.id, p.id)])
     },
-    [agregar, claveDe]
+    [agregar, claveDe, enfocar, ventanas]
   )
 
-  // Un grupo: si ya tiene pestaña se va a ella; si no, se abre con una terminal por proyecto.
+  // Un grupo: sin pestaña se abre con una terminal por proyecto; con pestaña se va a ella
+  // y se reabren las terminales de los proyectos que hayan quedado sin ninguna.
   const abrirGrupo = useCallback(
     (clave: string, nombre: string, proyectos: Proyecto[]) => {
-      if (ventanas.some((v) => v.id === clave)) {
-        setVentanaActiva(clave)
-        setVista('terminales')
-      } else if (proyectos.length > 0) {
-        agregar(clave, nombre, proyectos.map((p) => nuevaTerminal(p.nombre, p.ruta)))
+      const ventana = ventanas.find((v) => v.id === clave)
+      if (!ventana) {
+        if (proyectos.length > 0) agregar(clave, nombre, proyectos.map((p) => nuevaTerminal(p.nombre, p.ruta, undefined, p.id)))
+        return
       }
+      const faltan = proyectos.filter((p) => !ventana.terminales.some((t) => t.proyectoId === p.id && !t.proveedorId))
+      if (faltan.length > 0) agregar(clave, nombre, faltan.map((p) => nuevaTerminal(tituloUnico(p.nombre, ventana.terminales), p.ruta, undefined, p.id)))
+      else enfocar(clave, ventana.activa ?? ventana.terminales[0]?.id ?? '')
     },
-    [agregar, ventanas]
+    [agregar, enfocar, ventanas]
+  )
+
+  // Terminal extra dentro de una pestaña (botón «+ Terminal»): de un proyecto del grupo o vacía.
+  const agregarEnVentana = useCallback(
+    (v: Ventana, p?: Proyecto) => {
+      setMenuNueva(null)
+      const titulo = tituloUnico(p ? p.nombre : 'Terminal', v.terminales)
+      agregar(v.id, v.nombre, [nuevaTerminal(titulo, p?.ruta, undefined, p?.id)])
+    },
+    [agregar]
   )
 
   // Terminal suelta: en la pestaña activa (o en una pestaña "Terminales" si no hay ninguna).
@@ -135,6 +171,22 @@ export function App() {
     },
     []
   )
+
+  useEffect(() => {
+    if (!menuNueva) return
+    const cerrar = (): void => setMenuNueva(null)
+    const tecla = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') cerrar()
+    }
+    window.addEventListener('mousedown', cerrar)
+    window.addEventListener('keydown', tecla)
+    window.addEventListener('blur', cerrar)
+    return () => {
+      window.removeEventListener('mousedown', cerrar)
+      window.removeEventListener('keydown', tecla)
+      window.removeEventListener('blur', cerrar)
+    }
+  }, [menuNueva])
 
   const pedirCierre = (v: Ventana): void => (v.terminales.length > 0 ? setPorCerrar(v.id) : cerrarVentana(v.id))
   const abiertos = new Set(ventanas.map((v) => v.id))
@@ -210,6 +262,28 @@ export function App() {
                 <span className="punto" /> {v.terminales.length} {v.terminales.length === 1 ? 'terminal' : 'terminales'}
               </span>
               <div className="barra-acciones">
+                <div className="menu-nueva">
+                  <button onClick={() => setMenuNueva(menuNueva === v.id ? null : v.id)} aria-haspopup="menu" aria-expanded={menuNueva === v.id}>
+                    <IconoMas /> Terminal
+                  </button>
+                  {menuNueva === v.id && (
+                    <div className="menu-ia menu-nueva-lista" role="menu" onMouseDown={(e) => e.stopPropagation()}>
+                      <div className="menu-ia-tit">Nueva terminal en «{v.nombre}»</div>
+                      {datos.proyectos
+                        .filter((p) => claveDe(p).id === v.id)
+                        .map((p) => (
+                          <button key={p.id} role="menuitem" onClick={() => agregarEnVentana(v, p)} title={p.ruta}>
+                            <IconoTerminal />
+                            <span>{p.nombre}</span>
+                          </button>
+                        ))}
+                      <button role="menuitem" onClick={() => agregarEnVentana(v)}>
+                        <IconoTerminal />
+                        <span>Terminal vacía (carpeta personal)</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
                 {v.modo === 'rejilla' && v.personalizado && (
                   <button onClick={() => cambiar(v.id, (x) => ({ ...x, reiniciarLayout: x.reiniciarLayout + 1 }))} title="Volver a la cuadrícula automática">
                     <IconoReiniciar /> Reorganizar
