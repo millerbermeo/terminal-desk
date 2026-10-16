@@ -25,7 +25,7 @@ Electron · Vite · React · TypeScript · xterm.js · node-pty
 
 ## Instalación
 
-Un solo comando descarga e instala todo lo necesario (Node.js y pnpm si no los tienes, dependencias, compilación, lanzador y acceso directo). Todo queda dentro de tu usuario: **no requiere `sudo`**.
+Un solo comando descarga e instala todo lo necesario (Node.js y pnpm si no los tienes, dependencias, compilación, lanzador y acceso directo). Todo queda dentro de tu usuario: en Linux solo pide `sudo` una vez para configurar el sandbox de Electron.
 
 ### Linux y macOS
 
@@ -220,7 +220,7 @@ Añadir una operación IPC toca tres sitios: `src/shared/ipc.ts`, `src/preload/i
 | `centro-proyectos: command not found` | Añade `~/.local/bin` al PATH (`export PATH="$HOME/.local/bin:$PATH"`) o abre una terminal nueva |
 | Falla la compilación de `node-pty` (Linux) | Instala `build-essential python3` y repite el instalador |
 | El instalador pide usuario/contraseña de GitHub | El repositorio debe ser público, o define `CENTRO_REPO` con una URL accesible (por ejemplo SSH) |
-| Error de sandbox de Chrome en Ubuntu 24+ | Restricción de AppArmor sobre user namespaces: habilita el perfil de Electron o ejecuta `sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0` |
+| `The SUID sandbox helper binary was found, but is not configured correctly` | El instalador lo arregla pidiendo `sudo` una vez. Si no pudo, ejecuta `sudo chown root:root ~/.local/share/centro-proyectos/repo/node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 ~/.local/share/centro-proyectos/repo/node_modules/electron/dist/chrome-sandbox` o vuelve a lanzar el comando de instalación |
 | `Cannot read properties of undefined (reading 'commandLine')` | Hay `ELECTRON_RUN_AS_NODE=1` en el entorno (el lanzador ya lo limpia) |
 | Windows: no se compila `node-pty` | Instala Visual Studio Build Tools y Python 3 |
 
@@ -236,7 +236,7 @@ Main activa `--ozone-platform-hint=auto` (Electron elige Wayland o X11).
 
 `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` y CSP en el HTML; el renderer solo accede a `window.api`. Eliminar un grupo exige la contraseña del usuario del sistema (viaja solo por stdin al proceso hijo). Los guardrails del Asistente vigilan credenciales, rutas fuera del proyecto y comandos destructivos.
 
-Los instaladores se ejecutan sin privilegios, verifican por checksum el Node.js que descargan y solo escriben en tu carpeta de usuario. Revisa [install.sh](install.sh) / [install.ps1](install.ps1) antes de ejecutarlos si lo prefieres.
+Los instaladores se ejecutan sin privilegios (en Linux piden `sudo` solo para el `chrome-sandbox` de Electron), verifican por checksum el Node.js que descargan y solo escriben en tu carpeta de usuario. Revisa [install.sh](install.sh) / [install.ps1](install.ps1) antes de ejecutarlos si lo prefieres.
 
 ## Documentación
 

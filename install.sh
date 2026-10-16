@@ -121,8 +121,24 @@ if ! command -v pnpm >/dev/null 2>&1; then
   export PATH="$DIR/tools/node_modules/.bin:$PATH"
 fi
 
-# --- Código fuente: clona o actualiza ---
 REPO_DIR="$DIR/repo"
+# --- Linux: el sandbox de Chromium exige chrome-sandbox con dueño root y modo 4755 ---
+arreglar_sandbox() {
+  [ "$SO" = Linux ] || return 0
+  local sb="$REPO_DIR/node_modules/electron/dist/chrome-sandbox"
+  [ -f "$sb" ] || return 0
+  [ "$(stat -c '%u %a' "$sb")" = "0 4755" ] && return 0
+  paso "Configurando el sandbox de Electron (necesita sudo, se pide una sola vez)"
+  # cp rompe enlaces duros hacia el almacén de pnpm antes de cambiar dueño y permisos
+  if command -v sudo >/dev/null 2>&1 &&
+     sudo sh -c 'cp --remove-destination "$1" "$1.tmp" && mv -f "$1.tmp" "$1" && chown root:root "$1" && chmod 4755 "$1"' _ "$sb"; then
+    return 0
+  fi
+  aviso "No pude configurar el sandbox. Ejecuta a mano:"
+  aviso "  sudo chown root:root '$sb' && sudo chmod 4755 '$sb'"
+}
+
+# --- Código fuente: clona o actualiza ---
 if [ -d "$REPO_DIR/.git" ]; then
   paso "Buscando actualizaciones"
   git -C "$REPO_DIR" remote set-url origin "$REPO"
@@ -148,6 +164,7 @@ ACTUAL="$(cat "$DIR/instalado.commit" 2>/dev/null || true)"
 
 if [ "$NUEVO" = "$ACTUAL" ] && [ -d "$REPO_DIR/out" ] && [ -e "$LANZADOR" ]; then
   paso "Ya tienes la última versión ($(git -C "$REPO_DIR" rev-parse --short "$NUEVO"))"
+  arreglar_sandbox
   exit 0
 fi
 
@@ -176,6 +193,7 @@ fi
 paso "Compilando la aplicación"
 pnpm build
 printf '%s' "$NUEVO" > "$DIR/instalado.commit"
+arreglar_sandbox
 
 # --- Lanzador ---
 cat > "$LANZADOR" <<EOF
