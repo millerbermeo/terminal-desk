@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { basename, join } from 'node:path'
 import { BrowserWindow, ipcMain } from 'electron'
 import type { InfoSuite, ResultadoEvals } from '@shared/core/evals'
 import type { TurnoGuardado } from '@shared/core/sesion'
 import { LIMITES_ADJUNTOS } from '@shared/core/adjuntos'
 import { MODELOS_CONOCIDOS, type InfoModelo } from '@shared/core/uso'
 import type { ComandoUsuario } from '@shared/core/comandos'
+import type { EstadoCuenta, ProveedorModelo } from '@shared/core/cuenta'
 import type { ModoAutonomia, NuevaRegla } from '@shared/core/permisos'
 import type { ResumenTraza, Traza } from '@shared/core/traza'
 import type { BloqueContenido, DecisionHumana, EstadoFlujo, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, Mensaje, ResultadoPublicar, SolicitudAgente } from '@shared/core/agente'
@@ -48,6 +51,7 @@ import { herramientasMemoria } from './memory/herramientas'
 import { MemoriaLargoPlazo } from './memory/largo-plazo'
 import { MemoriaCortoPlazo } from './memory/sesion'
 import { OrquestadorMcp } from './mcp/orquestador'
+import { cerrarSesion, ejecutarSuscripcion, estadoCuenta, estadoSesion, iniciarSesion, Preferencias, SesionesCli } from './suscripcion'
 import { registrarIntegradas } from './tools/integradas'
 import { RegistroHerramientas } from './tools/registro'
 
@@ -99,6 +103,8 @@ export class Nucleo {
   readonly comandos = new ComandosStore(join(DIR, 'comandos'))
   readonly adjuntos = new AlmacenAdjuntos(join(DIR, 'adjuntos'))
   readonly medidor = new Medidor(join(DIR, 'uso'))
+  readonly preferencias = new Preferencias(join(DIR, 'preferencias.json'))
+  private readonly sesionesCli = new SesionesCli(join(DIR, 'sesiones-cli.json'))
   private proveedor?: { clave: string; p: ProveedorAnthropic }
   private modelosCache?: { hasta: number; lista: InfoModelo[] }
 
@@ -162,6 +168,7 @@ export class Nucleo {
 
     if (sol.modo !== 'flujo' && !sol.grupoId && !this.agentes.has(sol.agenteId ?? 'asistente')) throw new Error(`Agente desconocido: ${sol.agenteId}`)
     if (sol.modelo !== undefined && !/^claude-[a-z0-9._-]{3,60}$/.test(sol.modelo)) throw new Error(`Modelo inválido: ${sol.modelo}`)
+    if ((await this.preferencias.proveedor()) === 'suscripcion') return this.ejecutarPorSuscripcion(sol, proyecto, alEvento)
     const bloques = await this.bloquesDeAdjuntos(sol.adjuntos)
     const llm = await this.llm()
     const sesionId = validarId(sol.sesionId ?? randomUUID())
@@ -243,6 +250,100 @@ export class Nucleo {
         return this.trazador.finalizar(id, ctl.signal.aborted ? 'cancelado' : 'error')
       })
       .finally(() => this.activas.delete(id))
+    return { ejecucionId: id, sesionId }
+  }
+
+  /** Estado de la cuenta con la que se paga el modelo (proveedor elegido y sesión del CLI). */
+  async cuentaEstado(): Promise<EstadoCuenta> {
+    return estadoCuenta(await this.preferencias.proveedor(), Boolean(await claveAnthropic()))
+  }
+
+  async cuentaProveedor(proveedor: ProveedorModelo): Promise<EstadoCuenta> {
+    if (proveedor !== 'suscripcion' && proveedor !== 'api') throw new Error('Proveedor inválido')
+    await this.preferencias.fijar(proveedor)
+    this.modelosCache = undefined
+    return this.cuentaEstado()
+  }
+
+  async cuentaIniciarSesion(): Promise<EstadoCuenta> {
+    await iniciarSesion()
+    return this.cuentaEstado()
+  }
+
+  async cuentaCerrarSesion(): Promise<EstadoCuenta> {
+    await cerrarSesion()
+    return this.cuentaEstado()
+  }
+
+  /**
+   * Chat con el modelo de la suscripción: el CLI `claude` ejecuta el bucle y las herramientas (con sus propios permisos).
+   * Flujos y grupos usan el núcleo propio, que solo habla con la API.
+   */
+  private async ejecutarPorSuscripcion(sol: SolicitudAgente, proyecto: Proyecto | undefined, alEvento: (e: EventoAgente) => void): Promise<EjecucionIniciada> {
+    if (sol.modo === 'flujo' || sol.grupoId)
+      throw new Error('Los flujos y los grupos solo están disponibles con la clave de API: cambia a «API» en la barra de cuenta.')
+    const sesion = await estadoSesion()
+    if (!sesion.sesion) throw new Error(sesion.aviso ?? 'Inicia sesión con tu cuenta de Claude (barra de cuenta, arriba) o cambia a «API».')
+    const bloques = await this.bloquesDeAdjuntos(sol.adjuntos)
+    const sesionId = validarId(sol.sesionId ?? randomUUID())
+    const id = randomUUID()
+    const ctl = new AbortController()
+    this.activas.set(id, ctl)
+    const agente = sol.agenteId ?? 'asistente'
+    this.trazador.iniciar(id, { prompt: sol.prompt, agente, modo: 'chat', ...(sol.proyectoId ? { proyectoId: sol.proyectoId } : {}) })
+    const emitir = (e: Record<string, unknown>): void => {
+      const ev = { ejecucionId: id, agente, profundidad: 0, ...e } as EventoAgente
+      this.trazador.registrarEvento(ev)
+      alEvento(ev)
+    }
+    const autonomia: ModoAutonomia = sol.autonomia === 'ediciones' || sol.autonomia === 'autonomo' ? sol.autonomia : 'preguntar'
+    const verificaciones = autonomia === 'autonomo' && proyecto ? (await detectarVerificaciones(proyecto.ruta)).map((v) => v.comando.join(' ')) : []
+    const memoriaCtx = await this.memoria.contextoPara(sol.prompt, sol.proyectoId)
+    const sistemaExtra = bloques.length ? `${memoriaCtx}\n\n${AVISO_ADJUNTOS}`.trim() : memoriaCtx
+
+    // Texto en línea; imágenes y PDF se dejan en una carpeta temporal para que el CLI los lea.
+    const partes: string[] = []
+    let carpeta: string | undefined
+    for (const b of bloques) {
+      if (b.tipo === 'texto') partes.push(b.texto)
+      else if (b.tipo === 'imagen' || b.tipo === 'documento') {
+        const c = await this.adjuntos.contenido(b.adjuntoId)
+        if (!c) continue
+        carpeta ??= await mkdtemp(join(tmpdir(), 'odesk-adj-'))
+        const ruta = join(carpeta, basename(b.nombre).replace(/[^\w.-]+/g, '_') || `${b.adjuntoId}.bin`)
+        await writeFile(ruta, c.datos, { mode: 0o600 })
+        partes.push(`Archivo adjunto «${b.nombre}» disponible en: ${ruta}`)
+      }
+    }
+    const prompt = partes.length ? `${partes.join('\n\n')}\n\n${sol.prompt}` : sol.prompt
+
+    void (async () => {
+      let estado: 'completado' | 'cancelado' | 'error' = 'completado'
+      try {
+        const r = await ejecutarSuscripcion({
+          prompt,
+          cwd: proyecto?.ruta ?? process.cwd(),
+          ...(sol.modelo ? { modelo: sol.modelo } : {}),
+          ...(await this.sesionesCli.obtener(sesionId).then((x) => (x ? { reanudar: x } : {}))),
+          autonomia,
+          verificaciones,
+          ...(sistemaExtra ? { sistemaExtra } : {}),
+          ...(carpeta ? { carpetasExtra: [carpeta] } : {}),
+          senal: ctl.signal,
+          alEvento: emitir
+        })
+        if (r.sesionCli) await this.sesionesCli.guardar(sesionId, r.sesionCli)
+        if (r.resultado.estado !== 'completado') estado = r.resultado.estado === 'cancelado' ? 'cancelado' : 'error'
+      } catch (err) {
+        estado = ctl.signal.aborted ? 'cancelado' : 'error'
+        const mensaje = ctl.signal.aborted ? 'Cancelado' : (err as Error).message
+        emitir({ tipo: 'fin', resultado: { estado: estado === 'cancelado' ? 'cancelado' : 'error', texto: '', mensajes: [], uso: { tokensEntrada: 0, tokensSalida: 0 }, pasos: 0, error: mensaje } })
+      } finally {
+        if (carpeta) await rm(carpeta, { recursive: true, force: true }).catch(() => undefined)
+        await (estado === 'completado' ? this.trazador.finalizar(id) : this.trazador.finalizar(id, estado)).catch(() => undefined)
+        this.activas.delete(id)
+      }
+    })()
     return { ejecucionId: id, sesionId }
   }
 
@@ -518,6 +619,10 @@ export function registrarIpcCore(nucleo: Nucleo): void {
   ipcMain.handle(Canales.coreEvalsEjecutar, (_e, suiteId: string, casos?: string[]) => nucleo.ejecutarEvals(String(suiteId), Array.isArray(casos) ? casos.map(String) : undefined))
   ipcMain.handle(Canales.coreEvalsInformes, (_e, suiteId: string) => nucleo.evalsInformes(suiteId))
   ipcMain.handle(Canales.coreModelosListar, () => nucleo.modelos())
+  ipcMain.handle(Canales.coreCuentaEstado, () => nucleo.cuentaEstado())
+  ipcMain.handle(Canales.coreCuentaProveedor, (_e, p: ProveedorModelo) => nucleo.cuentaProveedor(p))
+  ipcMain.handle(Canales.coreCuentaIniciar, () => nucleo.cuentaIniciarSesion())
+  ipcMain.handle(Canales.coreCuentaCerrar, () => nucleo.cuentaCerrarSesion())
   ipcMain.handle(Canales.coreUsoObtener, () => nucleo.medidor.resumen())
   nucleo.medidor.suscribir((r) => {
     for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(Canales.coreUso, r)

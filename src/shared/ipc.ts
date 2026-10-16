@@ -6,6 +6,7 @@ import type { Adjunto } from './core/adjuntos'
 import type { ComandoUsuario } from './core/comandos'
 import type { NuevaRegla, ReglaPermiso } from './core/permisos'
 import type { InfoModelo, ResumenUso } from './core/uso'
+import type { EstadoCuenta, ProveedorModelo } from './core/cuenta'
 import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion'
 import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
 import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso } from './modelos'
@@ -48,6 +49,10 @@ export const Canales = {
   coreEvalsEjecutar: 'core:evals-ejecutar',
   coreEvalsInformes: 'core:evals-informes',
   coreModelosListar: 'core:modelos-listar',
+  coreCuentaEstado: 'core:cuenta-estado',
+  coreCuentaProveedor: 'core:cuenta-proveedor',
+  coreCuentaIniciar: 'core:cuenta-iniciar',
+  coreCuentaCerrar: 'core:cuenta-cerrar',
   coreUsoObtener: 'core:uso-obtener',
   coreUso: 'core:uso',
   coreAdjuntoSubir: 'core:adjunto-subir',
@@ -196,6 +201,12 @@ export interface ApiCentro {
     evalsInformes(suiteId: string): Promise<InformeEval[]>
     /** Modelos disponibles para la clave (con su ventana de contexto); si la API no responde, los conocidos. */
     modelos(): Promise<InfoModelo[]>
+    /** Cuenta con la que se paga el modelo: proveedor elegido (suscripción por defecto) y estado de la sesión. */
+    cuentaEstado(): Promise<EstadoCuenta>
+    cuentaProveedor(proveedor: ProveedorModelo): Promise<EstadoCuenta>
+    /** Abre el navegador para iniciar sesión con la cuenta de Claude (correo, Google o SSO); resuelve al terminar. */
+    cuentaIniciarSesion(): Promise<EstadoCuenta>
+    cuentaCerrarSesion(): Promise<EstadoCuenta>
     /** Consumo de esta aplicación hoy y límites de tasa que informa la API. */
     uso(): Promise<ResumenUso>
     /** Cambios en el consumo en tiempo real (tras cada llamada al modelo). */

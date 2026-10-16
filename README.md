@@ -116,7 +116,7 @@ Se elimina la carpeta de instalación (incluidos el Node.js y pnpm privados), el
 
    `grupo` es opcional. Se lee al iniciar (reinicia para ver cambios hechos a mano).
 3. Haz clic en un proyecto para abrir su terminal, o pasa el ratón y pulsa ✦ para lanzar un CLI de IA.
-4. Para usar el **Asistente** integrado define `ANTHROPIC_API_KEY` en tu entorno o en el `env` del proveedor `claude`.
+4. Para usar el **Asistente** inicia sesión con tu cuenta de Claude desde su barra superior (modo suscripción, por defecto), o cambia a «API» y define `ANTHROPIC_API_KEY`.
 
 ## Uso
 
@@ -160,6 +160,23 @@ Pantalla **Agentes y skills**, guardada en `~/.centro-proyectos/agentes.json`.
 
 Pestaña **Asistente**: conversación con streaming, adjuntos (imágenes, PDF, texto), selector de modelo, medidor de contexto y consumo, trazas, memoria, ramas (worktrees), evals y confirmaciones humanas. Admite comandos propios con `/`, reglas de permisos persistentes y tres modos de autonomía (Preguntar / Ediciones / Autónomo) con presupuesto de tokens. Detalle en [docs/](docs/).
 
+#### Cuenta: suscripción o API
+
+La barra superior del Asistente elige con qué se paga el modelo:
+
+| | Suscripción (por defecto) | API |
+|---|---|---|
+| Cuenta | Tu plan de Claude (Pro/Max), con la sesión del CLI `claude` | `ANTHROPIC_API_KEY` |
+| Coste | Dentro de los límites de tu plan | Por tokens |
+| Requisito | CLI `claude` instalado e **inicio de sesión** | Clave en el entorno o en el `env` del proveedor «claude» |
+| Qué ejecuta el bucle | El CLI (sus herramientas y permisos) | El núcleo propio de la app |
+| Flujos y grupos | No disponibles | Sí |
+
+- **Iniciar sesión:** el botón «Iniciar sesión» abre el navegador (correo, Google o SSO), igual que en la extensión de VSCode. La app nunca ve tus credenciales: lo hace el CLI (`claude auth login`). Si no hay sesión, el Asistente no envía y te lo indica.
+- **Permisos con suscripción:** el CLI no puede pedir confirmación en este modo, así que lo que requiere permiso se deniega. «Preguntar todo» = solo lectura; «Aceptar ediciones» permite modificar archivos; «Autónomo» añade las verificaciones del proyecto (typecheck, lint, test). Los comandos peligrosos no se ejecutan.
+- La clave `ANTHROPIC_API_KEY` se ignora en modo suscripción para no cobrarte por tokens sin querer.
+- Las terminales con Claude Code (✦) siempre usan la sesión del CLI, independientemente de esta opción.
+
 ## Datos de usuario
 
 Todo se guarda en `~/.centro-proyectos/`:
@@ -169,6 +186,7 @@ Todo se guarda en `~/.centro-proyectos/`:
 | `proyectos.json` | Proyectos y grupos |
 | `proveedores.json` | Proveedores de IA (0600, `env` en texto plano) |
 | `agentes.json` | Biblioteca de agentes y skills |
+| `preferencias.json`, `sesiones-cli.json` | Proveedor elegido (suscripción/API) y sesiones del CLI para continuar conversaciones |
 | `sesiones/` | Plugins generados para Claude Code |
 | `conversaciones/`, `memoria/`, `trazas/`, `evals/`, `permisos/`, `comandos/`, `worktrees/` | Estado del Asistente |
 

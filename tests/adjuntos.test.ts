@@ -146,6 +146,7 @@ describe('Nucleo con adjuntos', () => {
 
   it('inyecta imagen, PDF y texto en el mensaje, avisa de que son datos y no baja de modelo', async () => {
     const n = new Nucleo()
+    await n.preferencias.fijar('api')
     const llm = new LlmFalso([texto('vista')])
     ;(n as unknown as { llm: () => Promise<LlmFalso> }).llm = async () => llm
     const a = await n.adjuntos.guardar('captura.png', PNG)
@@ -164,6 +165,7 @@ describe('Nucleo con adjuntos', () => {
 
   it('rechaza demasiados adjuntos o ids que no existen', async () => {
     const n = new Nucleo()
+    await n.preferencias.fijar('api')
     ;(n as unknown as { llm: () => Promise<LlmFalso> }).llm = async () => new LlmFalso([])
     await expect(n.ejecutar({ prompt: 'x', adjuntos: ['a', 'b', 'c', 'd', 'e', 'f'] }, () => undefined)).rejects.toThrow(/Máximo 5/)
     await expect(n.ejecutar({ prompt: 'x', adjuntos: ['noexiste'] }, () => undefined)).rejects.toThrow(/ya no está disponible/)

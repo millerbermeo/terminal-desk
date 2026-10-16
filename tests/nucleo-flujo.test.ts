@@ -32,6 +32,7 @@ beforeAll(async () => {
 /** Lanza un flujo con un LLM guionizado y contesta a las solicitudes humanas con `decidir`. */
 async function correr(llm: LlmFalso, decidir: (e: Extract<EventoAgente, { tipo: 'solicitud_humana' }>) => { aprobado: boolean }, aislado = true) {
   const nucleo = new Nucleo()
+  await nucleo.preferencias.fijar('api')
   ;(nucleo as unknown as { llm: () => Promise<LlmFalso> }).llm = async () => llm
   const eventos: EventoAgente[] = []
   const terminado = new Promise<Extract<EventoAgente, { tipo: 'flujo_fin' }>>((resolver) => {
@@ -89,6 +90,7 @@ describe('Nucleo: flujo aislado en git worktree', () => {
       texto('hecho')
     ])
     const nucleo = new Nucleo()
+    await nucleo.preferencias.fijar('api')
     ;(nucleo as unknown as { llm: () => Promise<LlmFalso> }).llm = async () => llm
     const secreto = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'
     const eventos: EventoAgente[] = []
@@ -117,6 +119,7 @@ describe('Nucleo: flujo aislado en git worktree', () => {
     const home = process.env.HOME!
     await writeFile(join(home, '.centro-proyectos', 'proyectos.json'), JSON.stringify({ grupos: [], proyectos: [{ id: 'p2', nombre: 'V', ruta: vacio }] }))
     const nucleo = new Nucleo()
+    await nucleo.preferencias.fijar('api')
     ;(nucleo as unknown as { llm: () => Promise<LlmFalso> }).llm = async () => new LlmFalso([])
     await expect(nucleo.ejecutar({ prompt: 'x', proyectoId: 'p2', modo: 'flujo' }, () => undefined)).rejects.toThrow(/repositorio git/)
   })

@@ -613,3 +613,13 @@ button.peligro-solido:hover:not(:disabled) { background: #cf4660; }
 }
 .ed-codigo .cm-editor, .ed-codigo .cm-gutters, .ed-codigo .cm-scroller { background-color: var(--bg) !important; }
 .ed-codigo .cm-gutters { border-right: 1px solid var(--borde); }
+
+/* Barra de cuenta del Asistente (suscripción / API) */
+.ag-cuenta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--borde); font-size: 12px; }
+.ag-cuenta.sin-sesion { background: rgba(224, 175, 104, 0.08); }
+.ag-cuenta-estado { color: var(--texto-suave); min-width: 0; }
+.ag-cuenta-estado.ok { color: #9ece6a; }
+.ag-cuenta-nota { color: #e0af68; min-width: 0; }
+.ag-cuenta-error { color: #f7768e; flex-basis: 100%; }
+.ag-cuenta-btn { padding: 3px 10px; }
+.ag-cuenta-btn.primario { background: var(--acento-fuerte); border-color: var(--acento); color: #fff; }

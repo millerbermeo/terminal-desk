@@ -5,8 +5,10 @@ import { COMANDOS_INCLUIDOS, expandirPlantilla, type ComandoUsuario } from '@sha
 import type { ModoAutonomia } from '@shared/core/permisos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { Agente, Turno } from '../agente/useAgente'
+import { useCuenta } from '../agente/cuenta'
 import { useModelos } from '../agente/uso'
 import { AdjuntosAgente } from './AdjuntosAgente'
+import { BarraCuenta } from './BarraCuenta'
 import { BarraUso } from './BarraUso'
 import { GestionProyecto } from './GestionProyecto'
 import { HistorialAgente } from './HistorialAgente'
@@ -166,6 +168,8 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [arrastrando, setArrastrando] = useState(false)
   const selector = useRef<HTMLInputElement>(null)
   const modelos = useModelos()
+  const { cuenta } = useCuenta()
+  const conSuscripcion = cuenta?.proveedor === 'suscripcion'
   const claveModelo = `asistente:modelo:${proyectoFijo?.id ?? 'global'}`
   const [modeloSel, setModeloSel] = useState<string>(() => {
     try {
@@ -218,8 +222,8 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   }, [agente.turnos])
 
   useEffect(() => {
-    if (modo === 'flujo' && !proyecto) setModo('chat')
-  }, [modo, proyecto])
+    if (modo === 'flujo' && (!proyecto || conSuscripcion)) setModo('chat')
+  }, [modo, proyecto, conSuscripcion])
 
   // Comandos propios del proyecto (más globales) para el autocompletado y la ejecución de `/nombre`.
   useEffect(() => {
@@ -354,6 +358,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         void subir([...e.dataTransfer.files])
       }}
     >
+      <BarraCuenta autonomia={autonomia} />
       {arrastrando && <div className="ag-soltar">Suelta para adjuntar (imágenes, PDF o texto)</div>}
       {verHistorial && (
         <HistorialAgente
@@ -403,7 +408,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             <button className={modo === 'chat' ? 'on' : ''} onClick={() => setModo('chat')}>
               Chat
             </button>
-            <button className={modo === 'flujo' ? 'on' : ''} disabled={!proyecto} onClick={() => setModo('flujo')} title={proyecto ? 'Plan → aprobación → generación → verificación → confirmación' : 'Elige un proyecto'}>
+            <button className={modo === 'flujo' ? 'on' : ''} disabled={!proyecto || conSuscripcion} onClick={() => setModo('flujo')} title={conSuscripcion ? 'El flujo solo está disponible con la clave de API' : proyecto ? 'Plan → aprobación → generación → verificación → confirmación' : 'Elige un proyecto'}>
               Flujo
             </button>
           </div>

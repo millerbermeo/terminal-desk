@@ -144,6 +144,7 @@ describe('Nucleo: modelo elegido', () => {
   })
   it('usa el modelo fijado (sin router), rechaza ids raros y sin clave lista los conocidos', async () => {
     const n = new Nucleo()
+    await n.preferencias.fijar('api')
     const llm = new LlmFalso([texto('ok')])
     ;(n as unknown as { llm: () => Promise<LlmFalso> }).llm = async () => llm
     await expect(n.ejecutar({ prompt: 'x', modelo: 'gpt-4; rm -rf' }, () => undefined)).rejects.toThrow(/Modelo inválido/)
