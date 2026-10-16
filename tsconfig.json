@@ -11,8 +11,7 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "types": ["node"],
-    "baseUrl": ".",
-    "paths": { "@shared/*": ["src/shared/*"] }
+    "paths": { "@shared/*": ["./src/shared/*"] }
   },
   "include": ["src", "electron.vite.config.ts"]
 }
