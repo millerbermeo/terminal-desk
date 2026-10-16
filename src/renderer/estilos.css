@@ -1,0 +1,32 @@
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body { background: #1e1e1e; color: #ddd; font: 13px system-ui, sans-serif; overflow: hidden; }
+button { background: #333; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+button:hover { background: #3d3d3d; }
+
+.app { display: flex; height: 100%; }
+.sidebar { width: 220px; flex: none; background: #252526; border-right: 1px solid #333; padding: 10px; overflow-y: auto; }
+.sidebar h1 { font-size: 14px; margin: 0 0 10px; }
+.sidebar h2 { font-size: 11px; text-transform: uppercase; color: #888; margin: 14px 0 4px; }
+.sidebar ul { list-style: none; margin: 0; padding: 0; }
+.sidebar li { padding: 5px 8px; border-radius: 4px; cursor: pointer; }
+.sidebar li:hover { background: #37373d; }
+.nueva { width: 100%; }
+
+.principal { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.barra { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: #2d2d2d; border-bottom: 1px solid #333; }
+.area { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+.pestanas { display: flex; background: #252526; overflow-x: auto; }
+.pestana { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; border-right: 1px solid #333; }
+.pestana.activa { background: #1e1e1e; }
+.pestana button, .panel-barra button { border: none; background: transparent; padding: 0 4px; }
+
+.paneles { flex: 1; min-height: 0; position: relative; }
+.paneles.rejilla { display: grid; grid-auto-rows: minmax(0, 1fr); gap: 2px; background: #333; }
+.paneles.pestanas { display: flex; }
+.panel { flex-direction: column; min-width: 0; min-height: 0; flex: 1; background: #1e1e1e; border: 1px solid transparent; }
+.panel.activa { border-color: #3b78c4; }
+.panel-barra { display: flex; justify-content: space-between; padding: 2px 8px; background: #2d2d2d; font-size: 11px; }
+.terminal { flex: 1; min-height: 0; padding: 4px; }
+.vacio { margin: auto; color: #777; }
