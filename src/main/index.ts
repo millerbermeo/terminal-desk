@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import { Canales, type OpcionesTerminal, type SolicitudAgregar } from '@shared/ipc'
 import { GestorTerminales } from './terminales'
-import { agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos } from './proyectos'
+import { agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, validarRuta } from './proyectos'
 
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto')
@@ -51,6 +51,7 @@ function crearVentana(): void {
 
 function registrarIpc(): void {
   ipcMain.handle(Canales.proyectosListar, () => leerProyectos())
+  ipcMain.handle(Canales.proyectosValidarRuta, (_e, ruta: string) => validarRuta(ruta))
   ipcMain.handle(Canales.proyectosAgregar, (_e, sol: SolicitudAgregar) => agregarProyectos(sol))
   ipcMain.handle(Canales.proyectosEliminar, (_e, id: string) => eliminarProyecto(id))
   ipcMain.handle(Canales.grupoEliminar, (_e, id: string) => eliminarGrupo(id))

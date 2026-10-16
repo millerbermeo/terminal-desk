@@ -10,6 +10,7 @@ function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
 const api: ApiCentro = {
   proyectos: {
     listar: () => ipcRenderer.invoke(Canales.proyectosListar),
+    validarRuta: (ruta) => ipcRenderer.invoke(Canales.proyectosValidarRuta, ruta),
     agregar: (solicitud) => ipcRenderer.invoke(Canales.proyectosAgregar, solicitud),
     eliminar: (id) => ipcRenderer.invoke(Canales.proyectosEliminar, id),
     eliminarGrupo: (id) => ipcRenderer.invoke(Canales.grupoEliminar, id)

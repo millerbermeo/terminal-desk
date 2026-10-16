@@ -55,3 +55,12 @@ input:focus, select:focus { outline: 1px solid #3b78c4; }
 .cfg-proyecto strong { width: 200px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cfg-proyecto code { flex: 1; min-width: 0; color: #9cdcfe; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cfg-vacio { color: #777; margin: 6px 4px; }
+
+.modal-fondo { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; z-index: 10; padding: 16px; }
+.modal { background: #252526; border: 1px solid #444; border-radius: 8px; padding: 18px; width: min(760px, 100%); max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); }
+.modal h3 { margin: 0; font-size: 16px; }
+.modal label { display: flex; flex-direction: column; gap: 4px; max-width: 320px; }
+.modal-filas { display: flex; flex-direction: column; gap: 10px; }
+.cfg-ok { color: #89d185; font-size: 12px; margin-top: 3px; word-break: break-all; }
+.cfg-nota { color: #888; font-size: 12px; margin-top: 3px; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }

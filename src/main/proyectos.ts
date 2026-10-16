@@ -1,9 +1,10 @@
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
 import type { DatosProyectos } from '@shared/modelos'
-import type { ErrorProyecto, ResultadoAgregar, SolicitudAgregar } from '@shared/ipc'
+import type { ErrorProyecto, ResultadoAgregar, SolicitudAgregar, ValidacionRuta } from '@shared/ipc'
 
 const DIR = join(homedir(), '.centro-proyectos')
 const ARCHIVO = join(DIR, 'proyectos.json')
@@ -53,12 +54,21 @@ function resolverRuta(ruta: string): string {
   return isAbsolute(r) ? resolve(r) : resolve(homedir(), r)
 }
 
-async function esDirectorio(ruta: string): Promise<boolean> {
+/** Resuelve la ruta y comprueba que sea una carpeta accesible y no repetida. */
+export async function validarRuta(entrada: string): Promise<ValidacionRuta> {
+  if (!entrada.trim()) return { ok: false, ruta: '', mensaje: 'Falta la ruta' }
+  const ruta = resolverRuta(entrada)
   try {
-    return (await stat(ruta)).isDirectory()
-  } catch {
-    return false
+    if (!(await stat(ruta)).isDirectory()) return { ok: false, ruta, mensaje: 'No es una carpeta' }
+    await access(ruta, constants.R_OK | constants.X_OK)
+  } catch (err) {
+    const codigo = (err as NodeJS.ErrnoException).code
+    const mensaje = codigo === 'ENOENT' || codigo === 'ENOTDIR' ? 'La ruta no existe' : 'Sin permiso de acceso'
+    return { ok: false, ruta, mensaje }
   }
+  const repetido = (await leerProyectos()).proyectos.find((p) => p.ruta === ruta)
+  if (repetido) return { ok: false, ruta, mensaje: `Ya agregado como «${repetido.nombre}»` }
+  return { ok: true, ruta }
 }
 
 function idUnico(base: string, usados: Set<string>): string {
@@ -89,11 +99,11 @@ export function agregarProyectos(sol: SolicitudAgregar): Promise<ResultadoAgrega
     const rutas: string[] = []
 
     for (const [indice, p] of sol.proyectos.entries()) {
-      const ruta = resolverRuta(p.ruta)
-      rutas.push(ruta)
+      const v = await validarRuta(p.ruta)
+      rutas.push(v.ruta)
       if (!p.nombre.trim()) errores.push({ indice, mensaje: 'Falta el nombre' })
-      else if (!p.ruta.trim()) errores.push({ indice, mensaje: 'Falta la ruta' })
-      else if (!(await esDirectorio(ruta))) errores.push({ indice, mensaje: `No es una carpeta: ${ruta}` })
+      else if (!v.ok) errores.push({ indice, mensaje: `${v.mensaje}: ${v.ruta || p.ruta}` })
+      else if (rutas.indexOf(v.ruta) !== indice) errores.push({ indice, mensaje: 'Ruta repetida en el formulario' })
     }
     if (sol.grupoId && !datos.grupos.some((g) => g.id === sol.grupoId)) {
       errores.push({ indice: -1, mensaje: 'El grupo no existe' })

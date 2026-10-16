@@ -2,6 +2,7 @@ import type { DatosProyectos } from './modelos'
 
 export const Canales = {
   proyectosListar: 'proyectos:listar',
+  proyectosValidarRuta: 'proyectos:validar-ruta',
   proyectosAgregar: 'proyectos:agregar',
   proyectosEliminar: 'proyectos:eliminar',
   grupoEliminar: 'grupo:eliminar',
@@ -45,6 +46,12 @@ export interface ErrorProyecto {
   mensaje: string
 }
 
+export interface ValidacionRuta {
+  ok: boolean
+  ruta: string // ruta absoluta resuelta
+  mensaje?: string // motivo si no es válida
+}
+
 /** Si hay errores no se agrega nada (todo o nada). */
 export interface ResultadoAgregar {
   datos: DatosProyectos
@@ -55,6 +62,7 @@ export interface ResultadoAgregar {
 export interface ApiCentro {
   proyectos: {
     listar(): Promise<DatosProyectos>
+    validarRuta(ruta: string): Promise<ValidacionRuta>
     agregar(solicitud: SolicitudAgregar): Promise<ResultadoAgregar>
     eliminar(id: string): Promise<DatosProyectos>
     eliminarGrupo(id: string): Promise<DatosProyectos>
