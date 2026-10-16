@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, IconoVolver } from './components/Iconos'
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
 import type { TerminalInfo } from './App'
+import { ModalSolicitudGlobal } from './components/ModalSolicitud'
+import { escucharSolicitudes } from './agente/solicitudes'
 
 let contador = 0
 
@@ -14,6 +16,8 @@ export function VentanaSeparada({ token }: { token: string }) {
   const [modo, setModo] = useState<Modo>('rejilla')
   const [reiniciarLayout, setReiniciarLayout] = useState(0)
   const [personalizado, setPersonalizado] = useState(false)
+
+  useEffect(() => escucharSolicitudes(), [])
 
   useEffect(() => {
     void window.api.ventana.tomar(token).then((p) => {
@@ -44,7 +48,7 @@ export function VentanaSeparada({ token }: { token: string }) {
       ventanaId: ventanaId || 'devueltas',
       nombre,
       modo,
-      terminales: lista.map((t) => ({ id: t.id, titulo: t.titulo, ptyId: t.ptyId, cwd: t.cwd, proveedorId: t.proveedorId, proyectoId: t.proyectoId }))
+      terminales: lista.map((t) => ({ id: t.id, titulo: t.titulo, ptyId: t.ptyId, cwd: t.cwd, proveedorId: t.proveedorId, proyectoId: t.proyectoId, vista: t.vista }))
     })
   }
 
@@ -96,7 +100,9 @@ export function VentanaSeparada({ token }: { token: string }) {
           onActivar={setActiva}
           onCerrar={cerrar}
           onPty={alPty}
+          onVista={(id, vista) => setTerminales((ts) => (ts ?? []).map((t) => (t.id === id ? { ...t, vista } : t)))}
         />
+        <ModalSolicitudGlobal />
       </main>
     </div>
   )

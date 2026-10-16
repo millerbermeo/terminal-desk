@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { DatosProyectos } from '@shared/modelos'
-import type { Agente } from '../agente/useAgente'
+import { useAgente } from '../agente/useAgente'
 import { ChatAgente } from './ChatAgente'
 import { EvalsAgente } from './EvalsAgente'
 import { MemoriaAgente } from './MemoriaAgente'
@@ -18,12 +18,12 @@ const PESTANAS: { id: Pestana; nombre: string }[] = [
 
 interface Props {
   datos: DatosProyectos
-  agente: Agente
   visible: boolean
 }
 
 /** Asistente de desarrollo: conversación con agentes, trazas, memoria, ramas aisladas y evals. */
-export function Asistente({ datos, agente, visible }: Props) {
+export function Asistente({ datos, visible }: Props) {
+  const agente = useAgente() // siempre montado: la conversación y sus eventos no se pierden al cambiar de pantalla
   const [pestana, setPestana] = useState<Pestana>('chat')
   return (
     <main className="asistente" style={{ display: visible ? 'flex' : 'none' }}>

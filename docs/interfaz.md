@@ -6,6 +6,18 @@ Código: `src/renderer/components/Asistente.tsx` (pestañas) y `src/renderer/age
 El estado vive en `App` (hook `useAgente`) y el panel está siempre montado, así que los eventos no se pierden ni se interrumpe una
 ejecución al cambiar de pantalla. Los eventos que llegan antes de que `ejecutar` devuelva su id se guardan y se asignan al turno después.
 
+## Asistente dentro de cada celda
+
+Cada celda de la rejilla que pertenece a un proyecto tiene un selector **Terminal | Asistente** bajo su cabecera:
+
+- La **terminal sigue viva** al cambiar al asistente (solo se oculta), igual que con las pestañas.
+- El asistente de la celda trabaja en la carpeta de ese proyecto y tiene su **propia conversación** (estado por celda, `AsistenteCelda` en `TerminalGrid.tsx`). Se monta la primera vez que se muestra y conserva su conversación.
+- El menú ✦ de un proyecto ofrece **«Asistente integrado»** (celda que arranca en la vista del asistente) además de Claude, Codex y Gemini, que siguen abriendo su CLI dentro de la terminal.
+- Las confirmaciones de todas las celdas van a un almacén global (`agente/solicitudes.ts`) y las atiende un único modal (`ModalSolicitudGlobal`), que indica de qué proyecto viene.
+- Cerrar la celda con una ejecución en marcha la cancela. Al separar una pestaña a otra ventana la terminal conserva su proceso, pero la conversación del asistente de esa celda se reinicia.
+- Al abrir un grupo (▶) siguen creándose terminales; el asistente se activa por celda.
+- El asistente integrado usa por ahora solo Anthropic (`Nucleo.llm()`); elegir otros proveedores queda pendiente.
+
 ## Pestañas
 
 | Pestaña | Qué hace |

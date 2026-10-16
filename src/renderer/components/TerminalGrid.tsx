@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
-import { IconoCerrar, IconoTerminal } from './Iconos'
+import { IconoCerrar, IconoChispa, IconoTerminal } from './Iconos'
+import { ChatAgente } from './ChatAgente'
 import { TerminalPanel } from './TerminalPanel'
+import { useAgente } from '../agente/useAgente'
 import type { TerminalInfo } from '../App'
 import {
   calcular,
@@ -26,6 +28,8 @@ interface Props {
   onActivar: (id: string) => void
   onCerrar: (id: string) => void
   onPty?: (terminalId: string, ptyId: string) => void
+  /** Cambia lo que muestra una celda (terminal o asistente). */
+  onVista?: (terminalId: string, vista: 'terminal' | 'asistente') => void
 }
 
 const MIN_ANCHO = 260 // px
@@ -43,7 +47,20 @@ interface Arrastre {
   caja: { left: number; top: number; width: number; height: number }
 }
 
-export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPersonalizado, onActivar, onCerrar, onPty }: Props) {
+/** Asistente de una celda: conversación propia (estado por celda) con el proyecto fijado. */
+function AsistenteCelda({ proyecto }: { proyecto: { id: string; nombre: string } }) {
+  const agente = useAgente()
+  return <ChatAgente agente={agente} proyectoFijo={proyecto} />
+}
+
+export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPersonalizado, onActivar, onCerrar, onPty, onVista }: Props) {
+  // El asistente de una celda se monta la primera vez que se muestra y ya no se desmonta (conserva su conversación).
+  const [conAsistente, setConAsistente] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    const nuevos = terminales.filter((t) => t.vista === 'asistente' && !conAsistente.has(t.id)).map((t) => t.id)
+    if (nuevos.length) setConAsistente((s) => new Set([...s, ...nuevos]))
+  }, [terminales, conAsistente])
+
   const ids = terminales.map((t) => t.id)
   const contenedor = useRef<HTMLDivElement>(null)
   const [estado, setEstado] = useState<{ arbol: Nodo | null; personalizado: boolean }>({ arbol: null, personalizado: false })
@@ -188,17 +205,34 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPers
                   </button>
                 </div>
               )}
-              <TerminalPanel
-                id={t.id}
-                cwd={t.cwd}
-                proveedorId={t.proveedorId}
-                proyectoId={t.proyectoId}
-                ptyExistente={t.ptyId}
-                onPty={onPty}
-                visible={visible}
-                activa={t.id === activa}
-                onActivar={onActivar}
-              />
+              {t.proyectoId && onVista && (
+                <div className="panel-vista" role="group" aria-label="Contenido de la celda">
+                  <button className={t.vista !== 'asistente' ? 'on' : ''} onClick={() => onVista(t.id, 'terminal')}>
+                    <IconoTerminal /> Terminal
+                  </button>
+                  <button className={t.vista === 'asistente' ? 'on' : ''} onClick={() => onVista(t.id, 'asistente')} title="Asistente integrado: conversa con el agente en este proyecto (la terminal sigue viva)">
+                    <IconoChispa /> Asistente
+                  </button>
+                </div>
+              )}
+              {t.proyectoId && conAsistente.has(t.id) && (
+                <div className="panel-asistente" style={{ display: t.vista === 'asistente' ? 'flex' : 'none' }}>
+                  <AsistenteCelda proyecto={{ id: t.proyectoId, nombre: t.titulo }} />
+                </div>
+              )}
+              <div className="panel-terminal" style={{ display: t.vista === 'asistente' ? 'none' : 'flex' }}>
+                <TerminalPanel
+                  id={t.id}
+                  cwd={t.cwd}
+                  proveedorId={t.proveedorId}
+                  proyectoId={t.proyectoId}
+                  ptyExistente={t.ptyId}
+                  onPty={onPty}
+                  visible={visible && t.vista !== 'asistente'}
+                  activa={t.id === activa && t.vista !== 'asistente'}
+                  onActivar={onActivar}
+                />
+              </div>
             </div>
           )
         })}

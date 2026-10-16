@@ -4,8 +4,11 @@ import type { DatosProyectos } from '@shared/modelos'
 import type { Agente, Turno } from '../agente/useAgente'
 
 interface Props {
-  datos: DatosProyectos
   agente: Agente
+  /** Pantalla global: permite elegir proyecto o grupo. */
+  datos?: DatosProyectos
+  /** Celda de un proyecto: el destino está fijado y no se muestra el selector. */
+  proyectoFijo?: { id: string; nombre: string }
 }
 
 const ESTADO: Record<Turno['estado'], string> = {
@@ -123,23 +126,23 @@ function TurnoVista({ t, onCancelar }: { t: Turno; onCancelar: () => void }) {
   )
 }
 
-export function ChatAgente({ datos, agente }: Props) {
+export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [destino, setDestino] = useState('')
   const [modo, setModo] = useState<'chat' | 'flujo'>('chat')
   const [aislado, setAislado] = useState(true)
   const [texto, setTexto] = useState('')
   const fin = useRef<HTMLDivElement>(null)
 
-  const grupoSeleccionado = destino.startsWith('g:')
-  const proyecto = destino.startsWith('p:') ? datos.proyectos.find((p) => p.id === destino.slice(2)) : undefined
+  const grupoSeleccionado = !proyectoFijo && destino.startsWith('g:')
+  const proyecto = proyectoFijo ?? (destino.startsWith('p:') ? datos?.proyectos.find((p) => p.id === destino.slice(2)) : undefined)
   const etiqueta = useMemo(() => {
-    if (grupoSeleccionado) return datos.grupos.find((g) => g.id === destino.slice(2))?.nombre ?? 'grupo'
+    if (grupoSeleccionado) return datos?.grupos.find((g) => g.id === destino.slice(2))?.nombre ?? 'grupo'
     return proyecto?.nombre ?? 'sin proyecto'
-  }, [datos.grupos, destino, grupoSeleccionado, proyecto])
+  }, [datos?.grupos, destino, grupoSeleccionado, proyecto])
 
   useEffect(() => {
     fin.current?.scrollIntoView({ block: 'end' })
-  }, [agente.turnos, agente.solicitudes.length])
+  }, [agente.turnos])
 
   useEffect(() => {
     if (modo === 'flujo' && !proyecto) setModo('chat')
@@ -180,19 +183,21 @@ export function ChatAgente({ datos, agente }: Props) {
       </div>
       <div className="ag-compositor">
         <div className="ag-opciones">
-          <select value={destino} onChange={(e) => setDestino(e.target.value)} aria-label="Destino">
-            <option value="">Sin proyecto</option>
-            {datos.proyectos.map((p) => (
-              <option key={p.id} value={`p:${p.id}`}>
-                {p.nombre}
-              </option>
-            ))}
-            {datos.grupos.map((g) => (
-              <option key={g.id} value={`g:${g.id}`}>
-                Grupo «{g.nombre}» (un agente por submódulo)
-              </option>
-            ))}
-          </select>
+          {!proyectoFijo && datos && (
+            <select value={destino} onChange={(e) => setDestino(e.target.value)} aria-label="Destino">
+              <option value="">Sin proyecto</option>
+              {datos.proyectos.map((p) => (
+                <option key={p.id} value={`p:${p.id}`}>
+                  {p.nombre}
+                </option>
+              ))}
+              {datos.grupos.map((g) => (
+                <option key={g.id} value={`g:${g.id}`}>
+                  Grupo «{g.nombre}» (un agente por submódulo)
+                </option>
+              ))}
+            </select>
+          )}
           <div className="segmentado" role="group" aria-label="Modo">
             <button className={modo === 'chat' ? 'on' : ''} onClick={() => setModo('chat')}>
               Chat

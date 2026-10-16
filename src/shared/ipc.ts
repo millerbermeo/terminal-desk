@@ -106,7 +106,7 @@ export interface PayloadVentana {
   ventanaId: string // id de la pestaña de origen (clave del grupo)
   nombre: string
   modo: 'rejilla' | 'pestanas'
-  terminales: { id: string; titulo: string; ptyId: string; cwd?: string; proveedorId?: string; proyectoId?: string }[]
+  terminales: { id: string; titulo: string; ptyId: string; cwd?: string; proveedorId?: string; proyectoId?: string; vista?: 'terminal' | 'asistente' }[]
 }
 
 export type ResultadoRecurso = { ok: true; biblioteca: BibliotecaAgentes } | { ok: false; mensaje: string }

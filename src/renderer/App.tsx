@@ -3,8 +3,8 @@ import type { BibliotecaAgentes, DatosProyectos, Proyecto, ProveedorEstado } fro
 import { IconoCerrar, IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, IconoTerminal, IconoVentana } from './components/Iconos'
 import { Sidebar, type Vista } from './components/Sidebar'
 import { Asistente } from './components/Asistente'
-import { ModalSolicitud } from './components/ModalSolicitud'
-import { useAgente } from './agente/useAgente'
+import { ModalSolicitudGlobal } from './components/ModalSolicitud'
+import { escucharSolicitudes, useSolicitudes } from './agente/solicitudes'
 import { ConfigAgentes } from './components/ConfigAgentes'
 import { ConfigProveedores } from './components/ConfigProveedores'
 import { ConfigProyectos } from './components/ConfigProyectos'
@@ -19,6 +19,7 @@ export interface TerminalInfo {
   proveedorId?: string
   proyectoId?: string // proyecto de origen (para no duplicar al hacer clic de nuevo)
   ptyId?: string // proceso real (lo informa el panel al crearlo; también viene así de otra ventana)
+  vista?: 'terminal' | 'asistente' // qué se muestra en la celda; la terminal sigue viva debajo
 }
 
 /** Una pestaña de la app: normalmente un grupo de proyectos con sus terminales. */
@@ -65,7 +66,8 @@ export function App() {
   const [ventanas, setVentanas] = useState<Ventana[]>([])
   const [ventanaActiva, setVentanaActiva] = useState<string | null>(null)
   const [vista, setVista] = useState<Vista>('terminales')
-  const agente = useAgente() // vive aquí para no perder eventos al cambiar de pantalla
+  const solicitudes = useSolicitudes()
+  useEffect(() => escucharSolicitudes(), [])
   const [proveedores, setProveedores] = useState<ProveedorEstado[]>([])
   const [biblioteca, setBiblioteca] = useState<BibliotecaAgentes>({ recursos: [], activaciones: { proyectos: {}, grupos: {} } })
   const [porCerrar, setPorCerrar] = useState<string | null>(null)
@@ -122,6 +124,17 @@ export function App() {
       agregar(id, nombre, [nuevaTerminal(titulo, p.ruta, prov?.id, p.id)])
     },
     [agregar, claveDe, enfocar, ventanas]
+  )
+
+  // «Asistente integrado»: una celda del proyecto que arranca en la vista del asistente (su terminal queda viva debajo).
+  const abrirAsistente = useCallback(
+    (p: Proyecto) => {
+      const { id, nombre } = claveDe(p)
+      const ventana = ventanas.find((v) => v.id === id)
+      const titulo = tituloUnico(`${p.nombre} · Asistente`, ventana?.terminales ?? [])
+      agregar(id, nombre, [{ ...nuevaTerminal(titulo, p.ruta, undefined, p.id), vista: 'asistente' }])
+    },
+    [agregar, claveDe, ventanas]
   )
 
   // Un grupo: sin pestaña se abre con una terminal por proyecto; con pestaña se va a ella
@@ -216,7 +229,7 @@ export function App() {
           ventanaId: v.id,
           nombre: v.nombre,
           modo: v.modo,
-          terminales: terminales.map((t) => ({ id: t.id, titulo: t.titulo, ptyId: t.ptyId, cwd: t.cwd, proveedorId: t.proveedorId, proyectoId: t.proyectoId }))
+          terminales: terminales.map((t) => ({ id: t.id, titulo: t.titulo, ptyId: t.ptyId, cwd: t.cwd, proveedorId: t.proveedorId, proyectoId: t.proyectoId, vista: t.vista }))
         },
         pos
       )
@@ -288,12 +301,13 @@ export function App() {
         onAbrirConProveedor={abrirProyecto}
         vista={vista}
         onVista={setVista}
-        pendientesAsistente={agente.solicitudes.length}
+        pendientesAsistente={solicitudes.length}
+        onAbrirAsistente={abrirAsistente}
       />
       {vista === 'config' && <ConfigProyectos datos={datos} onDatos={setDatos} />}
       {vista === 'agentes' && <ConfigAgentes datos={datos} biblioteca={biblioteca} onBiblioteca={setBiblioteca} />}
       {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}
-      <Asistente datos={datos} agente={agente} visible={vista === 'asistente'} />
+      <Asistente datos={datos} visible={vista === 'asistente'} />
       {/* siempre montado (oculto en las pantallas de configuración) para no matar los procesos de las terminales */}
       <main className="principal" style={{ display: vista !== 'terminales' ? 'none' : 'flex' }}>
         <div className="ventanas" role="tablist" ref={barraPestanas}>
@@ -418,20 +432,13 @@ export function App() {
               onActivar={(t) => cambiar(v.id, (x) => (x.activa === t ? x : { ...x, activa: t }))}
               onCerrar={(t) => cerrarTerminal(v.id, t)}
               onPty={(t, pty) => alPty(v.id, t, pty)}
+              onVista={(t, vis) => cambiar(v.id, (x) => ({ ...x, terminales: x.terminales.map((y) => (y.id === t ? { ...y, vista: vis } : y)) }))}
             />
           </section>
         ))}
       </main>
 
-      {agente.solicitudes[0] && (
-        <ModalSolicitud
-          solicitud={agente.solicitudes[0]}
-          pendientes={agente.solicitudes.length}
-          onResponder={(aprobado, comentario, recordar) =>
-            agente.responder(agente.solicitudes[0]!, { aprobado, ...(comentario ? { comentario } : {}), ...(recordar ? { recordar: true } : {}) })
-          }
-        />
-      )}
+      <ModalSolicitudGlobal />
 
       {ventanaConfirmar && (
         <ModalConfirmar

@@ -16,6 +16,8 @@ interface Props {
   onVista: (v: Vista) => void
   /** Confirmaciones que el asistente está esperando (insignia en el acceso al asistente). */
   pendientesAsistente: number
+  /** Abre una celda del proyecto con el asistente integrado. */
+  onAbrirAsistente: (p: Proyecto) => void
 }
 
 export type Vista = 'terminales' | 'config' | 'proveedores' | 'agentes' | 'asistente'
@@ -26,7 +28,7 @@ interface MenuIA {
   left: number
 }
 
-export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente }: Props) {
+export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente, onAbrirAsistente }: Props) {
   const [cerrados, setCerrados] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<MenuIA | null>(null)
 
@@ -151,6 +153,16 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
       {menu && (
         <div className="menu-ia" style={{ top: menu.top, left: menu.left }} onMouseDown={(e) => e.stopPropagation()} role="menu">
           <div className="menu-ia-tit">Abrir «{menu.proyecto.nombre}» con</div>
+          <button
+            role="menuitem"
+            onClick={() => {
+              onAbrirAsistente(menu.proyecto)
+              setMenu(null)
+            }}
+          >
+            <IconoChispa />
+            <span>Asistente integrado</span>
+          </button>
           {proveedores.map((prov) => (
             <button
               key={prov.id}

@@ -416,3 +416,15 @@ textarea:focus { border-color: var(--acento); box-shadow: 0 0 0 3px rgba(122, 16
 .ev-asercion pre { margin: 0; flex: 1; }
 button.peligro-solido { background: #b4344d; border-color: #e0526c; color: #fff; }
 button.peligro-solido:hover:not(:disabled) { background: #cf4660; }
+
+/* ---- celdas con terminal y asistente ---- */
+.panel-vista { display: flex; gap: 2px; padding: 3px 6px; background: var(--bg-sidebar); border-bottom: 1px solid var(--borde); flex: none; }
+.panel-vista button { padding: 1px 9px; font-size: 11px; background: transparent; border-color: transparent; color: var(--texto-suave); border-radius: 5px; }
+.panel-vista button.on { background: var(--bg-hover); color: var(--texto); }
+.panel-asistente { flex: 1; min-height: 0; flex-direction: column; background: var(--bg); }
+.panel-asistente .ag-hilo { padding: 10px 12px; }
+.panel-asistente .ag-compositor { padding: 8px 12px 10px; }
+.panel-asistente .ag-entrada textarea { min-height: 0; }
+.panel-asistente .vacio { max-width: 280px; font-size: 12px; }
+.ag-chips .chip { max-width: 100%; }
+.panel-terminal { flex: 1; min-height: 0; flex-direction: column; }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Solicitud } from '../agente/useAgente'
+import { responderSolicitud, useSolicitudes, type Solicitud } from '../agente/solicitudes'
 
 interface Props {
   solicitud: Solicitud
@@ -35,7 +35,10 @@ export function ModalSolicitud({ solicitud: s, pendientes, onResponder }: Props)
             {s.destructivo ? '⚠ ' : ''}
             {TITULOS[s.clase]}
           </h3>
-          {pendientes > 1 && <span className="chip">{pendientes} pendientes</span>}
+          <span className="ag-chips">
+            {s.destino && <span className="chip" title="Proyecto que lo solicita">{s.destino}</span>}
+            {pendientes > 1 && <span className="chip">{pendientes} pendientes</span>}
+          </span>
         </div>
         {s.detalle && <p className={`ag-detalle${s.destructivo ? ' peligro' : ''}`}>{s.detalle}</p>}
         <pre className="ag-contenido">{s.contenido || '(vacío)'}</pre>
@@ -62,5 +65,21 @@ export function ModalSolicitud({ solicitud: s, pendientes, onResponder }: Props)
         </div>
       </div>
     </div>
+  )
+}
+
+/** Modal único para todas las celdas y pantallas: atiende la primera confirmación pendiente. */
+export function ModalSolicitudGlobal() {
+  const solicitudes = useSolicitudes()
+  const s = solicitudes[0]
+  if (!s) return null
+  return (
+    <ModalSolicitud
+      solicitud={s}
+      pendientes={solicitudes.length}
+      onResponder={(aprobado, comentario, recordar) =>
+        responderSolicitud(s, { aprobado, ...(comentario ? { comentario } : {}), ...(recordar ? { recordar: true } : {}) })
+      }
+    />
   )
 }
