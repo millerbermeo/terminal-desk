@@ -26,6 +26,8 @@ export interface OpcionesHarness {
   validar?: Validador
   /** Si se indica, cada agente y cada herramienta quedan registrados como spans de la traza de la ejecución. */
   trazador?: Trazador
+  /** Tokens máximos de toda la ejecución (agentes, subagentes y fases del flujo juntos); sin él, sin límite. */
+  presupuestoTokens?: number
   maxProfundidad?: number
   maxTokens?: number
 }
@@ -54,6 +56,8 @@ const MAX_PASOS = 25
 
 /** Punto único de ejecución: ensambla agente + LLM + herramientas + política + eventos. */
 export class Harness {
+  private gastado = 0
+
   constructor(private readonly o: OpcionesHarness) {}
 
   ejecutar(agente: Agente, p: PeticionEjecucion): Promise<ResultadoAgente> {
@@ -137,6 +141,10 @@ export class Harness {
             }
           : {}),
         ...(p.senal ? { senal: p.senal } : {}),
+        alUso: (u) => {
+          this.gastado += u.tokensEntrada + u.tokensSalida
+        },
+        agotado: () => this.o.presupuestoTokens !== undefined && this.gastado >= this.o.presupuestoTokens,
         alPaso: (numero) => emitir({ tipo: 'paso', numero }),
         alDelta: (delta) => emitir({ tipo: 'texto_delta', texto: delta }),
         alTexto: (texto) => emitir({ tipo: 'texto', texto }),

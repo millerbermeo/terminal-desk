@@ -439,3 +439,5 @@ button.peligro-solido:hover:not(:disabled) { background: #cf4660; }
 .ag-historial-abrir { flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; background: var(--bg-elevado); }
 .ag-historial-titulo { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ag-historial-meta { font-size: 11px; color: var(--texto-suave); }
+
+.segmentado button.on.aviso { background: rgba(224, 175, 104, 0.18); color: #e0af68; }

@@ -20,7 +20,7 @@ const recortar = (t: string): string => {
 }
 
 /** Eventos que aportan información propia (el resto ya queda reflejado en los spans de agente, llm y herramienta). */
-const EVENTOS_REGISTRADOS = new Set(['ruta', 'flujo_nodo', 'solicitud_humana', 'guardrail', 'worktree', 'contexto', 'a2a', 'flujo_fin'])
+const EVENTOS_REGISTRADOS = new Set(['ruta', 'flujo_nodo', 'solicitud_humana', 'guardrail', 'worktree', 'contexto', 'a2a', 'flujo_fin', 'aprobacion_automatica'])
 
 /**
  * Observabilidad: construye el árbol de spans de cada ejecución. El padre de cada span se propaga con

@@ -20,3 +20,20 @@ Reglas de seguridad:
   comando exacto (`node scripts/seed.js`).
 - Un binario con ruta (`./git`) no coincide con una regla del comando del PATH (`git`).
 - Los guardrails (credenciales, `.env`, `.git`) siguen activos por encima de cualquier regla.
+
+## Modos de autonomía
+
+Selector **Preguntar | Ediciones | Autónomo** en la cabecera del chat (se recuerda por proyecto; `SolicitudAgente.autonomia`). Los guardrails y las reglas de
+permisos valen en los tres modos, y **lo destructivo siempre pide confirmación**.
+
+| Modo | Escrituras de archivos | Comandos | Plan del Flujo | Presupuesto |
+|---|---|---|---|---|
+| **Preguntar** (por defecto) | confirma | confirma (salvo reglas) | lo apruebas tú | — |
+| **Ediciones** | pasan solas (dentro del proyecto, tras los guardrails) | confirma (salvo reglas) | lo apruebas tú | — |
+| **Autónomo** | pasan solas | solo `typecheck`, `lint` y `test` del proyecto (exactos) pasan solos; el resto confirma | se aprueba solo (evento `aprobacion_automatica`) | 300 000 tokens por ejecución, compartidos entre agentes, subagentes y fases |
+
+- Siguen pidiendo confirmación en **todos** los modos: acciones destructivas, comandos que no sean verificaciones ni estén permitidos por regla, herramientas MCP
+  y escrituras en la memoria. En el Flujo, la **confirmación final** del resultado también es siempre tuya.
+- Al agotarse el presupuesto, el agente se detiene (`limite_pasos` con «Presupuesto de tokens agotado»).
+- Activar «Autónomo» pide confirmación. Lo más seguro es usarlo con el Flujo aislado en una rama.
+- Cada turno ejecutado con menos confirmaciones lleva una etiqueta (autónomo / acepta ediciones).

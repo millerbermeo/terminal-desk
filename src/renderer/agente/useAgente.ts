@@ -17,6 +17,7 @@ export interface Turno {
   estado: EstadoTurno
   error?: string
   proyectoId?: string
+  autonomia?: 'preguntar' | 'ediciones' | 'autonomo'
 }
 
 export interface OpcionesEnvio {
@@ -151,7 +152,7 @@ export function useAgente(opciones: { clave?: string } = {}) {
       const raiz = modo === 'flujo' ? 'flujo' : modo === 'grupo' ? 'coordinador' : (solicitud.agenteId ?? 'asistente')
       actualizar((ts) => [
         ...ts,
-        { clave, prompt: solicitud.prompt, modo, destino, raiz, eventos: [], parcial: '', estado: 'en_curso', ...(solicitud.proyectoId ? { proyectoId: solicitud.proyectoId } : {}) }
+        { clave, prompt: solicitud.prompt, modo, destino, raiz, eventos: [], parcial: '', estado: 'en_curso', ...(solicitud.proyectoId ? { proyectoId: solicitud.proyectoId } : {}), ...(solicitud.autonomia && solicitud.autonomia !== 'preguntar' ? { autonomia: solicitud.autonomia } : {}) }
       ])
       enVuelo.current++
       try {

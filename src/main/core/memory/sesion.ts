@@ -20,7 +20,7 @@ const MAX_TEXTO_EVENTO = 20_000
 const MAX_TEXTO_HERRAMIENTA = 4_000
 const MAX_BYTES_TRANSCRIPCION = 1_500_000
 // Eventos que aportan algo al releer una conversación (sin deltas de streaming ni pasos internos).
-const EVENTOS_GUARDADOS = new Set(['ruta', 'flujo_nodo', 'texto', 'herramienta_inicio', 'herramienta_fin', 'a2a', 'guardrail', 'solicitud_humana', 'worktree', 'contexto', 'flujo_fin', 'fin'])
+const EVENTOS_GUARDADOS = new Set(['ruta', 'flujo_nodo', 'texto', 'herramienta_inicio', 'herramienta_fin', 'a2a', 'guardrail', 'solicitud_humana', 'worktree', 'contexto', 'flujo_fin', 'aprobacion_automatica', 'fin'])
 
 const recortar = (t: string, max: number): string => (t.length > max ? t.slice(0, max) + `… [+${t.length - max} caracteres]` : t)
 

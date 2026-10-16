@@ -12,6 +12,7 @@ export interface TurnoGuardado {
   estado: EstadoTurno
   error?: string
   proyectoId?: string
+  autonomia?: 'preguntar' | 'ediciones' | 'autonomo'
 }
 
 export interface SesionGuardada {

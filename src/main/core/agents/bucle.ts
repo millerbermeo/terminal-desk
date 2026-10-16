@@ -18,6 +18,10 @@ export interface ConfigBucle {
   alTexto?(texto: string): void
   /** Trozos de texto mientras el modelo escribe (streaming). */
   alDelta?(delta: string): void
+  /** Tokens de cada respuesta del modelo (para presupuestos compartidos entre agentes). */
+  alUso?(uso: Uso): void
+  /** Si devuelve true, el bucle se detiene tras la respuesta en curso (presupuesto de tokens agotado). */
+  agotado?(): boolean
   alHerramientaInicio?(llamada: LlamadaHerramienta): void
   alHerramientaFin?(llamada: LlamadaHerramienta, resultado: ResultadoHerramienta): void
 }
@@ -40,6 +44,7 @@ export async function ejecutarBucle(cfg: ConfigBucle, historial: Mensaje[]): Pro
 
   while (pasos < cfg.maxPasos) {
     if (cfg.senal?.aborted) return resultado('cancelado')
+    if (cfg.agotado?.()) return resultado('limite_pasos', 'Presupuesto de tokens agotado: el agente se detuvo')
     pasos++
     cfg.alPaso?.(pasos)
     let r
@@ -63,11 +68,18 @@ export async function ejecutarBucle(cfg: ConfigBucle, historial: Mensaje[]): Pro
     }
     uso.tokensEntrada += r.uso.tokensEntrada
     uso.tokensSalida += r.uso.tokensSalida
+    cfg.alUso?.(r.uso)
     mensajes.push({ rol: 'assistant', contenido: r.contenido })
     const t = textoDe(r.contenido)
     if (t) {
       texto = t
       cfg.alTexto?.(t)
+    }
+
+    if (cfg.agotado?.()) {
+      const t0 = textoDe(r.contenido)
+      if (t0) texto = t0
+      return resultado('limite_pasos', 'Presupuesto de tokens agotado: el agente se detuvo')
     }
 
     const usos = r.contenido.filter((b): b is Extract<BloqueContenido, { tipo: 'herramienta_uso' }> => b.tipo === 'herramienta_uso')

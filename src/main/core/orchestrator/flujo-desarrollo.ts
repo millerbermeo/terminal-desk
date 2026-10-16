@@ -31,6 +31,8 @@ export interface DepsFlujo {
   ejecutarVerificacion: EjecutorVerificacion
   /** Aprobador para todo lo que no sea la escritura ya autorizada por el plan (normalmente el humano). */
   aprobar?: Aprobador
+  /** Modo autónomo: el plan se aprueba solo (la confirmación del resultado sigue siendo del usuario). */
+  autoAprobarPlan?: boolean
   sistemaExtra?: string
   contexto?: CompresorContexto
   modelo?: string
@@ -82,6 +84,11 @@ export function crearFlujoDesarrollo(d: DepsFlujo, planificador: Agente, generad
       (d.verificaciones.length
         ? ` y se ejecutará para validar: ${d.verificaciones.map((v) => v.comando.join(' ')).join(' · ')}.`
         : '. No se detectaron scripts de typecheck, lint ni test.')
+    if (d.autoAprobarPlan) {
+      d.alEvento({ ejecucionId: d.ejecucionId, agente: 'flujo', profundidad: 0, tipo: 'aprobacion_automatica', clase: 'plan', motivo: 'modo autónomo' })
+      const { feedback: _descartado, ...sinComentario } = e
+      return { estado: sinComentario, siguiente: 'generacion' }
+    }
     const dec = await preguntar('plan', e.plan ?? '', detalle)
     if (dec.aprobado) {
       const { feedback: _descartado, ...sinComentario } = e

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { ipcMain } from 'electron'
 import type { InfoSuite, ResultadoEvals } from '@shared/core/evals'
 import type { TurnoGuardado } from '@shared/core/sesion'
-import type { NuevaRegla } from '@shared/core/permisos'
+import type { ModoAutonomia, NuevaRegla } from '@shared/core/permisos'
 import type { ResumenTraza, Traza } from '@shared/core/traza'
 import type { DecisionHumana, EstadoFlujo, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, Mensaje, ResultadoPublicar, SolicitudAgente } from '@shared/core/agente'
 import type { NuevaEntradaMemoria } from '@shared/core/memoria'
@@ -49,6 +49,9 @@ async function claveAnthropic(): Promise<string | undefined> {
   return (await leerProveedores()).find((p) => p.id === 'claude')?.env.ANTHROPIC_API_KEY
 }
 
+// Tokens máximos de una ejecución en modo autónomo (agentes, subagentes y fases del flujo juntos).
+const PRESUPUESTO_AUTONOMO = 300_000
+
 // Modelo barato para resumir la conversación al comprimir el contexto.
 const MODELO_RESUMEN = 'claude-haiku-5-5'
 
@@ -59,6 +62,7 @@ function sinUsoPendiente(mensajes: Mensaje[]): Mensaje[] {
 }
 
 interface Corrida {
+  autonomia?: ModoAutonomia
   aprobar?: Aprobador
   harness: Harness
   id: string
@@ -137,13 +141,18 @@ export class Nucleo {
       this.trazador.registrarEvento(e)
       entregar(e)
     }
-    const harness = new Harness({ llm, registro: this.registro, validar: this.validar, trazador: this.trazador, ...(this.aprobar ? { aprobar: this.aprobar } : {}) })
+    const autonomia: ModoAutonomia = sol.autonomia === 'ediciones' || sol.autonomia === 'autonomo' ? sol.autonomia : 'preguntar'
+    // En modo autónomo solo se ejecutan solas las verificaciones del propio proyecto (typecheck, lint, test).
+    const verificaciones = autonomia === 'autonomo' && proyecto ? (await detectarVerificaciones(proyecto.ruta)).map((v) => v.comando) : []
+    const harness = new Harness({ llm, registro: this.registro, validar: this.validar, trazador: this.trazador, ...(autonomia === 'autonomo' ? { presupuestoTokens: PRESUPUESTO_AUTONOMO } : {}), ...(this.aprobar ? { aprobar: this.aprobar } : {}) })
     // Human-in-the-loop: escrituras y ejecuciones esperan la confirmación del usuario (salvo un aprobador inyectado).
     const aprobarHumano = this.aprobar ?? crearAprobadorHumano({
         puerta: this.puerta,
         ejecucionId: id,
         alEvento,
         senal: ctl.signal,
+        autonomia,
+        verificaciones,
         reglas: () => this.permisos.efectivas(sol.proyectoId),
         guardarRegla: async (r) => void (await this.permisos.agregar(r, sol.proyectoId ?? 'global'))
       })
@@ -155,7 +164,7 @@ export class Nucleo {
 
     let tarea: Promise<unknown>
     if (sol.modo === 'flujo') {
-      tarea = this.correrFlujo(sol, proyecto!, { harness, id, ctl, sistemaExtra, contexto, alEvento, aprobar: aprobarHumano })
+      tarea = this.correrFlujo(sol, proyecto!, { harness, id, ctl, sistemaExtra, contexto, alEvento, aprobar: aprobarHumano, autonomia })
     } else if (sol.grupoId) {
       tarea = this.correrGrupo(sol, miembros, { harness, id, ctl, alEvento })
     } else {
@@ -217,6 +226,7 @@ export class Nucleo {
           verificaciones: await detectarVerificaciones(proyecto.ruta),
           ejecutarVerificacion,
           ...(c.aprobar ? { aprobar: c.aprobar } : {}),
+          ...(c.autonomia === 'autonomo' ? { autoAprobarPlan: true } : {}),
           ...(c.sistemaExtra ? { sistemaExtra: c.sistemaExtra } : {}),
           contexto: c.contexto,
           modelo: this.modeloPara(sol),

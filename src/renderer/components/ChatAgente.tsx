@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EventoAgente } from '@shared/core/agente'
+import type { ModoAutonomia } from '@shared/core/permisos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { Agente, Turno } from '../agente/useAgente'
 import { HistorialAgente } from './HistorialAgente'
@@ -83,6 +84,8 @@ function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
       )
     case 'contexto':
       return <div className="ag-nota">Contexto comprimido ({e.estrategia}): {e.tokensAntes} → {e.tokensDespues} tokens</div>
+    case 'aprobacion_automatica':
+      return <div className="ag-nota">✓ {e.clase === 'plan' ? 'Plan' : 'Acción'} aprobado automáticamente ({e.motivo})</div>
     case 'flujo_fin':
       return <div className={`ag-final ${e.estado === 'completado' ? 'ok' : 'mal'}`}>Flujo {e.estado}: {e.resumen}</div>
     case 'fin':
@@ -102,6 +105,7 @@ function TurnoVista({ t, onCancelar }: { t: Turno; onCancelar: () => void }) {
       <div className="ag-usuario">
         <div className="ag-quien">
           Tú · {t.destino} {t.modo !== 'chat' && <span className="chip">{t.modo === 'flujo' ? 'flujo de desarrollo' : 'grupo (A2A)'}</span>}
+          {t.autonomia && <span className="chip chip-aviso" title="Se ejecutó con menos confirmaciones">{t.autonomia === 'autonomo' ? 'autónomo' : 'acepta ediciones'}</span>}
         </div>
         <div className="ag-texto">{t.prompt}</div>
       </div>
@@ -133,6 +137,24 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [aislado, setAislado] = useState(true)
   const [texto, setTexto] = useState('')
   const [verHistorial, setVerHistorial] = useState(false)
+  const claveAutonomia = `asistente:autonomia:${proyectoFijo?.id ?? 'global'}`
+  const [autonomia, setAutonomiaEstado] = useState<ModoAutonomia>(() => {
+    try {
+      const v = localStorage.getItem(claveAutonomia)
+      return v === 'ediciones' || v === 'autonomo' ? v : 'preguntar'
+    } catch {
+      return 'preguntar'
+    }
+  })
+  const cambiarAutonomia = (nuevo: ModoAutonomia): void => {
+    if (nuevo === 'autonomo' && !window.confirm('Modo autónomo: el agente escribirá archivos, ejecutará typecheck, lint y pruebas, y (en el Flujo) aprobará el plan sin preguntarte, con un límite de tokens.\n\nSeguirá pidiendo confirmación para lo destructivo (borrar, git push…), para comandos desconocidos y para aceptar el resultado del Flujo.\n\nLo más seguro es usarlo con el Flujo aislado en una rama. ¿Activarlo?')) return
+    setAutonomiaEstado(nuevo)
+    try {
+      localStorage.setItem(claveAutonomia, nuevo)
+    } catch {
+      /* sin almacenamiento: no se recordará */
+    }
+  }
   const fin = useRef<HTMLDivElement>(null)
 
   const grupoSeleccionado = !proyectoFijo && destino.startsWith('g:')
@@ -160,6 +182,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         prompt,
         ...(proyecto ? { proyectoId: proyecto.id } : {}),
         ...(grupoSeleccionado ? { grupoId: destino.slice(2) } : {}),
+        ...(autonomia !== 'preguntar' ? { autonomia } : {}),
         ...(modo === 'flujo' ? { modo: 'flujo' as const, aislado } : {})
       }
     })
@@ -216,6 +239,17 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             </button>
             <button className={modo === 'flujo' ? 'on' : ''} disabled={!proyecto} onClick={() => setModo('flujo')} title={proyecto ? 'Plan → aprobación → generación → verificación → confirmación' : 'Elige un proyecto'}>
               Flujo
+            </button>
+          </div>
+          <div className="segmentado" role="group" aria-label="Autonomía">
+            <button className={autonomia === 'preguntar' ? 'on' : ''} onClick={() => cambiarAutonomia('preguntar')} title="Pide confirmación para cada escritura y cada comando (salvo los que permitan tus reglas)">
+              Preguntar
+            </button>
+            <button className={autonomia === 'ediciones' ? 'on' : ''} onClick={() => cambiarAutonomia('ediciones')} title="Los cambios en archivos del proyecto pasan solos; los comandos siguen preguntando">
+              Ediciones
+            </button>
+            <button className={autonomia === 'autonomo' ? 'on aviso' : ''} onClick={() => cambiarAutonomia('autonomo')} title="Edita, ejecuta typecheck/lint/test y aprueba el plan solo, con límite de tokens. Lo destructivo siempre pregunta.">
+              Autónomo
             </button>
           </div>
           {modo === 'flujo' && (

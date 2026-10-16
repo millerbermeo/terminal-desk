@@ -1,4 +1,5 @@
 import type { LlamadaHerramienta, ResultadoHerramienta } from './herramientas'
+import type { ModoAutonomia } from './permisos'
 
 export type BloqueContenido =
   | { tipo: 'texto'; texto: string }
@@ -42,6 +43,7 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
   | { tipo: 'guardrail'; herramienta: string; motivo: string }
   | { tipo: 'worktree'; accion: AccionWorktree; rama: string; ruta: string; detalle?: string }
   | { tipo: 'flujo_fin'; estado: EstadoFlujo; resumen: string }
+  | { tipo: 'aprobacion_automatica'; clase: ClaseSolicitud; motivo: string }
   | { tipo: 'a2a'; de: string; a: string; fase: 'envio' | 'respuesta'; texto: string }
 )
 
@@ -79,6 +81,7 @@ export interface SolicitudAgente {
   prompt: string
   proyectoId?: string
   agenteId?: string // por defecto, el agente raíz
+  autonomia?: ModoAutonomia // por defecto, `preguntar`
   aislado?: boolean // solo flujo: trabaja en un git worktree propio (por defecto sí); false = en el directorio del proyecto
   modo?: 'chat' | 'flujo' // flujo = planificación -> aprobación -> generación -> pruebas -> confirmación (exige proyectoId)
   grupoId?: string // consulta a todos los submódulos del grupo con agentes que se comunican entre sí (A2A)
