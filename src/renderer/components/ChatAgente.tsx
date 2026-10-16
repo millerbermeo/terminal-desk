@@ -478,7 +478,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           <textarea
             rows={3}
             value={texto}
-            placeholder={modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo…  (Ctrl+Enter envía · «/» comandos · pega o arrastra archivos)'}
+            placeholder={pendientes.length > 0 ? 'Mensaje opcional: pulsa Enter para enviar solo los archivos…' : modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo…  (Ctrl+Enter envía · «/» comandos · pega o arrastra archivos)'}
             onPaste={(e) => {
               const archivos = [...e.clipboardData.files]
               if (archivos.length) {
@@ -503,6 +503,11 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
                 }
                 if (e.key === 'Escape') return setSugOculta(true)
               }
+              // Con archivos adjuntos el mensaje es opcional: Enter (sin texto) los envía solos.
+              if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !texto.trim() && pendientes.length > 0 && sugerencias.length === 0) {
+                e.preventDefault()
+                return enviar()
+              }
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault()
                 enviar()
@@ -510,7 +515,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             }}
           />
           <button className="primario" onClick={enviar} disabled={(!texto.trim() && pendientes.length === 0) || agente.enCurso || subiendo > 0}>
-            {actual?.estado === 'en_curso' ? 'Trabajando…' : 'Enviar'}
+            {actual?.estado === 'en_curso' ? 'Trabajando…' : !texto.trim() && pendientes.length > 0 ? 'Enviar archivos' : 'Enviar'}
           </button>
         </div>
       </div>

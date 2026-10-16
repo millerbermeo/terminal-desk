@@ -43,6 +43,7 @@ y quedan en el mensaje y en el historial (las miniaturas se recuperan al retomar
 | PDF | cualquier PDF sin cifrar | 20 MB, 100 páginas |
 | Texto y código | `.md`, `.txt`, `.csv`, `.json`, `.ts`, `.py`… (lista en `shared/core/adjuntos.ts`) | 200 KB, UTF-8, sin binarios |
 
+- **El mensaje es opcional**: con archivos adjuntos y la caja vacía, el botón pasa a «Enviar archivos» y **Enter** (o clic) los envía solos; el agente recibe «Revisa los archivos adjuntos.».
 - Máximo **5 archivos por mensaje**. Se valida por el **contenido** (firma de bytes), no por la extensión. Un PDF cifrado, un texto con credenciales o un binario se rechazan con un motivo claro.
 - Los archivos se guardan en `~/.centro-proyectos/adjuntos/` (0600) y la conversación solo guarda su id (nunca base64). Se borran a los 30 días (o al pasar de 500 MB, los más antiguos); un adjunto borrado se sustituye en el contexto por un aviso.
 - Imágenes y PDF viajan como bloques nativos de la API; el texto, en línea. En el Flujo los ven el planificador y el generador; en grupos, el coordinador.
