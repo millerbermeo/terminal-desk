@@ -8,7 +8,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "package": "npm run build && electron-builder",
+    "package": "pnpm build && electron-builder",
     "postinstall": "electron-rebuild -f -w node-pty"
   },
   "dependencies": {

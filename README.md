@@ -11,13 +11,13 @@ App de escritorio (Electron + Vite + React + TypeScript) para gestionar proyecto
 ## Instalar
 
 ```bash
-npm install
+pnpm install
 ```
 
-`postinstall` ejecuta `electron-rebuild -f -w node-pty`. Si tu npm bloquea scripts de instalación (npm 12+), ejecuta a mano:
+Usa pnpm (`corepack enable` o `npm i -g pnpm`). `pnpm-workspace.yaml` autoriza el build de `node-pty` (`allowBuilds`), y `postinstall` ejecuta `electron-rebuild -f -w node-pty`. Si falla, ejecuta a mano:
 
 ```bash
-npx electron-rebuild -f -w node-pty
+pnpm exec electron-rebuild -f -w node-pty
 ```
 
 Si cambias la versión de Electron, repite el rebuild.
@@ -25,15 +25,15 @@ Si cambias la versión de Electron, repite el rebuild.
 ## Desarrollo
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
-Otros: `npm run typecheck`, `npm run build`.
+Otros: `pnpm typecheck`, `pnpm build`.
 
 ## Empaquetar
 
 ```bash
-npm run package
+pnpm package
 ```
 
 Genera instaladores en `dist/` (AppImage/deb en Linux, dmg en macOS, nsis en Windows) con `electron-builder`. `node-pty` se desempaqueta del asar.
@@ -60,7 +60,7 @@ Se leen de `~/.centro-proyectos/proyectos.json` (se crea con datos de ejemplo si
 
 Main activa `--ozone-platform-hint=auto` (Electron elige Wayland o X11). Notas:
 
-- Portapapeles: usa `navigator.clipboard`; en Wayland puede requerir que la ventana tenga foco. Si falla, probar `--ozone-platform=x11` (`npx electron-vite dev -- --ozone-platform=x11`).
+- Portapapeles: usa `navigator.clipboard`; en Wayland puede requerir que la ventana tenga foco. Si falla, probar `--ozone-platform=x11` (`pnpm dev -- --ozone-platform=x11`).
 - Escalado fraccional (GNOME): texto borroso posible en XWayland; en Wayland nativo suele ir bien. Si se ve borroso, probar `--enable-features=WaylandFractionalScaleV1`.
 - El renderer WebGL cae a DOM automáticamente si falla la GPU.
 
