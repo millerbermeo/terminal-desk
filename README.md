@@ -64,6 +64,10 @@ Un proveedor es un CLI que se ejecuta dentro de una terminal (Claude Code, Codex
 - «No detectado» = el ejecutable no está en el PATH de la app; puede funcionar igual si tu shell lo carga.
 - `env` se guarda en texto plano: si ya iniciaste sesión en el CLI no hace falta poner claves.
 
+## Pestañas por grupo
+
+Cada grupo se abre en su propia pestaña (arriba) con sus terminales; al abrir otro grupo se crea otra pestaña y las anteriores siguen vivas en segundo plano, con sus procesos. ▶ en un grupo abre una terminal por proyecto (si ya tiene pestaña, va a ella); un clic en un proyecto lo abre en la pestaña de su grupo; «Nueva terminal» la añade a la pestaña activa; «+» crea una pestaña suelta. Cerrar una pestaña (× o clic central) pide confirmación y cierra sus procesos. Cada pestaña tiene su propio layout.
+
 ## Rejilla de terminales
 
 Layout en árbol de divisiones (como tmux/VSCode): siempre cubre todo el área, sin huecos. Arrastra un divisor para mover esa línea completa (cada terminal conserva como mínimo 260×150 px); doble clic en un divisor lo centra. Arrastra la barra de título sobre otra terminal para intercambiarlas. Al cerrar una, su vecino ocupa el sitio; al abrir una, se parte la más grande. «Reorganizar» vuelve a la cuadrícula automática.

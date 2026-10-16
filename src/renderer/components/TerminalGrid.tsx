@@ -52,7 +52,8 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPers
 
   const medidas = (): Medidas => {
     const r = contenedor.current?.getBoundingClientRect()
-    return { ancho: r?.width ?? 1000, alto: r?.height ?? 700, minAncho: MIN_ANCHO, minAlto: MIN_ALTO }
+    // oculto (otra pestaña) mide 0: se usan medidas por defecto
+    return { ancho: r?.width || 1000, alto: r?.height || 700, minAncho: MIN_ANCHO, minAlto: MIN_ALTO }
   }
 
   // Layout efectivo: se calcula en el render (sin parpadeo) y se guarda en el efecto.

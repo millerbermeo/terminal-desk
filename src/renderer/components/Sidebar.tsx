@@ -5,7 +5,9 @@ import { IconoCarpeta, IconoAbrirTodas, IconoChevron, IconoChispa, IconoEngranaj
 interface Props {
   datos: DatosProyectos
   onAbrir: (p: Proyecto) => void
-  onAbrirVarios: (p: Proyecto[]) => void
+  /** clave de grupo, nombre y proyectos: abre (o enfoca) la pestaña de ese grupo */
+  onAbrirGrupo: (clave: string, nombre: string, p: Proyecto[]) => void
+  abiertos: Set<string> // claves de grupo con pestaña abierta
   onNueva: () => void
   proveedores: ProveedorEstado[]
   onAbrirConProveedor: (p: Proyecto, prov: ProveedorEstado) => void
@@ -21,7 +23,7 @@ interface MenuIA {
   left: number
 }
 
-export function Sidebar({ datos, onAbrir, onAbrirVarios, onNueva, proveedores, onAbrirConProveedor, vista, onVista }: Props) {
+export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, onNueva, proveedores, onAbrirConProveedor, vista, onVista }: Props) {
   const [cerrados, setCerrados] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<MenuIA | null>(null)
 
@@ -55,14 +57,15 @@ export function Sidebar({ datos, onAbrir, onAbrirVarios, onNueva, proveedores, o
         <button className="seccion-toggle" onClick={() => alternar(id)} aria-expanded={!cerrados.has(id)}>
           <span className="chevron"><IconoChevron /></span>
           <span className="seccion-nombre">{nombre}</span>
+          {abiertos.has(id) && <span className="punto-abierto" title="Pestaña abierta" />}
           <span className="contador">{proyectos.length}</span>
         </button>
         <button
           className="icono abrir-todas"
           disabled={proyectos.length === 0}
-          title={`Abrir ${proyectos.length} terminal${proyectos.length === 1 ? '' : 'es'} (una por proyecto)`}
+          title={abiertos.has(id) ? 'Ir a la pestaña de este grupo' : `Abrir ${proyectos.length} terminal${proyectos.length === 1 ? '' : 'es'} en una pestaña nueva (una por proyecto)`}
           aria-label={`Abrir una terminal por cada proyecto de ${nombre}`}
-          onClick={() => onAbrirVarios(proyectos)}
+          onClick={() => onAbrirGrupo(id, nombre, proyectos)}
         >
           <IconoAbrirTodas />
         </button>

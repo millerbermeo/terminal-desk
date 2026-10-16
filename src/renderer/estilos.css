@@ -238,3 +238,18 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
 }
+
+/* pestañas de la app (una por grupo) */
+.ventanas { display: flex; align-items: flex-end; gap: 2px; padding: 8px 10px 0; background: var(--bg-sidebar); border-bottom: 1px solid var(--borde); overflow-x: auto; flex: none; }
+.ventana-tab { display: flex; align-items: center; gap: 8px; max-width: 220px; padding: 7px 8px 7px 12px; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; color: var(--texto-suave); cursor: pointer; position: relative; flex: none; animation: entrar-pestana var(--medio) var(--ease) both; transition: background var(--rapido), color var(--rapido); user-select: none; }
+.ventana-tab:hover { background: var(--bg-elevado); color: var(--texto); }
+.ventana-tab.activa { background: var(--bg); color: var(--texto); border-color: var(--borde); margin-bottom: -1px; padding-bottom: 8px; }
+.ventana-tab.activa::after { content: ''; position: absolute; left: 10px; right: 10px; top: -1px; height: 2px; background: var(--acento); border-radius: 2px; }
+.ventana-tab:focus-visible { outline: 2px solid var(--acento); outline-offset: -2px; }
+.ventana-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ventana-tab .cerrar { opacity: 0; }
+.ventana-tab:hover .cerrar, .ventana-tab.activa .cerrar, .ventana-tab .cerrar:focus-visible { opacity: 1; }
+.nueva-pestana { margin-bottom: 4px; flex: none; }
+.ventana { flex: 1; min-height: 0; flex-direction: column; background: var(--bg); animation: aparecer var(--medio) var(--ease) both; }
+.vacio-global { flex: 1; }
+.punto-abierto { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px rgba(158, 206, 106, 0.7); }
