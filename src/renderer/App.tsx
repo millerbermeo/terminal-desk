@@ -31,6 +31,14 @@ export function App() {
     setVista('terminales')
   }, [])
 
+  const abrirVarios = useCallback((proyectos: Proyecto[]) => {
+    if (proyectos.length === 0) return
+    const nuevas = proyectos.map((p) => ({ id: `t${++contador}`, titulo: p.nombre, cwd: p.ruta }))
+    setTerminales((ts) => [...ts, ...nuevas])
+    setActiva(nuevas[0].id)
+    setVista('terminales')
+  }, [])
+
   const cerrar = useCallback((id: string) => {
     setTerminales((ts) => {
       const resto = ts.filter((t) => t.id !== id)
@@ -41,7 +49,8 @@ export function App() {
 
   return (
     <div className="app">
-      <Sidebar datos={datos} onAbrir={(p: Proyecto) => abrir(p.nombre, p.ruta)} onNueva={() => abrir('Terminal')}
+      <Sidebar datos={datos} onAbrir={(p: Proyecto) => abrir(p.nombre, p.ruta)} onAbrirVarios={abrirVarios}
+        onNueva={() => abrir('Terminal')}
         onConfig={() => setVista(vista === 'config' ? 'terminales' : 'config')}
         configActiva={vista === 'config'}
       />

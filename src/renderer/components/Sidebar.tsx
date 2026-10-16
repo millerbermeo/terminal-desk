@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import type { DatosProyectos, Proyecto } from '@shared/modelos'
-import { IconoCarpeta, IconoChevron, IconoEngranaje, IconoMas } from './Iconos'
+import { IconoCarpeta, IconoAbrirTodas, IconoChevron, IconoEngranaje, IconoMas } from './Iconos'
 
 interface Props {
   datos: DatosProyectos
   onAbrir: (p: Proyecto) => void
+  onAbrirVarios: (p: Proyecto[]) => void
   onNueva: () => void
   onConfig: () => void
   configActiva: boolean
 }
 
-export function Sidebar({ datos, onAbrir, onNueva, onConfig, configActiva }: Props) {
+export function Sidebar({ datos, onAbrir, onAbrirVarios, onNueva, onConfig, configActiva }: Props) {
   const [cerrados, setCerrados] = useState<Set<string>>(new Set())
   const sinGrupo = datos.proyectos.filter((p) => !p.grupo || !datos.grupos.some((g) => g.id === p.grupo))
 
@@ -23,11 +24,22 @@ export function Sidebar({ datos, onAbrir, onNueva, onConfig, configActiva }: Pro
 
   const seccion = (id: string, nombre: string, proyectos: Proyecto[]) => (
     <section key={id} className={cerrados.has(id) ? 'cerrada' : ''}>
-      <button className="seccion-cab" onClick={() => alternar(id)} aria-expanded={!cerrados.has(id)}>
-        <span className="chevron"><IconoChevron /></span>
-        <span className="seccion-nombre">{nombre}</span>
-        <span className="contador">{proyectos.length}</span>
-      </button>
+      <div className="seccion-cab">
+        <button className="seccion-toggle" onClick={() => alternar(id)} aria-expanded={!cerrados.has(id)}>
+          <span className="chevron"><IconoChevron /></span>
+          <span className="seccion-nombre">{nombre}</span>
+          <span className="contador">{proyectos.length}</span>
+        </button>
+        <button
+          className="icono abrir-todas"
+          disabled={proyectos.length === 0}
+          title={`Abrir ${proyectos.length} terminal${proyectos.length === 1 ? '' : 'es'} (una por proyecto)`}
+          aria-label={`Abrir una terminal por cada proyecto de ${nombre}`}
+          onClick={() => onAbrirVarios(proyectos)}
+        >
+          <IconoAbrirTodas />
+        </button>
+      </div>
       <div className="seccion-cuerpo">
         <ul>
           {proyectos.map((p) => (

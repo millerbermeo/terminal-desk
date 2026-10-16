@@ -41,3 +41,6 @@ export const IconoChevron = () => (
 export const IconoBasura = () => (
   <Icono width={14} height={14}><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" /></Icono>
 )
+export const IconoAbrirTodas = () => (
+  <Icono width={14} height={14}><path d="m5 4 14 8-14 8z" /></Icono>
+)
