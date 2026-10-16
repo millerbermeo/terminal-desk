@@ -172,11 +172,15 @@ input:focus, select:focus { border-color: var(--acento); box-shadow: 0 0 0 3px r
 .spinner { width: 12px; height: 12px; border: 2px solid var(--borde-fuerte); border-top-color: var(--acento); border-radius: 50%; animation: girar 700ms linear infinite; }
 
 /* animaciones */
+.modal-fondo.saliendo { animation: fondo-salir 200ms ease both; pointer-events: none; }
+.modal-fondo.saliendo .modal { animation: modal-salir 200ms var(--ease) both; }
 @keyframes aparecer { from { opacity: 0; } to { opacity: 1; } }
 @keyframes subir { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes entrar-panel { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
 @keyframes entrar-pestana { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes modal-entrar { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes modal-salir { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(14px) scale(0.97); } }
+@keyframes fondo-salir { from { opacity: 1; } to { opacity: 0; } }
 @keyframes girar { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) {

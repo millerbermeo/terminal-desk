@@ -55,10 +55,7 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
         <ModalAgregar
           datos={datos}
           onCerrar={() => setModal(false)}
-          onGuardado={(d) => {
-            onDatos(d)
-            setModal(false)
-          }}
+          onGuardado={onDatos}
         />
       )}
     </div>

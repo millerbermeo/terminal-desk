@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { IconoCerrar, IconoCheck, IconoMas } from './Iconos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { ErrorProyecto, ValidacionRuta } from '@shared/ipc'
@@ -29,19 +29,27 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
   const [filas, setFilas] = useState<Fila[]>([filaVacia()])
   const [errores, setErrores] = useState<ErrorProyecto[]>([])
   const [guardando, setGuardando] = useState(false)
+  const [cerrando, setCerrando] = useState(false)
   const temporizadores = useRef(new Map<number, number>())
+
+  // animación de salida: se desmonta cuando termina
+  const salir = useCallback((): void => {
+    setCerrando(true)
+    window.setTimeout(onCerrar, 200)
+  }, [onCerrar])
 
   useEffect(() => {
     const tecla = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onCerrar()
+      if (e.key === 'Escape') salir()
     }
     window.addEventListener('keydown', tecla)
+    return () => window.removeEventListener('keydown', tecla)
+  }, [salir])
+
+  useEffect(() => {
     const temps = temporizadores.current
-    return () => {
-      window.removeEventListener('keydown', tecla)
-      temps.forEach((t) => clearTimeout(t))
-    }
-  }, [onCerrar])
+    return () => temps.forEach((t) => clearTimeout(t))
+  }, [])
 
   const cambiarRuta = (i: number, ruta: string): void => {
     setErrores([])
@@ -99,6 +107,7 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
       return
     }
     onGuardado(res.datos)
+    salir()
   }
 
   const estado = (f: Fila, i: number) => {
@@ -110,7 +119,7 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
   }
 
   return (
-    <div className="modal-fondo" onMouseDown={(e) => e.target === e.currentTarget && onCerrar()}>
+    <div className={`modal-fondo${cerrando ? ' saliendo' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && salir()}>
       <form
         className="modal"
         role="dialog"
@@ -123,7 +132,7 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
       >
         <div className="modal-cab">
           <h3>Agregar proyectos</h3>
-          <button type="button" className="icono" onClick={onCerrar} title="Cerrar (Esc)">
+          <button type="button" className="icono" onClick={salir} title="Cerrar (Esc)">
             <IconoCerrar />
           </button>
         </div>
@@ -181,7 +190,7 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
           <button type="submit" className="primario" disabled={!todoValido || guardando}>
             Guardar
           </button>
-          <button type="button" onClick={onCerrar}>
+          <button type="button" onClick={salir}>
             Cancelar
           </button>
         </div>
