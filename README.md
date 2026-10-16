@@ -66,7 +66,7 @@ Un proveedor es un CLI que se ejecuta dentro de una terminal (Claude Code, Codex
 
 ## Rejilla de terminales
 
-Mosaico sin huecos: cada terminal tiene su propio tamaño. Arrastra bordes/esquinas para redimensionar (los vecinos se encogen hasta 260×150 px y luego se desplazan), arrastra la barra de título sobre otra terminal para intercambiarlas. Al cerrar una, un vecino ocupa su sitio; al abrir una, se parte la más grande. «Reorganizar» vuelve a la cuadrícula automática.
+Layout en árbol de divisiones (como tmux/VSCode): siempre cubre todo el área, sin huecos. Arrastra un divisor para mover esa línea completa (cada terminal conserva como mínimo 260×150 px); doble clic en un divisor lo centra. Arrastra la barra de título sobre otra terminal para intercambiarlas. Al cerrar una, su vecino ocupa el sitio; al abrir una, se parte la más grande. «Reorganizar» vuelve a la cuadrícula automática.
 
 ## Atajos
 
