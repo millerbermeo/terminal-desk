@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, webContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import icono from '../../resources/icon.png?asset'
 import type { Proveedor, Recurso } from '@shared/modelos'
 import { Canales, type DestinoActivacion, type OpcionesTerminal, type PayloadVentana, type ResultadoEliminarGrupo, type SolicitudAgregar } from '@shared/ipc'
 import { registrarIpcArchivos } from './archivos-ipc'
@@ -13,6 +14,9 @@ import { agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, valid
 
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto')
+app.setName('ODESK AI')
+// Linux: enlaza la ventana con odesk-ai.desktop (nombre e icono en el dock/menú de aplicaciones)
+app.setDesktopName('odesk-ai.desktop')
 
 let principal: BrowserWindow | null = null
 
@@ -52,7 +56,8 @@ function crearVentana(opciones: { token?: string; x?: number; y?: number; titulo
     width: esPrincipal ? 1280 : 1000,
     height: esPrincipal ? 800 : 700,
     ...(opciones.x !== undefined && opciones.y !== undefined ? { x: opciones.x, y: opciones.y } : {}),
-    title: opciones.titulo ?? 'Centro de Proyectos',
+    title: opciones.titulo ?? 'ODESK AI',
+    icon: icono,
     backgroundColor: '#0f1115',
     autoHideMenuBar: true,
     webPreferences: {
@@ -129,7 +134,7 @@ function registrarIpc(): void {
     pendientes.set(token, payload)
     crearVentana({
       token,
-      titulo: `${payload.nombre} · Centro de Proyectos`,
+      titulo: `${payload.nombre} · ODESK AI`,
       ...(pos ? { x: Math.round(pos.x - 120), y: Math.round(pos.y - 20) } : {})
     })
   })

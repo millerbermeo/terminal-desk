@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
+import logo from '../assets/logo.png'
 import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoMas } from './Iconos'
 
 interface Props {
@@ -117,8 +118,8 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
   return (
     <aside className="sidebar">
       <header className="marca">
-        <div className="logo">CP</div>
-        <h1>Centro de Proyectos</h1>
+        <img className="logo" src={logo} alt="ODESK AI" />
+        <h1>ODESK AI</h1>
       </header>
       <div className="acciones">
         <button className="btn-nueva" onClick={onNueva}>

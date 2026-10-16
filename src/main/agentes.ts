@@ -167,7 +167,7 @@ async function construirPlugin(proyectoId: string): Promise<string | null> {
   const archivos: Record<string, string> = {
     '.claude-plugin/plugin.json':
       JSON.stringify(
-        { name: 'centro', version: '1.0.0', description: `Agentes y skills de Centro de Proyectos para ${proyecto.nombre}`, author: { name: 'Centro de Proyectos' } },
+        { name: 'centro', version: '1.0.0', description: `Agentes y skills de ODESK AI para ${proyecto.nombre}`, author: { name: 'ODESK AI' } },
         null,
         2
       ) + '\n'

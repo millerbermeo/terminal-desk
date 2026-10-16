@@ -1,16 +1,20 @@
 appId: dev.centro-proyectos.app
-productName: Centro de Proyectos
+productName: ODESK AI
 directories:
   output: dist
+  buildResources: resources
 files:
   - out/**
+  - resources/icon.png
   - package.json
 asarUnpack:
   - node_modules/node-pty/**
 linux:
+  icon: icon.png
   target: [AppImage, deb]
   category: Development
 mac:
   target: dmg
 win:
+  icon: icon.ico
   target: nsis

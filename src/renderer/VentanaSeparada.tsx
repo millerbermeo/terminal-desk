@@ -27,7 +27,7 @@ export function VentanaSeparada({ token }: { token: string }) {
       setModo(p.modo)
       setTerminales(p.terminales)
       setActiva(p.terminales[0]?.id ?? null)
-      document.title = `${p.nombre} · Centro de Proyectos`
+      document.title = `${p.nombre} · ODESK AI`
     })
   }, [token])
 

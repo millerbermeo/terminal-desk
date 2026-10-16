@@ -70,7 +70,7 @@ input:focus, select:focus { border-color: var(--acento); box-shadow: 0 0 0 3px r
 /* sidebar */
 .sidebar { width: 248px; flex: none; display: flex; flex-direction: column; background: var(--bg-sidebar); border-right: 1px solid var(--borde); }
 .marca { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px; }
-.logo { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-weight: 700; font-size: 11px; letter-spacing: 0.5px; color: #fff; background: linear-gradient(135deg, #7aa2f7, #bb9af7); box-shadow: 0 2px 10px rgba(122, 162, 247, 0.35); }
+.logo { width: 28px; height: 28px; border-radius: 8px; flex: none; object-fit: cover; box-shadow: 0 2px 10px rgba(122, 162, 247, 0.35); }
 .marca h1 { font-size: 13px; font-weight: 600; margin: 0; letter-spacing: 0.2px; }
 .acciones { padding: 4px 12px 10px; }
 .btn-nueva { width: 100%; padding: 8px 10px; background: var(--acento-fuerte); border-color: var(--acento); color: #fff; font-weight: 500; }
