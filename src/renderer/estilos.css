@@ -441,3 +441,13 @@ button.peligro-solido:hover:not(:disabled) { background: #cf4660; }
 .ag-historial-meta { font-size: 11px; color: var(--texto-suave); }
 
 .segmentado button.on.aviso { background: rgba(224, 175, 104, 0.18); color: #e0af68; }
+
+.gestion { width: min(860px, 100%); max-height: 100%; }
+.gestion-cuerpo { overflow-y: auto; min-height: 0; padding-right: 4px; }
+.ag-entrada { position: relative; }
+.ag-sugerencias { position: absolute; left: 0; right: 108px; bottom: calc(100% + 4px); max-height: 220px; overflow-y: auto; z-index: 6; background: var(--bg-sidebar); border: 1px solid var(--borde-fuerte); border-radius: 8px; box-shadow: var(--sombra); padding: 4px; display: flex; flex-direction: column; gap: 1px; }
+.ag-sugerencias button { justify-content: flex-start; gap: 10px; text-align: left; background: transparent; border-color: transparent; padding: 4px 8px; }
+.ag-sugerencias button.sel { background: var(--bg-hover); }
+.ag-sugerencias small { color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.ag-sugerencias .propio { color: var(--acento); }
+.gestion-cuerpo .cfg-intro, .permisos .cfg-intro { margin-top: 0; }

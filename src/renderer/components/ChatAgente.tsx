@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EventoAgente } from '@shared/core/agente'
+import { COMANDOS_INCLUIDOS, expandirPlantilla, type ComandoUsuario } from '@shared/core/comandos'
 import type { ModoAutonomia } from '@shared/core/permisos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { Agente, Turno } from '../agente/useAgente'
+import { GestionProyecto } from './GestionProyecto'
 import { HistorialAgente } from './HistorialAgente'
 
 interface Props {
@@ -86,6 +88,18 @@ function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
       return <div className="ag-nota">Contexto comprimido ({e.estrategia}): {e.tokensAntes} → {e.tokensDespues} tokens</div>
     case 'aprobacion_automatica':
       return <div className="ag-nota">✓ {e.clase === 'plan' ? 'Plan' : 'Acción'} aprobado automáticamente ({e.motivo})</div>
+    case 'comando_salida':
+      return (
+        <details className={`ag-herramienta${e.ok ? '' : ' error'}`} open>
+          <summary>
+            <span className="ag-estado">{e.ok ? '✓' : '✗'}</span>
+            <strong>/{e.nombre}</strong>
+            <code>{e.linea}</code>
+            <span className="chip">{e.duracionMs} ms</span>
+          </summary>
+          <pre>{e.salida}</pre>
+        </details>
+      )
     case 'flujo_fin':
       return <div className={`ag-final ${e.estado === 'completado' ? 'ok' : 'mal'}`}>Flujo {e.estado}: {e.resumen}</div>
     case 'fin':
@@ -104,7 +118,7 @@ function TurnoVista({ t, onCancelar }: { t: Turno; onCancelar: () => void }) {
     <article className="ag-turno">
       <div className="ag-usuario">
         <div className="ag-quien">
-          Tú · {t.destino} {t.modo !== 'chat' && <span className="chip">{t.modo === 'flujo' ? 'flujo de desarrollo' : 'grupo (A2A)'}</span>}
+          Tú · {t.destino} {t.modo !== 'chat' && t.modo !== 'comando' && <span className="chip">{t.modo === 'flujo' ? 'flujo de desarrollo' : 'grupo (A2A)'}</span>}
           {t.autonomia && <span className="chip chip-aviso" title="Se ejecutó con menos confirmaciones">{t.autonomia === 'autonomo' ? 'autónomo' : 'acepta ediciones'}</span>}
         </div>
         <div className="ag-texto">{t.prompt}</div>
@@ -137,6 +151,10 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [aislado, setAislado] = useState(true)
   const [texto, setTexto] = useState('')
   const [verHistorial, setVerHistorial] = useState(false)
+  const [gestion, setGestion] = useState<'permisos' | 'comandos' | null>(null)
+  const [comandos, setComandos] = useState<ComandoUsuario[]>([])
+  const [seleccion, setSeleccion] = useState(0)
+  const [sugOculta, setSugOculta] = useState(false)
   const claveAutonomia = `asistente:autonomia:${proyectoFijo?.id ?? 'global'}`
   const [autonomia, setAutonomiaEstado] = useState<ModoAutonomia>(() => {
     try {
@@ -172,10 +190,21 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     if (modo === 'flujo' && !proyecto) setModo('chat')
   }, [modo, proyecto])
 
-  const enviar = (): void => {
-    const prompt = texto.trim()
-    if (!prompt || agente.enCurso) return
-    setTexto('')
+  // Comandos propios del proyecto (más globales) para el autocompletado y la ejecución de `/nombre`.
+  useEffect(() => {
+    if (gestion === null) void window.api.core.comandosEfectivos(proyecto?.id).then(setComandos).catch(() => setComandos([]))
+  }, [proyecto?.id, gestion])
+
+  const sugerencias = useMemo(() => {
+    const m = /^\/([a-z0-9_-]*)$/.exec(texto)
+    if (!m || sugOculta) return []
+    return [
+      ...COMANDOS_INCLUIDOS.map((c) => ({ nombre: c.nombre, uso: c.uso as string, descripcion: c.descripcion as string, propio: false })),
+      ...comandos.map((c) => ({ nombre: c.nombre, uso: `/${c.nombre}${c.tipo === 'ejecutable' && c.argumentos ? ' <argumentos>' : c.tipo === 'prompt' ? ' [texto]' : ''}`, descripcion: c.descripcion, propio: true }))
+    ].filter((c) => c.nombre.startsWith(m[1]!))
+  }, [texto, comandos, sugOculta])
+
+  const lanzar = (prompt: string, forzarFlujo = false): void => {
     void agente.enviar({
       destino: etiqueta,
       solicitud: {
@@ -183,9 +212,56 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         ...(proyecto ? { proyectoId: proyecto.id } : {}),
         ...(grupoSeleccionado ? { grupoId: destino.slice(2) } : {}),
         ...(autonomia !== 'preguntar' ? { autonomia } : {}),
-        ...(modo === 'flujo' ? { modo: 'flujo' as const, aislado } : {})
+        ...(modo === 'flujo' || forzarFlujo ? { modo: 'flujo' as const, aislado } : {})
       }
     })
+  }
+
+  /** `/comando argumentos`: comandos de la aplicación y comandos propios. */
+  const comandoSlash = (linea: string): void => {
+    const m = /^\/([a-z0-9_-]+)\s*([\s\S]*)$/i.exec(linea)
+    const nombre = m?.[1]?.toLowerCase() ?? ''
+    const resto = (m?.[2] ?? '').trim()
+    const aviso = (mensaje: string): void => agente.avisar(linea, mensaje, etiqueta)
+    switch (nombre) {
+      case 'flujo':
+        if (!proyecto) return aviso('El flujo necesita un proyecto: abre el asistente desde la celda de un proyecto o elígelo en el selector.')
+        if (!resto) return aviso('Uso: /flujo <petición>')
+        return lanzar(resto, true)
+      case 'chat':
+        return setModo('chat')
+      case 'modo':
+        if (resto === 'preguntar' || resto === 'ediciones' || resto === 'autonomo') return cambiarAutonomia(resto)
+        return aviso('Uso: /modo preguntar | ediciones | autonomo')
+      case 'nueva':
+        return agente.nuevaConversacion()
+      case 'historial':
+        return setVerHistorial(true)
+      case 'permisos':
+      case 'comandos':
+        return setGestion(nombre)
+      case 'ayuda':
+        setSugOculta(false)
+        return setTexto('/')
+    }
+    const c = comandos.find((x) => x.nombre === nombre)
+    if (!c) return aviso(`No existe el comando «/${nombre}». Escribe /ayuda para ver la lista, o créalo con /comandos.`)
+    if (c.tipo === 'prompt') return lanzar(expandirPlantilla(c.plantilla ?? '', resto))
+    if (!proyecto) return aviso(`«/${nombre}» se ejecuta en un proyecto: elige uno primero.`)
+    void agente.ejecutarComando({ proyectoId: proyecto.id, nombre, argumentos: resto, destino: etiqueta })
+  }
+
+  const enviar = (): void => {
+    const prompt = texto.trim()
+    if (!prompt || agente.enCurso) return
+    setTexto('')
+    if (prompt.startsWith('/')) return comandoSlash(prompt)
+    lanzar(prompt)
+  }
+
+  const completar = (nombre: string): void => {
+    setTexto(`/${nombre} `)
+    setSugOculta(true)
   }
 
   const actual = agente.turnos.at(-1)
@@ -201,6 +277,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           onCerrar={() => setVerHistorial(false)}
         />
       )}
+      {gestion && <GestionProyecto {...(proyecto ? { proyectoId: proyecto.id, nombre: proyecto.nombre } : {})} inicial={gestion} onCerrar={() => setGestion(null)} />}
       <div className="ag-hilo">
         {agente.turnos.length === 0 && (
           <div className="vacio">
@@ -266,12 +343,37 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           </button>
         </div>
         <div className="ag-entrada">
+          {sugerencias.length > 0 && (
+            <div className="ag-sugerencias" role="listbox" aria-label="Comandos">
+              {sugerencias.map((c, i) => (
+                <button key={`${c.propio}-${c.nombre}`} role="option" aria-selected={i === seleccion} className={i === seleccion ? 'sel' : ''} onMouseDown={(e) => e.preventDefault()} onClick={() => completar(c.nombre)}>
+                  <strong className={c.propio ? 'propio' : ''}>{c.uso}</strong>
+                  <small>{c.descripcion}</small>
+                </button>
+              ))}
+            </div>
+          )}
           <textarea
             rows={3}
             value={texto}
-            placeholder={modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo sobre el proyecto…  (Ctrl+Enter para enviar)'}
-            onChange={(e) => setTexto(e.target.value)}
+            placeholder={modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo sobre el proyecto…  (Ctrl+Enter para enviar · «/» para comandos)'}
+            onChange={(e) => {
+              setTexto(e.target.value)
+              setSugOculta(false)
+              setSeleccion(0)
+            }}
             onKeyDown={(e) => {
+              if (sugerencias.length > 0) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  return setSeleccion((s) => (s + (e.key === 'ArrowDown' ? 1 : sugerencias.length - 1)) % sugerencias.length)
+                }
+                if ((e.key === 'Tab' || e.key === 'Enter') && !e.ctrlKey && !e.metaKey) {
+                  e.preventDefault()
+                  return completar(sugerencias[Math.min(seleccion, sugerencias.length - 1)]!.nombre)
+                }
+                if (e.key === 'Escape') return setSugOculta(true)
+              }
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault()
                 enviar()

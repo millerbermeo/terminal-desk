@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { ipcMain } from 'electron'
 import type { InfoSuite, ResultadoEvals } from '@shared/core/evals'
 import type { TurnoGuardado } from '@shared/core/sesion'
+import type { ComandoUsuario } from '@shared/core/comandos'
 import type { ModoAutonomia, NuevaRegla } from '@shared/core/permisos'
 import type { ResumenTraza, Traza } from '@shared/core/traza'
 import type { DecisionHumana, EstadoFlujo, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, Mensaje, ResultadoPublicar, SolicitudAgente } from '@shared/core/agente'
@@ -30,7 +31,10 @@ import { AlmacenTrazas } from './tracing/almacen'
 import { LlmTrazado } from './tracing/llm-trazado'
 import { Trazador } from './tracing/trazador'
 import { crearAprobadorHumano } from './hitl/aprobador'
+import { ComandosStore, dividirArgumentos } from './comandos/store'
+import { esDestructiva } from './guardrails/destructivo'
 import { decidir, PermisosStore } from './permisos/reglas'
+import { ejecutarArgv } from './tools/integradas/terminal'
 import { MODELOS_POR_DEFECTO, Router } from './router/router'
 import { CompresorContexto } from './context/compresion'
 import { MonitorContexto } from './context/monitor'
@@ -82,6 +86,7 @@ export class Nucleo {
   readonly trazador = new Trazador(this.trazas)
   private readonly informes = new AlmacenInformes(join(DIR, 'evals'))
   readonly permisos = new PermisosStore(join(DIR, 'permisos'))
+  readonly comandos = new ComandosStore(join(DIR, 'comandos'))
 
   /** Guardrails + reglas de denegación del proyecto: lo bloqueado no llega a preguntarse al usuario. */
   private readonly validar: Validador = async (llamada, _riesgo, _agente, ctx) =>
@@ -342,6 +347,53 @@ export class Nucleo {
     return r.complejidad === 'simple' ? MODELOS_POR_DEFECTO.media : r.modelo
   }
 
+  /**
+   * Ejecuta un comando propio `/nombre` de tipo ejecutable con la misma tubería que las acciones del agente: guardrails y reglas de
+   * denegación primero; lo destructivo siempre pregunta; lo demás solo corre sin preguntar si el comando es «permitido» o hay una regla.
+   */
+  async ejecutarComando(proyectoId: string, nombre: string, argumentos: string, alEvento: (e: EventoAgente) => void): Promise<{ ejecucionId: string }> {
+    const p = await this.proyecto(proyectoId)
+    const c = (await this.comandos.efectivos(p.id)).find((x) => x.nombre === nombre)
+    if (!c || c.tipo !== 'ejecutable' || !c.comando?.length) throw new Error(`No existe el comando ejecutable «/${nombre}»`)
+    if (!c.argumentos && argumentos.trim()) throw new Error(`«/${nombre}» no admite argumentos`)
+    const argv = [...c.comando, ...(c.argumentos ? dividirArgumentos(argumentos) : [])]
+    const id = randomUUID()
+    const ctl = new AbortController()
+    this.activas.set(id, ctl)
+    const inicio = Date.now()
+    const linea = argv.join(' ')
+    const fin = (ok: boolean, salida: string): void =>
+      alEvento({ ejecucionId: id, agente: 'comando', profundidad: 0, tipo: 'comando_salida', nombre, linea, ok, salida, duracionMs: Date.now() - inicio })
+    void (async () => {
+      try {
+        const llamada = { id, nombre: 'ejecutar_comando', entrada: { comando: argv[0]!, args: argv.slice(1) } }
+        const bloqueo = await this.validar(llamada, 'ejecucion', `/${nombre}`, { cwd: p.ruta, proyectoId: p.id, senal: ctl.signal })
+        if (bloqueo) return fin(false, `Bloqueado: ${bloqueo}`)
+        const sinPreguntar = !esDestructiva(llamada.nombre, llamada.entrada) && (c.permitido === true || decidir(await this.permisos.efectivas(p.id), llamada) === 'permitir')
+        if (!sinPreguntar) {
+          const aprobar =
+            this.aprobar ??
+            crearAprobadorHumano({
+              puerta: this.puerta,
+              ejecucionId: id,
+              alEvento,
+              senal: ctl.signal,
+              reglas: () => this.permisos.efectivas(p.id),
+              guardarRegla: async (r) => void (await this.permisos.agregar(r, p.id))
+            })
+          if (!(await aprobar(llamada, 'ejecucion', `/${nombre}`))) return fin(false, 'No se ejecutó: la acción no fue aprobada')
+        }
+        const r = await ejecutarArgv(p.ruta, argv[0]!, argv.slice(1), { senal: ctl.signal, timeoutMs: 600_000, maxSalida: 20_000 })
+        fin(r.ok, r.texto)
+      } catch (err) {
+        fin(false, ctl.signal.aborted ? 'Cancelado' : (err as Error).message)
+      } finally {
+        this.activas.delete(id)
+      }
+    })()
+    return { ejecucionId: id }
+  }
+
   responder(solicitudId: string, decision: DecisionHumana): boolean {
     return this.puerta.responder(String(solicitudId), decision)
   }
@@ -410,6 +462,15 @@ export function registrarIpcCore(nucleo: Nucleo): void {
   ipcMain.handle(Canales.coreEvalsSuites, () => nucleo.evalsSuites())
   ipcMain.handle(Canales.coreEvalsEjecutar, (_e, suiteId: string, casos?: string[]) => nucleo.ejecutarEvals(String(suiteId), Array.isArray(casos) ? casos.map(String) : undefined))
   ipcMain.handle(Canales.coreEvalsInformes, (_e, suiteId: string) => nucleo.evalsInformes(suiteId))
+  ipcMain.handle(Canales.coreComandosListar, (_e, ambito?: string) => nucleo.comandos.listar(ambito || undefined))
+  ipcMain.handle(Canales.coreComandosEfectivos, (_e, proyectoId?: string) => nucleo.comandos.efectivos(proyectoId || undefined))
+  ipcMain.handle(Canales.coreComandosGuardar, (_e, comando: ComandoUsuario, ambito?: string) => nucleo.comandos.guardar(comando, ambito || undefined))
+  ipcMain.handle(Canales.coreComandosEliminar, (_e, nombre: string, ambito?: string) => nucleo.comandos.eliminar(String(nombre), ambito || undefined))
+  ipcMain.handle(Canales.coreComandoEjecutar, (e, proyectoId: string, nombre: string, argumentos: string) =>
+    nucleo.ejecutarComando(String(proyectoId), String(nombre), String(argumentos ?? ''), (ev) => {
+      if (!e.sender.isDestroyed()) e.sender.send(Canales.coreEvento, ev)
+    })
+  )
   ipcMain.handle(Canales.corePermisosListar, (_e, ambito?: string) => nucleo.permisos.listar(ambito || undefined))
   ipcMain.handle(Canales.corePermisosAgregar, (_e, regla: NuevaRegla, ambito?: string) => nucleo.permisos.agregar(regla, ambito || undefined))
   ipcMain.handle(Canales.corePermisosEliminar, (_e, id: string, ambito?: string) => nucleo.permisos.eliminar(String(id), ambito || undefined))

@@ -52,6 +52,7 @@ Biblioteca de recursos (compartidos o individuales de un proyecto) con activaci�
   - `fase-3.md`: grafo de estados (`modo: 'flujo'`), router de modelos, A2A por `grupoId`.
   - `fase-4.md`: flujos en git worktrees (`worktrees/`), guardrails (credenciales, rutas, destructivo) y confirmación humana (`solicitud_humana` + `core.responder`).
   - `interfaz.md`: pestaña **Asistente** del renderer (`components/Asistente.tsx`, estado en `agente/useAgente.ts`, alojado en `App`): conversación con streaming, trazas, memoria, ramas, evals y el modal de confirmaciones.
+  - `permisos-autonomia-comandos.md`: reglas de permisos persistentes (`permisos/`), modos de autonomía (Preguntar/Ediciones/Autónomo, presupuesto de tokens) y comandos propios con `/` (`comandos/`).
   - `fase-5.md`: trazas (`trazas/`, spans con AsyncLocalStorage, credenciales redactadas) y evals (`evals/`, aserciones + juez LLM + comparación de informes).
 - Eliminar un grupo exige la contraseña del usuario del sistema (`src/main/autenticacion.ts`: `sudo -S -k -v` en Linux/macOS, PowerShell en Windows); la contraseña solo viaja por stdin al proceso hijo.
 - Wayland: `--ozone-platform-hint=auto` se añade en `src/main/index.ts`; ver el README para portapapeles y escalado.

@@ -18,6 +18,29 @@ export function clasificarComando(comando: string, args: string[]): Riesgo {
 
 const argsDe = (entrada: Record<string, unknown>): string[] => (Array.isArray(entrada.args) ? entrada.args.map(String) : [])
 
+export interface OpcionesArgv {
+  senal?: AbortSignal
+  timeoutMs?: number
+  maxSalida?: number
+}
+
+/** Ejecuta un programa sin shell y devuelve su salida (stdout + stderr) recortada. */
+export function ejecutarArgv(cwd: string, comando: string, args: readonly string[], o: OpcionesArgv = {}): Promise<{ ok: boolean; texto: string }> {
+  const max = o.maxSalida ?? MAX_SALIDA
+  return new Promise((res) => {
+    execFile(
+      comando,
+      [...args],
+      { cwd, timeout: o.timeoutMs ?? TIEMPO_MAX_MS, maxBuffer: 4 * 1024 * 1024, ...(o.senal ? { signal: o.senal } : {}) },
+      (err, stdout, stderr) => {
+        const salida = (stdout + (stderr ? `\n[stderr]\n${stderr}` : '')).trim()
+        const texto = salida.length > max ? salida.slice(0, max) + '\n[… truncado]' : salida
+        res(err ? { ok: false, texto: `${texto}\n[${err.message}]`.trim() } : { ok: true, texto: texto || '(sin salida)' })
+      }
+    )
+  })
+}
+
 export const ejecutarComando: Herramienta = {
   nombre: 'ejecutar_comando',
   descripcion:
@@ -32,19 +55,8 @@ export const ejecutarComando: Herramienta = {
   },
   riesgo: 'ejecucion',
   clasificar: (entrada) => clasificarComando(String(entrada.comando), argsDe(entrada)),
-  ejecutar(entrada, ctx) {
-    return new Promise((res) => {
-      execFile(
-        String(entrada.comando),
-        argsDe(entrada),
-        { cwd: ctx.cwd, timeout: TIEMPO_MAX_MS, maxBuffer: 4 * 1024 * 1024, signal: ctx.senal },
-        (err, stdout, stderr) => {
-          const salida = (stdout + (stderr ? `\n[stderr]\n${stderr}` : '')).trim()
-          const texto = salida.length > MAX_SALIDA ? salida.slice(0, MAX_SALIDA) + '\n[… truncado]' : salida
-          if (err) res({ texto: `${texto}\n[${err.message}]`.trim(), error: true })
-          else res({ texto: texto || '(sin salida)' })
-        }
-      )
-    })
+  async ejecutar(entrada, ctx) {
+    const r = await ejecutarArgv(ctx.cwd, String(entrada.comando), argsDe(entrada), ctx.senal ? { senal: ctx.senal } : {})
+    return r.ok ? { texto: r.texto } : { texto: r.texto, error: true }
   }
 }

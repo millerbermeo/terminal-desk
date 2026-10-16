@@ -1,19 +1,21 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { DatosProyectos } from '@shared/modelos'
 import { useAgente } from '../agente/useAgente'
 import { ChatAgente } from './ChatAgente'
+import { ComandosAgente } from './ComandosAgente'
 import { EvalsAgente } from './EvalsAgente'
 import { MemoriaAgente } from './MemoriaAgente'
 import { PermisosAgente } from './PermisosAgente'
 import { RamasAgente } from './RamasAgente'
 import { TrazasAgente } from './TrazasAgente'
 
-type Pestana = 'chat' | 'trazas' | 'memoria' | 'permisos' | 'ramas' | 'evals'
+type Pestana = 'chat' | 'trazas' | 'memoria' | 'permisos' | 'comandos' | 'ramas' | 'evals'
 const PESTANAS: { id: Pestana; nombre: string }[] = [
   { id: 'chat', nombre: 'Conversación' },
   { id: 'trazas', nombre: 'Trazas' },
   { id: 'memoria', nombre: 'Memoria' },
   { id: 'permisos', nombre: 'Permisos' },
+  { id: 'comandos', nombre: 'Comandos /' },
   { id: 'ramas', nombre: 'Ramas' },
   { id: 'evals', nombre: 'Evals' }
 ]
@@ -48,7 +50,10 @@ export function Asistente({ datos, visible }: Props) {
           <MemoriaAgente datos={datos} visible={visible && pestana === 'memoria'} />
         </div>
         <div className="ag-vista scroll" style={{ display: pestana === 'permisos' ? 'block' : 'none' }}>
-          <PermisosGlobal datos={datos} visible={visible && pestana === 'permisos'} />
+          <AmbitoGlobal datos={datos}>{(ambito) => <PermisosAgente {...(ambito ? { proyectoId: ambito } : {})} visible={visible && pestana === 'permisos'} />}</AmbitoGlobal>
+        </div>
+        <div className="ag-vista scroll" style={{ display: pestana === 'comandos' ? 'block' : 'none' }}>
+          <AmbitoGlobal datos={datos}>{(ambito) => <ComandosAgente {...(ambito ? { proyectoId: ambito } : {})} visible={visible && pestana === 'comandos'} />}</AmbitoGlobal>
         </div>
         <div className="ag-vista scroll" style={{ display: pestana === 'ramas' ? 'block' : 'none' }}>
           <RamasAgente datos={datos} visible={visible && pestana === 'ramas'} />
@@ -61,8 +66,8 @@ export function Asistente({ datos, visible }: Props) {
   )
 }
 
-/** Pestaña «Permisos»: elige el ámbito (global o un proyecto) y edita sus reglas. */
-function PermisosGlobal({ datos, visible }: { datos: DatosProyectos; visible: boolean }) {
+/** Elige el ámbito (global o un proyecto) y pinta su contenido: pestañas «Permisos» y «Comandos /». */
+function AmbitoGlobal({ datos, children }: { datos: DatosProyectos; children: (ambito: string) => ReactNode }) {
   const [ambito, setAmbito] = useState('')
   return (
     <div className="mem">
@@ -74,7 +79,7 @@ function PermisosGlobal({ datos, visible }: { datos: DatosProyectos; visible: bo
           ))}
         </select>
       </div>
-      <PermisosAgente {...(ambito ? { proyectoId: ambito } : {})} visible={visible} />
+      {children(ambito)}
     </div>
   )
 }

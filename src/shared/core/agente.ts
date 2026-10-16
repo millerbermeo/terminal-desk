@@ -44,6 +44,7 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
   | { tipo: 'worktree'; accion: AccionWorktree; rama: string; ruta: string; detalle?: string }
   | { tipo: 'flujo_fin'; estado: EstadoFlujo; resumen: string }
   | { tipo: 'aprobacion_automatica'; clase: ClaseSolicitud; motivo: string }
+  | { tipo: 'comando_salida'; nombre: string; linea: string; ok: boolean; salida: string; duracionMs: number }
   | { tipo: 'a2a'; de: string; a: string; fase: 'envio' | 'respuesta'; texto: string }
 )
 

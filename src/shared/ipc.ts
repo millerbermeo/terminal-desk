@@ -1,6 +1,7 @@
 import type { DecisionHumana, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, ResultadoPublicar, SolicitudAgente } from './core/agente'
 import type { InfoSuite, InformeEval, ResultadoEvals } from './core/evals'
 import type { ResumenTraza, Traza } from './core/traza'
+import type { ComandoUsuario } from './core/comandos'
 import type { NuevaRegla, ReglaPermiso } from './core/permisos'
 import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion'
 import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
@@ -43,6 +44,11 @@ export const Canales = {
   coreEvalsSuites: 'core:evals-suites',
   coreEvalsEjecutar: 'core:evals-ejecutar',
   coreEvalsInformes: 'core:evals-informes',
+  coreComandosListar: 'core:comandos-listar',
+  coreComandosEfectivos: 'core:comandos-efectivos',
+  coreComandosGuardar: 'core:comandos-guardar',
+  coreComandosEliminar: 'core:comandos-eliminar',
+  coreComandoEjecutar: 'core:comando-ejecutar',
   corePermisosListar: 'core:permisos-listar',
   corePermisosAgregar: 'core:permisos-agregar',
   corePermisosEliminar: 'core:permisos-eliminar',
@@ -150,6 +156,14 @@ export interface ApiCentro {
     evalsSuites(): Promise<InfoSuite[]>
     evalsEjecutar(suiteId: string, casos?: string[]): Promise<ResultadoEvals>
     evalsInformes(suiteId: string): Promise<InformeEval[]>
+    /** Comandos propios (`/nombre`). `ambito` vacío = globales. */
+    comandosListar(ambito?: string): Promise<ComandoUsuario[]>
+    /** Los de un proyecto más los globales (el del proyecto manda). */
+    comandosEfectivos(proyectoId?: string): Promise<ComandoUsuario[]>
+    comandosGuardar(comando: ComandoUsuario, ambito?: string): Promise<ComandoUsuario[]>
+    comandosEliminar(nombre: string, ambito?: string): Promise<ComandoUsuario[]>
+    /** Ejecuta un comando propio de tipo `ejecutable`; el resultado llega por onEvento (`comando_salida`). */
+    comandoEjecutar(proyectoId: string, nombre: string, argumentos: string): Promise<{ ejecucionId: string }>
     /** Reglas de permisos persistentes. `ambito` vacío = globales (valen para todos los proyectos). */
     permisosListar(ambito?: string): Promise<ReglaPermiso[]>
     permisosAgregar(regla: NuevaRegla, ambito?: string): Promise<ReglaPermiso[]>

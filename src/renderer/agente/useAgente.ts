@@ -9,7 +9,7 @@ export interface Turno {
   clave: string
   ejecucionId?: string
   prompt: string
-  modo: 'chat' | 'flujo' | 'grupo'
+  modo: 'chat' | 'flujo' | 'grupo' | 'comando'
   destino: string // nombre del proyecto o grupo (para mostrar)
   raiz: string // nombre del agente cuyo `fin` cierra el turno
   eventos: EventoAgente[]
@@ -40,6 +40,8 @@ function aplicar(t: Turno, e: EventoAgente): Turno {
         : { ...t, eventos: [...t.eventos, e] }
     case 'flujo_fin':
       return { ...t, parcial: '', eventos: [...t.eventos, e], estado: e.estado }
+    case 'comando_salida':
+      return { ...t, parcial: '', eventos: [...t.eventos, e], estado: e.ok ? 'completado' : 'fallido' }
     default:
       return { ...t, eventos: [...t.eventos, e] }
   }
@@ -80,6 +82,7 @@ export function useAgente(opciones: { clave?: string } = {}) {
   const huerfanos = useRef(new Map<string, EventoAgente[]>())
   const enVuelo = useRef(0)
   const contador = useRef(0)
+  const salidasPendientes = useRef<string[]>([]) // salidas de comandos `/`: el agente las ve en el siguiente mensaje
 
   const actualizar = useCallback((f: (ts: Turno[]) => Turno[]): void => {
     ref.current = f(ref.current)
@@ -93,6 +96,7 @@ export function useAgente(opciones: { clave?: string } = {}) {
         if (enVuelo.current > 0) huerfanos.current.set(e.ejecucionId, [...(huerfanos.current.get(e.ejecucionId) ?? []), e])
         return
       }
+      if (e.tipo === 'comando_salida') salidasPendientes.current.push(`[Salida del comando /${e.nombre} (${e.ok ? 'correcto' : 'falló'}): ${e.linea}]\n${e.salida.slice(0, 4000)}`)
       actualizar((ts) => ts.map((t, j) => (j === i ? aplicar(t, e) : t)))
     },
     [actualizar]
@@ -156,7 +160,13 @@ export function useAgente(opciones: { clave?: string } = {}) {
       ])
       enVuelo.current++
       try {
-        const { ejecucionId, sesionId: sid } = await window.api.core.ejecutar({ ...solicitud, ...(sesionId ? { sesionId } : {}) })
+        // Las salidas de comandos `/` recientes se adjuntan al mensaje para que el agente sepa qué pasó.
+        const contexto = salidasPendientes.current.splice(0).join('\n\n')
+        const { ejecucionId, sesionId: sid } = await window.api.core.ejecutar({
+          ...solicitud,
+          ...(contexto ? { prompt: `${contexto}\n\n${solicitud.prompt}` } : {}),
+          ...(sesionId ? { sesionId } : {})
+        })
         setSesionId(sid)
         etiquetarEjecucion(ejecucionId, destino)
         const previos = huerfanos.current.get(ejecucionId) ?? []
@@ -169,6 +179,39 @@ export function useAgente(opciones: { clave?: string } = {}) {
       }
     },
     [actualizar, sesionId]
+  )
+
+  /** Ejecuta un comando propio `/nombre` (tipo ejecutable); el resultado llega como un turno más. */
+  const ejecutarComando = useCallback(
+    async (o: { proyectoId: string; nombre: string; argumentos: string; destino: string }): Promise<void> => {
+      const clave = `t${++contador.current}`
+      actualizar((ts) => [
+        ...ts,
+        { clave, prompt: `/${o.nombre}${o.argumentos ? ` ${o.argumentos}` : ''}`, modo: 'comando', destino: o.destino, raiz: 'comando', eventos: [], parcial: '', estado: 'en_curso', proyectoId: o.proyectoId }
+      ])
+      enVuelo.current++
+      try {
+        const { ejecucionId } = await window.api.core.comandoEjecutar(o.proyectoId, o.nombre, o.argumentos)
+        etiquetarEjecucion(ejecucionId, o.destino)
+        const previos = huerfanos.current.get(ejecucionId) ?? []
+        for (const p of previos) if (p.tipo === 'comando_salida') salidasPendientes.current.push(`[Salida del comando /${p.nombre} (${p.ok ? 'correcto' : 'falló'}): ${p.linea}]\n${p.salida.slice(0, 4000)}`)
+        actualizar((ts) => ts.map((t) => (t.clave === clave ? previos.reduce(aplicar, { ...t, ejecucionId }) : t)))
+      } catch (err) {
+        const mensaje = (err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+        actualizar((ts) => ts.map((t) => (t.clave === clave ? { ...t, estado: 'error', error: mensaje } : t)))
+      } finally {
+        if (--enVuelo.current === 0) huerfanos.current.clear()
+      }
+    },
+    [actualizar]
+  )
+
+  /** Muestra un aviso (p. ej. un comando `/` desconocido) como un turno con error. */
+  const avisar = useCallback(
+    (prompt: string, mensaje: string, destino = ''): void => {
+      actualizar((ts) => [...ts, { clave: `t${++contador.current}`, prompt, modo: 'comando', destino, raiz: 'comando', eventos: [], parcial: '', estado: 'error', error: mensaje }])
+    },
+    [actualizar]
   )
 
   const cancelar = useCallback((t: Turno): void => {
@@ -207,7 +250,7 @@ export function useAgente(opciones: { clave?: string } = {}) {
   )
 
   const enCurso = turnos.some((t) => t.estado === 'en_curso')
-  return { turnos, enCurso, sesionId, enviar, cancelar, nuevaConversacion, abrirSesion, borrarSesion }
+  return { turnos, enCurso, sesionId, enviar, ejecutarComando, avisar, cancelar, nuevaConversacion, abrirSesion, borrarSesion }
 }
 
 export type Agente = ReturnType<typeof useAgente>

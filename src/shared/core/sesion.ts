@@ -5,7 +5,7 @@ export type EstadoTurno = 'en_curso' | 'completado' | 'limite_pasos' | 'cancelad
 /** Un intercambio ya terminado, tal como se ve en pantalla (prompt + eventos + estado). */
 export interface TurnoGuardado {
   prompt: string
-  modo: 'chat' | 'flujo' | 'grupo'
+  modo: 'chat' | 'flujo' | 'grupo' | 'comando'
   destino: string
   raiz: string
   eventos: EventoAgente[]

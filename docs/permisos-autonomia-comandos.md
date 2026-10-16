@@ -37,3 +37,32 @@ permisos valen en los tres modos, y **lo destructivo siempre pide confirmación*
 - Al agotarse el presupuesto, el agente se detiene (`limite_pasos` con «Presupuesto de tokens agotado»).
 - Activar «Autónomo» pide confirmación. Lo más seguro es usarlo con el Flujo aislado en una rama.
 - Cada turno ejecutado con menos confirmaciones lleva una etiqueta (autónomo / acepta ediciones).
+
+## Comandos con `/`
+
+Se escriben en la caja del chat; al teclear `/` aparece el autocompletado (↑↓, Tab o Enter para completar, Esc para cerrarlo).
+
+**Incluidos:** `/flujo <petición>`, `/chat`, `/modo preguntar|ediciones|autonomo`, `/nueva`, `/historial`, `/permisos`, `/comandos`, `/ayuda`.
+
+**Propios** (`/comandos` o la pestaña **Comandos /** del Asistente; por proyecto o globales, el del proyecto manda), guardados en
+`~/.centro-proyectos/comandos/<proyecto|global>.json` (0600):
+
+| Tipo | Qué hace |
+|---|---|
+| **prompt** | Plantilla que se envía al agente con el modo actual. `$ARGUMENTOS` se sustituye por lo que se escriba detrás (si no aparece, se añade al final). |
+| **ejecutable** | Programa fijo (argv, sin shell; el nombre no puede llevar espacios). No pasa por el modelo: su salida aparece en el chat (`comando_salida`) y se adjunta al siguiente mensaje para que el agente la vea. Admite argumentos tras el nombre si se activa (se dividen por espacios, con comillas, y nunca pasan por una shell). |
+
+Cómo se ejecuta un comando propio (misma tubería que las acciones del agente):
+
+1. **Guardrails y reglas de denegación** primero (`cat .env` o un comando denegado ni se pregunta).
+2. **Lo destructivo siempre pregunta**, incluso si el comando está marcado como «permitido» (al guardarlo no se deja marcar como permitido).
+3. Un comando «permitido» o con una regla `permitir` se ejecuta sin preguntar; el resto pide confirmación (con «Permitir siempre»).
+4. Un intérprete con argumentos libres (`node`, `bash`…) no puede ser «permitido».
+
+Timeout de 10 minutos, salida recortada a 20 000 caracteres; se puede cancelar.
+
+## Límites conocidos
+
+- Los comandos ejecutables y las reglas son por programa y argumentos exactos: no entienden pipes ni redirecciones (no hay shell).
+- «Autónomo» solo reconoce como verificaciones los scripts `typecheck`/`type-check`/`check-types`/`tsc`, `lint` y `test` del `package.json`.
+- El presupuesto de tokens cuenta las llamadas de los agentes y subagentes, no los resúmenes de contexto ni el modelo juez de los evals.
