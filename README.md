@@ -39,7 +39,7 @@ curl -fsSL https://raw.githubusercontent.com/millerbermeo/terminal-desk/main/ins
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/millerbermeo/terminal-desk/main/install.ps1 | iex"
 ```
 
-Después ejecuta `centro-proyectos` en una terminal nueva, o ábrela desde el menú de aplicaciones (Linux) / menú Inicio (Windows).
+Después ejecuta `odesk` en una terminal nueva, o ábrela desde el menú de aplicaciones (Linux) / menú Inicio (Windows).
 
 ### Requisitos previos
 
@@ -58,7 +58,7 @@ Node.js 20+ y pnpm **no** hacen falta: si no existen, el instalador descarga un 
 1. Comprueba dependencias y, si hace falta, descarga Node.js y pnpm en una carpeta privada.
 2. Clona el repositorio en `~/.local/share/centro-proyectos` (Windows: `%LOCALAPPDATA%\centro-proyectos`).
 3. Instala dependencias, prepara Electron, compila `node-pty` si procede y construye la app.
-4. Crea el lanzador `~/.local/bin/centro-proyectos` y la entrada del menú de aplicaciones.
+4. Crea el lanzador `~/.local/bin/odesk` y la entrada del menú de aplicaciones.
 
 Variables opcionales: `CENTRO_DIR` (carpeta de instalación), `CENTRO_BIN` (carpeta del lanzador, solo Linux/macOS), `CENTRO_REPO` (repositorio) y `CENTRO_REF` (rama, etiqueta o commit a instalar).
 
@@ -67,7 +67,7 @@ Variables opcionales: `CENTRO_DIR` (carpeta de instalación), `CENTRO_BIN` (carp
 Vuelve a ejecutar **el mismo comando de instalación**, o bien:
 
 ```bash
-centro-proyectos actualizar
+odesk actualizar
 ```
 
 El instalador detecta la instalación existente, consulta el repositorio y, si hay cambios, solo hace lo necesario: reconstruye la app y reinstala dependencias únicamente si cambió el lockfile. Si ya tienes la última versión termina en un segundo. Tus proyectos y ajustes (`~/.centro-proyectos`) no se tocan. Cierra la app antes de actualizar.
@@ -76,7 +76,7 @@ Para instalar una versión concreta: `curl -fsSL …/install.sh | bash -s -- --r
 
 ## Desinstalar
 
-Un solo comando, igual que para instalar. Con la app instalada también sirve `centro-proyectos desinstalar`.
+Un solo comando, igual que para instalar. Con la app instalada también sirve `odesk desinstalar`.
 
 **Solo la app** (conserva tus proyectos y ajustes en `~/.centro-proyectos`):
 
@@ -217,7 +217,7 @@ Añadir una operación IPC toca tres sitios: `src/shared/ipc.ts`, `src/preload/i
 
 | Síntoma | Solución |
 |---|---|
-| `centro-proyectos: command not found` | Añade `~/.local/bin` al PATH (`export PATH="$HOME/.local/bin:$PATH"`) o abre una terminal nueva |
+| `odesk: command not found` | Añade `~/.local/bin` al PATH (`export PATH="$HOME/.local/bin:$PATH"`) o abre una terminal nueva |
 | Falla la compilación de `node-pty` (Linux) | Instala `build-essential python3` y repite el instalador |
 | El instalador pide usuario/contraseña de GitHub | El repositorio debe ser público, o define `CENTRO_REPO` con una URL accesible (por ejemplo SSH) |
 | `The SUID sandbox helper binary was found, but is not configured correctly` | El instalador lo arregla pidiendo `sudo` una vez. Si no pudo, ejecuta `sudo chown root:root ~/.local/share/centro-proyectos/repo/node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 ~/.local/share/centro-proyectos/repo/node_modules/electron/dist/chrome-sandbox` o vuelve a lanzar el comando de instalación |

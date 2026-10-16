@@ -12,7 +12,7 @@ $Ref = $env:CENTRO_REF
 $Dir = if ($env:CENTRO_DIR) { $env:CENTRO_DIR } else { Join-Path $env:LOCALAPPDATA 'centro-proyectos' }
 $NodeMajor = 24
 $NodeMin = 20
-$Lanzador = Join-Path $Dir 'centro-proyectos.cmd'
+$Lanzador = Join-Path $Dir 'odesk.cmd'
 $Atajo = Join-Path ([Environment]::GetFolderPath('Programs')) 'ODESK AI.lnk'
 
 function Paso($m) { Write-Host "==> $m" -ForegroundColor Green }
@@ -172,8 +172,8 @@ $lnk.Save()
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (($userPath -split ';') -notcontains $Dir) {
   [Environment]::SetEnvironmentVariable('Path', "$userPath;$Dir", 'User')
-  Write-Host 'aviso: se añadió la carpeta al PATH; abre una terminal nueva para usar "centro-proyectos".' -ForegroundColor Yellow
+  Write-Host 'aviso: se añadió la carpeta al PATH; abre una terminal nueva para usar "odesk".' -ForegroundColor Yellow
 }
 
 Paso "Instalado: $($nuevo.Substring(0, 7)) ($Ref)"
-Write-Host 'Ejecuta:  centro-proyectos  (o desde el menú Inicio)    Actualizar:  centro-proyectos actualizar'
+Write-Host 'Ejecuta:  odesk  (o desde el menú Inicio)    Actualizar:  odesk actualizar'

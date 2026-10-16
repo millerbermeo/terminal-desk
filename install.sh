@@ -51,13 +51,14 @@ case "$(uname -m)" in
   *) fallo "arquitectura no soportada: $(uname -m)" ;;
 esac
 
-LANZADOR="$BIN/centro-proyectos"
+LANZADOR="$BIN/odesk"
+LANZADOR_ANTIGUO="$BIN/centro-proyectos"
 ESCRITORIO="${XDG_DATA_HOME:-$HOME/.local/share}/applications/odesk-ai.desktop"
 ESCRITORIO_ANTIGUO="${XDG_DATA_HOME:-$HOME/.local/share}/applications/centro-proyectos.desktop"
 
 desinstalar() {
   paso "Desinstalando de $DIR"
-  rm -rf "$DIR" "$LANZADOR" "$ESCRITORIO" "$ESCRITORIO_ANTIGUO"
+  rm -rf "$DIR" "$LANZADOR" "$LANZADOR_ANTIGUO" "$ESCRITORIO" "$ESCRITORIO_ANTIGUO"
   if [ "$BORRAR_DATOS" = 1 ]; then
     paso "Borrando datos de usuario en $DATOS"
     rm -rf "$DATOS"
@@ -209,6 +210,7 @@ rel="\$(cat "\$DIR/repo/node_modules/electron/path.txt")"
 exec "\$DIR/repo/node_modules/electron/dist/\$rel" "\$DIR/repo" "\$@"
 EOF
 chmod +x "$LANZADOR"
+rm -f "$LANZADOR_ANTIGUO"
 
 if [ "$SO" = Linux ]; then
   mkdir -p "$(dirname "$ESCRITORIO")"
@@ -232,4 +234,4 @@ case ":$PATH:" in
   *":$BIN:"*) ;;
   *) aviso "$BIN no está en tu PATH. Añade a tu shell:  export PATH=\"$BIN:\$PATH\"" ;;
 esac
-echo "Ejecuta:  centro-proyectos        Actualizar:  centro-proyectos actualizar"
+echo "Ejecuta:  odesk        Actualizar:  odesk actualizar"
