@@ -47,6 +47,8 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
   | { tipo: 'worktree'; accion: AccionWorktree; rama: string; ruta: string; detalle?: string }
   | { tipo: 'flujo_fin'; estado: EstadoFlujo; resumen: string }
   | { tipo: 'aprobacion_automatica'; clase: ClaseSolicitud; motivo: string }
+  /** Tokens que ocupó el contexto en la última llamada del agente raíz (dato real de la API, no una estimación). */
+  | { tipo: 'uso_contexto'; tokens: number; modelo?: string }
   | { tipo: 'comando_salida'; nombre: string; linea: string; ok: boolean; salida: string; duracionMs: number }
   | { tipo: 'a2a'; de: string; a: string; fase: 'envio' | 'respuesta'; texto: string }
 )

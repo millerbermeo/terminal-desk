@@ -18,6 +18,20 @@ Cada celda de la rejilla que pertenece a un proyecto tiene un selector **Termina
 - Al abrir un grupo (▶) siguen creándose terminales; el asistente se activa por celda.
 - El asistente integrado usa por ahora solo Anthropic (`Nucleo.llm()`); elegir otros proveedores queda pendiente.
 
+## Modelo, contexto y consumo
+
+- **Selector de modelo** (desplegable junto a la autonomía): «Modelo: automático» (el router elige según la complejidad) o un modelo concreto. La lista sale de la
+  API (`GET /v1/models`, con la ventana de contexto de cada uno, p. ej. «· 200k» o «· 1M») y se guarda 10 minutos; si la API no responde o no hay clave, se usan los modelos conocidos.
+  Se recuerda por proyecto. Un modelo fijado a mano no pasa por el router (ni se sube por llevar adjuntos).
+- **Medidor de contexto** (barra de estado sobre la caja de texto): cuánto de la ventana del modelo ocupa la conversación. Usa el dato **real** de la API (tokens de entrada de la
+  última llamada del agente raíz, evento `uso_contexto`); tras comprimir, o al retomar una conversación, muestra una estimación (`≈`). Pasa a ámbar al 70 % (a partir de ahí se
+  comprime sola: poda de resultados y adjuntos antiguos y resumen) y a rojo al 90 %. Si cambias de modelo, el porcentaje usa la ventana del nuevo.
+- **Consumo en tiempo real** (chip «Sesión · Hoy»): tokens de la conversación y de hoy, y al pulsarlo un detalle con el consumo por modelo, los últimos 7 días y los **límites de tasa**
+  que la API informa en las cabeceras de cada respuesta (tokens, entrada, salida y solicitudes por minuto, con cuenta atrás hasta la renovación). Se actualiza tras cada llamada.
+  Los datos se guardan en `~/.centro-proyectos/uso/` (35 días).
+- **Qué no se puede mostrar:** el **saldo y la facturación de la cuenta**. Con una clave de API normal no hay forma de consultarlos (están en console.anthropic.com, o en la API de
+  administración con una clave de administrador). Lo que se muestra es lo que ha consumido esta aplicación (incluidos resúmenes de contexto y evals) y el margen de tasa de la API.
+
 ## Archivos adjuntos (imágenes, PDF y texto)
 
 Botón **📎 Adjuntar**, pegar con Ctrl+V (p. ej. una captura) o arrastrar archivos sobre el chat. Aparecen como miniaturas o chips con su ✕ antes de enviar,

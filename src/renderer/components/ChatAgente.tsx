@@ -5,7 +5,9 @@ import { COMANDOS_INCLUIDOS, expandirPlantilla, type ComandoUsuario } from '@sha
 import type { ModoAutonomia } from '@shared/core/permisos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { Agente, Turno } from '../agente/useAgente'
+import { useModelos } from '../agente/uso'
 import { AdjuntosAgente } from './AdjuntosAgente'
+import { BarraUso } from './BarraUso'
 import { GestionProyecto } from './GestionProyecto'
 import { HistorialAgente } from './HistorialAgente'
 
@@ -163,6 +165,27 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [errorAdjunto, setErrorAdjunto] = useState('')
   const [arrastrando, setArrastrando] = useState(false)
   const selector = useRef<HTMLInputElement>(null)
+  const modelos = useModelos()
+  const claveModelo = `asistente:modelo:${proyectoFijo?.id ?? 'global'}`
+  const [modeloSel, setModeloSel] = useState<string>(() => {
+    try {
+      return localStorage.getItem(claveModelo) ?? 'auto'
+    } catch {
+      return 'auto'
+    }
+  })
+  // Un modelo recordado que ya no está disponible vuelve al modo automático.
+  useEffect(() => {
+    if (modeloSel !== 'auto' && modelos.length > 0 && !modelos.some((m) => m.id === modeloSel)) setModeloSel('auto')
+  }, [modelos, modeloSel])
+  const cambiarModelo = (id: string): void => {
+    setModeloSel(id)
+    try {
+      localStorage.setItem(claveModelo, id)
+    } catch {
+      /* sin almacenamiento: no se recordará */
+    }
+  }
   const claveAutonomia = `asistente:autonomia:${proyectoFijo?.id ?? 'global'}`
   const [autonomia, setAutonomiaEstado] = useState<ModoAutonomia>(() => {
     try {
@@ -261,6 +284,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         ...(proyecto ? { proyectoId: proyecto.id } : {}),
         ...(grupoSeleccionado ? { grupoId: destino.slice(2) } : {}),
         ...(autonomia !== 'preguntar' ? { autonomia } : {}),
+        ...(modeloSel !== 'auto' ? { modelo: modeloSel } : {}),
         ...(modo === 'flujo' || forzarFlujo ? { modo: 'flujo' as const, aislado } : {})
       }
     })
@@ -357,6 +381,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         ))}
         <div ref={fin} />
       </div>
+      <BarraUso {...(agente.contexto ? { contexto: agente.contexto } : {})} {...(modeloSel !== 'auto' ? { modelo: modeloSel } : {})} modelos={modelos} tokensSesion={agente.tokensSesion} />
       <div className="ag-compositor">
         <div className="ag-opciones">
           {!proyectoFijo && datos && (
@@ -382,6 +407,20 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               Flujo
             </button>
           </div>
+          <select
+            className="ag-modelo"
+            value={modeloSel}
+            onChange={(e) => cambiarModelo(e.target.value)}
+            aria-label="Modelo"
+            title="Modelo que responde. En automático el router elige según la complejidad de cada petición."
+          >
+            <option value="auto">Modelo: automático</option>
+            {modelos.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.nombre} · {m.ventana >= 1_000_000 ? `${m.ventana / 1_000_000}M` : `${Math.round(m.ventana / 1000)}k`}
+              </option>
+            ))}
+          </select>
           <select
             className={`ag-autonomia ${autonomia}`}
             value={autonomia}

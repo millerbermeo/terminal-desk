@@ -145,6 +145,8 @@ export class Harness {
         ...(p.senal ? { senal: p.senal } : {}),
         alUso: (u) => {
           this.gastado += u.tokensEntrada + u.tokensSalida
+          const modelo = (profundidad === 0 ? p.modelo : undefined) ?? agente.def.modelo
+          if (profundidad === 0) emitir({ tipo: 'uso_contexto', tokens: u.tokensEntrada, ...(modelo ? { modelo } : {}) })
         },
         agotado: () => this.o.presupuestoTokens !== undefined && this.gastado >= this.o.presupuestoTokens,
         alPaso: (numero) => emitir({ tipo: 'paso', numero }),

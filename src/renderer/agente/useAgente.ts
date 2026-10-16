@@ -29,6 +29,27 @@ export interface OpcionesEnvio {
   adjuntos?: Adjunto[]
 }
 
+export interface ContextoActual {
+  tokens: number
+  aprox: boolean // estimación (tras comprimir o al retomar) en vez de un dato real de la API
+  modelo?: string // último modelo conocido del agente raíz
+}
+
+/** Lo que ocupa el contexto ahora: el dato real de la última llamada, o una estimación si aún no hay. */
+export function contextoDe(turnos: readonly Turno[], estimado?: number): ContextoActual | undefined {
+  let modelo: string | undefined
+  for (let i = turnos.length - 1; i >= 0; i--) {
+    const evs = turnos[i]!.eventos
+    for (let j = evs.length - 1; j >= 0; j--) {
+      const e = evs[j]!
+      if (!modelo && (e.tipo === 'uso_contexto' || e.tipo === 'ruta') && e.modelo) modelo = e.modelo
+      if (e.tipo === 'uso_contexto') return { tokens: e.tokens, aprox: false, ...((modelo ?? e.modelo) ? { modelo: modelo ?? e.modelo! } : {}) }
+      if (e.tipo === 'contexto') return { tokens: e.tokensDespues, aprox: true, ...(modelo ? { modelo } : {}) }
+    }
+  }
+  return estimado !== undefined ? { tokens: estimado, aprox: true } : undefined
+}
+
 /** Aplica un evento a un turno (el resultado de `fin`/`flujo_fin` cierra el turno). */
 function aplicar(t: Turno, e: EventoAgente): Turno {
   switch (e.tipo) {
@@ -81,6 +102,7 @@ export function useAgente(opciones: { clave?: string } = {}) {
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [sesionId, setSesionId] = useState<string | undefined>()
   const guardados = useRef(0) // cuántos turnos terminados ya están guardados
+  const [contextoEstimado, setContextoEstimado] = useState<number | undefined>() // al retomar una conversación, hasta que haya un dato real
   const ref = useRef<Turno[]>([]) // fuente de verdad: los efectos secundarios no van dentro de actualizadores de estado
   // Los eventos pueden llegar antes de que `ejecutar` devuelva el id: se guardan solo mientras esta instancia tiene un envío en vuelo.
   const huerfanos = useRef(new Map<string, EventoAgente[]>())
@@ -121,6 +143,7 @@ export function useAgente(opciones: { clave?: string } = {}) {
         contador.current = recuperados.length
         actualizar(() => recuperados)
         setSesionId(s.id)
+        setContextoEstimado(s.tokensContexto)
       })
     return () => liberar(claveActiva)
   }, [claveActiva, actualizar])
@@ -227,6 +250,7 @@ export function useAgente(opciones: { clave?: string } = {}) {
   const nuevaConversacion = useCallback((): void => {
     guardarActiva(claveActiva, undefined)
     setSesionId(undefined)
+    setContextoEstimado(undefined)
     guardados.current = 0
     actualizar(() => [])
   }, [actualizar, claveActiva])
@@ -241,6 +265,7 @@ export function useAgente(opciones: { clave?: string } = {}) {
       contador.current = recuperados.length
       actualizar(() => recuperados)
       setSesionId(s.id)
+      setContextoEstimado(s.tokensContexto)
     },
     [actualizar]
   )
@@ -255,7 +280,11 @@ export function useAgente(opciones: { clave?: string } = {}) {
   )
 
   const enCurso = turnos.some((t) => t.estado === 'en_curso')
-  return { turnos, enCurso, sesionId, enviar, ejecutarComando, avisar, cancelar, nuevaConversacion, abrirSesion, borrarSesion }
+  const contexto = contextoDe(turnos, contextoEstimado)
+  const tokensSesion = turnos.reduce((s, t) => s + t.eventos.reduce((x, e) => (e.tipo === 'fin' ? x + e.resultado.uso.tokensEntrada + e.resultado.uso.tokensSalida : x), 0), 0)
+  return {
+    contexto,
+    tokensSesion, turnos, enCurso, sesionId, enviar, ejecutarComando, avisar, cancelar, nuevaConversacion, abrirSesion, borrarSesion }
 }
 
 export type Agente = ReturnType<typeof useAgente>

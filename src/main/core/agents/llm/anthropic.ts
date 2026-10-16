@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { BloqueContenido, Mensaje } from '@shared/core/agente'
+import { MODELOS_CONOCIDOS, VENTANA_POR_DEFECTO, type InfoModelo } from '@shared/core/uso'
 import type { PeticionLLM, ProveedorLLM, RespuestaLLM } from './proveedor'
 
 export const MODELO_POR_DEFECTO = 'claude-sonnet-5-5'
@@ -7,6 +8,10 @@ export const MODELO_POR_DEFECTO = 'claude-sonnet-5-5'
 export interface OpcionesAnthropic {
   /** Lee el contenido de un adjunto por su id (imágenes y PDFs). Sin él, los adjuntos se sustituyen por un aviso. */
   leerAdjunto?: (id: string) => Promise<{ mime: string; base64: string } | undefined>
+  /** Se invoca con las cabeceras de cada respuesta (límites de tasa). */
+  alCabeceras?: (h: Headers) => void
+  /** Implementación de `fetch` (pruebas). */
+  fetch?: typeof fetch
   /** Cliente ya creado (pruebas). */
   cliente?: Anthropic
 }
@@ -21,7 +26,35 @@ export class ProveedorAnthropic implements ProveedorLLM {
     private readonly modeloPorDefecto: string = MODELO_POR_DEFECTO,
     private readonly o: OpcionesAnthropic = {}
   ) {
-    this.cliente = o.cliente ?? new Anthropic({ apiKey })
+    this.cliente =
+      o.cliente ??
+      new Anthropic({
+        apiKey,
+        // Se leen las cabeceras de cada respuesta (límites de tasa) sin alterar la llamada.
+        fetch: async (url, init) => {
+          const r = await (o.fetch ?? fetch)(url, init)
+          try {
+            o.alCabeceras?.(r.headers)
+          } catch {
+            /* la telemetría nunca debe romper una llamada */
+          }
+          return r
+        }
+      })
+  }
+
+  /** Modelos disponibles para esta clave (con su ventana de contexto); si la API no responde, los conocidos. */
+  async modelos(): Promise<InfoModelo[]> {
+    try {
+      const salida: InfoModelo[] = []
+      for await (const m of this.cliente.models.list({ limit: 100 }, { timeout: 8000 })) {
+        if (m.id.startsWith('claude')) salida.push({ id: m.id, nombre: m.display_name || m.id, ventana: m.max_input_tokens ?? VENTANA_POR_DEFECTO })
+      }
+      if (salida.length) return salida
+    } catch {
+      /* sin lista: se usan los conocidos */
+    }
+    return [...MODELOS_CONOCIDOS]
   }
 
   private async aApi(m: Mensaje): Promise<Anthropic.MessageParam> {

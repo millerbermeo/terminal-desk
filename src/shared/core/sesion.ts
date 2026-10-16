@@ -24,6 +24,8 @@ export interface SesionGuardada {
   creada: string
   actualizada: string
   transcripcion: TurnoGuardado[]
+  /** Estimación de lo que ocupa el contexto del modelo en esta conversación (para mostrar el medidor al retomarla). */
+  tokensContexto?: number
 }
 
 export interface ResumenSesion {

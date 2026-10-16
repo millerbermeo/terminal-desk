@@ -1,5 +1,6 @@
 import type { EventoAgente, Mensaje, Uso } from '@shared/core/agente'
 import type { ResumenSesion, SesionGuardada, TurnoGuardado } from '@shared/core/sesion'
+import { tokensMensajes } from '../context/tokens'
 import { redactarSecretos } from '../guardrails/secretos'
 import { AlmacenJson } from './almacen'
 
@@ -110,7 +111,7 @@ export class MemoriaCortoPlazo {
   async transcripcion(id: string): Promise<SesionGuardada | undefined> {
     const s = await this.almacen.leer(id)
     if (!s) return undefined
-    return { id: s.id, titulo: s.titulo, ...(s.proyectoId ? { proyectoId: s.proyectoId } : {}), creada: s.creada, actualizada: s.actualizada, transcripcion: s.transcripcion }
+    return { id: s.id, titulo: s.titulo, ...(s.proyectoId ? { proyectoId: s.proyectoId } : {}), creada: s.creada, actualizada: s.actualizada, transcripcion: s.transcripcion, tokensContexto: tokensMensajes(s.mensajes) }
   }
 
   /** Más recientes primero; sin `proyectoId` devuelve las de todos los proyectos. */

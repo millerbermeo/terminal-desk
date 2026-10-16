@@ -4,6 +4,7 @@ import type { ResumenTraza, Traza } from './core/traza'
 import type { Adjunto } from './core/adjuntos'
 import type { ComandoUsuario } from './core/comandos'
 import type { NuevaRegla, ReglaPermiso } from './core/permisos'
+import type { InfoModelo, ResumenUso } from './core/uso'
 import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion'
 import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
 import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso } from './modelos'
@@ -45,6 +46,9 @@ export const Canales = {
   coreEvalsSuites: 'core:evals-suites',
   coreEvalsEjecutar: 'core:evals-ejecutar',
   coreEvalsInformes: 'core:evals-informes',
+  coreModelosListar: 'core:modelos-listar',
+  coreUsoObtener: 'core:uso-obtener',
+  coreUso: 'core:uso',
   coreAdjuntoSubir: 'core:adjunto-subir',
   coreAdjuntoLeer: 'core:adjunto-leer',
   coreAdjuntoEliminar: 'core:adjunto-eliminar',
@@ -160,6 +164,12 @@ export interface ApiCentro {
     evalsSuites(): Promise<InfoSuite[]>
     evalsEjecutar(suiteId: string, casos?: string[]): Promise<ResultadoEvals>
     evalsInformes(suiteId: string): Promise<InformeEval[]>
+    /** Modelos disponibles para la clave (con su ventana de contexto); si la API no responde, los conocidos. */
+    modelos(): Promise<InfoModelo[]>
+    /** Consumo de esta aplicación hoy y límites de tasa que informa la API. */
+    uso(): Promise<ResumenUso>
+    /** Cambios en el consumo en tiempo real (tras cada llamada al modelo). */
+    onUso(cb: (r: ResumenUso) => void): () => void
     /** Valida y guarda un archivo (imagen, PDF o texto) para adjuntarlo a un mensaje; lanza con un motivo claro si no es admisible. */
     adjuntoSubir(nombre: string, datos: Uint8Array): Promise<Adjunto>
     /** Contenido de una imagen adjunta (para mostrar su miniatura). */

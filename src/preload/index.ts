@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { EventoAgente } from '@shared/core/agente'
+import type { ResumenUso } from '@shared/core/uso'
 import { Canales, type ApiCentro, type DatosTerminal, type PayloadVentana, type SalidaTerminal } from '@shared/ipc'
 
 function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
@@ -22,6 +23,9 @@ const api: ApiCentro = {
     evalsSuites: () => ipcRenderer.invoke(Canales.coreEvalsSuites),
     evalsEjecutar: (suiteId, casos) => ipcRenderer.invoke(Canales.coreEvalsEjecutar, suiteId, casos),
     evalsInformes: (suiteId) => ipcRenderer.invoke(Canales.coreEvalsInformes, suiteId),
+    modelos: () => ipcRenderer.invoke(Canales.coreModelosListar),
+    uso: () => ipcRenderer.invoke(Canales.coreUsoObtener),
+    onUso: (cb) => suscribir<ResumenUso>(Canales.coreUso, cb),
     adjuntoSubir: (nombre, datos) => ipcRenderer.invoke(Canales.coreAdjuntoSubir, nombre, datos),
     adjuntoLeer: (id) => ipcRenderer.invoke(Canales.coreAdjuntoLeer, id),
     adjuntoEliminar: (id) => ipcRenderer.invoke(Canales.coreAdjuntoEliminar, id),

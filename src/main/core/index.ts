@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import type { InfoSuite, ResultadoEvals } from '@shared/core/evals'
 import type { TurnoGuardado } from '@shared/core/sesion'
 import { LIMITES_ADJUNTOS } from '@shared/core/adjuntos'
+import { MODELOS_CONOCIDOS, type InfoModelo } from '@shared/core/uso'
 import type { ComandoUsuario } from '@shared/core/comandos'
 import type { ModoAutonomia, NuevaRegla } from '@shared/core/permisos'
 import type { ResumenTraza, Traza } from '@shared/core/traza'
@@ -14,7 +15,7 @@ import { leerProveedores } from '../proveedores'
 import { DIR, leerProyectos } from '../proyectos'
 import { Agente } from './agents/agente'
 import { Harness, type Aprobador, type Validador } from './agents/harness'
-import { ProveedorAnthropic } from './agents/llm/anthropic'
+import { MODELO_POR_DEFECTO, ProveedorAnthropic } from './agents/llm/anthropic'
 import type { ProveedorLLM } from './agents/llm/proveedor'
 import type { Proyecto } from '@shared/modelos'
 import { BusA2A } from './a2a/bus'
@@ -33,6 +34,7 @@ import { LlmTrazado } from './tracing/llm-trazado'
 import { Trazador } from './tracing/trazador'
 import { crearAprobadorHumano } from './hitl/aprobador'
 import { AlmacenAdjuntos } from './adjuntos/almacen'
+import { LlmMedido, Medidor } from './uso/medidor'
 import { ComandosStore, dividirArgumentos } from './comandos/store'
 import { esDestructiva } from './guardrails/destructivo'
 import { decidir, PermisosStore } from './permisos/reglas'
@@ -96,6 +98,9 @@ export class Nucleo {
   readonly permisos = new PermisosStore(join(DIR, 'permisos'))
   readonly comandos = new ComandosStore(join(DIR, 'comandos'))
   readonly adjuntos = new AlmacenAdjuntos(join(DIR, 'adjuntos'))
+  readonly medidor = new Medidor(join(DIR, 'uso'))
+  private proveedor?: { clave: string; p: ProveedorAnthropic }
+  private modelosCache?: { hasta: number; lista: InfoModelo[] }
 
   /** Guardrails + reglas de denegación del proyecto: lo bloqueado no llega a preguntarse al usuario. */
   private readonly validar: Validador = async (llamada, _riesgo, _agente, ctx) =>
@@ -123,7 +128,25 @@ export class Nucleo {
   private async llm(): Promise<ProveedorLLM> {
     const clave = await claveAnthropic()
     if (!clave) throw new Error('Falta ANTHROPIC_API_KEY (variable de entorno o env del proveedor «claude»).')
-    return new LlmTrazado(new ProveedorAnthropic(clave, undefined, { leerAdjunto: (id) => this.adjuntos.base64(id) }), this.trazador, MODELOS_POR_DEFECTO.media)
+    return new LlmTrazado(new LlmMedido(this.anthropic(clave), this.medidor, MODELO_POR_DEFECTO), this.trazador, MODELOS_POR_DEFECTO.media)
+  }
+
+  /** Un único cliente de la API por clave (comparte conexiones y lee los límites de tasa de las cabeceras). */
+  private anthropic(clave: string): ProveedorAnthropic {
+    if (this.proveedor?.clave !== clave) {
+      this.proveedor = { clave, p: new ProveedorAnthropic(clave, undefined, { leerAdjunto: (id) => this.adjuntos.base64(id), alCabeceras: (h) => this.medidor.cabeceras(h) }) }
+      this.modelosCache = undefined
+    }
+    return this.proveedor.p
+  }
+
+  /** Modelos disponibles (con su ventana de contexto), en caché 10 minutos; sin clave, los conocidos. */
+  async modelos(): Promise<InfoModelo[]> {
+    if (this.modelosCache && this.modelosCache.hasta > Date.now()) return this.modelosCache.lista
+    const clave = await claveAnthropic()
+    const lista = clave ? await this.anthropic(clave).modelos() : [...MODELOS_CONOCIDOS]
+    this.modelosCache = { hasta: Date.now() + 10 * 60_000, lista }
+    return lista
   }
 
   /** Lanza una ejecución y devuelve sus ids; el progreso se entrega por `alEvento`. */
@@ -138,6 +161,7 @@ export class Nucleo {
     if (sol.grupoId && miembros.length === 0) throw new Error('El grupo no tiene proyectos')
 
     if (sol.modo !== 'flujo' && !sol.grupoId && !this.agentes.has(sol.agenteId ?? 'asistente')) throw new Error(`Agente desconocido: ${sol.agenteId}`)
+    if (sol.modelo !== undefined && !/^claude-[a-z0-9._-]{3,60}$/.test(sol.modelo)) throw new Error(`Modelo inválido: ${sol.modelo}`)
     const bloques = await this.bloquesDeAdjuntos(sol.adjuntos)
     const llm = await this.llm()
     const sesionId = validarId(sol.sesionId ?? randomUUID())
@@ -493,6 +517,11 @@ export function registrarIpcCore(nucleo: Nucleo): void {
   ipcMain.handle(Canales.coreEvalsSuites, () => nucleo.evalsSuites())
   ipcMain.handle(Canales.coreEvalsEjecutar, (_e, suiteId: string, casos?: string[]) => nucleo.ejecutarEvals(String(suiteId), Array.isArray(casos) ? casos.map(String) : undefined))
   ipcMain.handle(Canales.coreEvalsInformes, (_e, suiteId: string) => nucleo.evalsInformes(suiteId))
+  ipcMain.handle(Canales.coreModelosListar, () => nucleo.modelos())
+  ipcMain.handle(Canales.coreUsoObtener, () => nucleo.medidor.resumen())
+  nucleo.medidor.suscribir((r) => {
+    for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(Canales.coreUso, r)
+  })
   ipcMain.handle(Canales.coreAdjuntoSubir, (_e, nombre: string, datos: Uint8Array | ArrayBuffer) => {
     const bytes = datos instanceof Uint8Array ? datos : new Uint8Array(datos)
     if (bytes.byteLength > 25 * 1024 * 1024) throw new Error('El archivo es demasiado grande')
