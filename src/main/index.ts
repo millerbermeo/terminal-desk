@@ -1,11 +1,12 @@
 import { app, BrowserWindow, ipcMain, shell, webContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import type { Proveedor } from '@shared/modelos'
-import { Canales, type OpcionesTerminal, type PayloadVentana, type ResultadoEliminarGrupo, type SolicitudAgregar } from '@shared/ipc'
+import type { Proveedor, Recurso } from '@shared/modelos'
+import { Canales, type DestinoActivacion, type OpcionesTerminal, type PayloadVentana, type ResultadoEliminarGrupo, type SolicitudAgregar } from '@shared/ipc'
 import { GestorTerminales } from './terminales'
 import { eliminarProveedor, guardarProveedor, listarProveedores, obtenerProveedor } from './proveedores'
 import { verificarPassword } from './autenticacion'
+import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones } from './agentes'
 import { agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, validarRuta } from './proyectos'
 
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
@@ -94,13 +95,19 @@ function registrarIpc(): void {
     if (!auth.ok) return auth
     return { ok: true, datos: await eliminarGrupo(id) }
   })
+  ipcMain.handle(Canales.agentesListar, () => leerBiblioteca())
+  ipcMain.handle(Canales.agentesGuardar, (_e, r: Recurso) => guardarRecurso(r))
+  ipcMain.handle(Canales.agentesEliminar, (_e, id: string) => eliminarRecurso(id))
+  ipcMain.handle(Canales.agentesActivar, (_e, d: DestinoActivacion, id: string, activo: boolean) => activarRecurso(d, id, activo))
   ipcMain.handle(Canales.proveedoresListar, () => listarProveedores())
   ipcMain.handle(Canales.proveedoresGuardar, (_e, p: Proveedor) => guardarProveedor(p))
   ipcMain.handle(Canales.proveedoresEliminar, (_e, id: string) => eliminarProveedor(id))
   ipcMain.handle(Canales.terminalCrear, async (e, op: OpcionesTerminal) => {
     // El renderer solo envía el id: el comando se resuelve aquí, desde la config guardada.
     const prov = op.proveedorId ? await obtenerProveedor(op.proveedorId) : undefined
-    const id = terminales.crear(op, prov && { comando: prov.comando, env: prov.env })
+    // Con Claude Code se le cargan los agentes y skills activos del proyecto; una terminal normal no los lleva.
+    const comando = prov ? await comandoConAgentes(prov.comando, op.proyectoId) : undefined
+    const id = terminales.crear(op, prov && { comando: comando!, env: prov.env })
     duenos.set(id, e.sender.id)
     return id
   })
@@ -145,6 +152,7 @@ function registrarIpc(): void {
 
 app.whenReady().then(() => {
   registrarIpc()
+  void limpiarSesiones()
   principal = crearVentana()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) principal = crearVentana()

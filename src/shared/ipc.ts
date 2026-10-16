@@ -1,6 +1,10 @@
-import type { DatosProyectos, Proveedor, ProveedorEstado } from './modelos'
+import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso } from './modelos'
 
 export const Canales = {
+  agentesListar: 'agentes:listar',
+  agentesGuardar: 'agentes:guardar',
+  agentesEliminar: 'agentes:eliminar',
+  agentesActivar: 'agentes:activar',
   proveedoresListar: 'proveedores:listar',
   proveedoresGuardar: 'proveedores:guardar',
   proveedoresEliminar: 'proveedores:eliminar',
@@ -25,6 +29,7 @@ export const Canales = {
 export interface OpcionesTerminal {
   cwd?: string
   proveedorId?: string // si se indica, se ejecuta su comando al abrir
+  proyectoId?: string // si es Claude, se le cargan los agentes y skills activos de este proyecto
   cols: number
   rows: number
 }
@@ -81,6 +86,13 @@ export interface PayloadVentana {
   terminales: { id: string; titulo: string; ptyId: string; cwd?: string; proveedorId?: string; proyectoId?: string }[]
 }
 
+export type ResultadoRecurso = { ok: true; biblioteca: BibliotecaAgentes } | { ok: false; mensaje: string }
+
+export interface DestinoActivacion {
+  tipo: 'proyecto' | 'grupo'
+  id: string
+}
+
 /** Si hay errores no se agrega nada (todo o nada). */
 export interface ResultadoAgregar {
   datos: DatosProyectos
@@ -89,6 +101,14 @@ export interface ResultadoAgregar {
 
 /** API expuesta en window.api por el preload. */
 export interface ApiCentro {
+  agentes: {
+    listar(): Promise<BibliotecaAgentes>
+    /** id vacío = crear */
+    guardar(recurso: Recurso): Promise<ResultadoRecurso>
+    eliminar(id: string): Promise<BibliotecaAgentes>
+    /** Activa o desactiva un recurso compartido para un grupo o un proyecto. */
+    activar(destino: DestinoActivacion, recursoId: string, activo: boolean): Promise<BibliotecaAgentes>
+  }
   ventana: {
     /** Abre una ventana nueva con estas terminales (opcionalmente en la posición de pantalla indicada). */
     separar(payload: PayloadVentana, pos?: { x: number; y: number }): void

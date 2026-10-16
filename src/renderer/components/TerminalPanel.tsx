@@ -11,6 +11,7 @@ interface Props {
   id: string
   cwd?: string
   proveedorId?: string
+  proyectoId?: string
   ptyExistente?: string // si viene de otra ventana: se adjunta a ese pty en vez de crear uno
   onPty?: (id: string, ptyId: string) => void
   visible: boolean
@@ -21,7 +22,7 @@ interface Props {
 /** ptys que pasan a otra ventana: al desmontar el panel no se matan. */
 export const transferidas = new Set<string>()
 
-export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId, ptyExistente, onPty, visible, activa, onActivar }: Props) {
+export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId, proyectoId, ptyExistente, onPty, visible, activa, onActivar }: Props) {
   const contenedor = useRef<HTMLDivElement>(null)
   const term = useRef<Terminal | null>(null)
   const fit = useRef<FitAddon | null>(null)
@@ -174,7 +175,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
         ajustarYa()
       })
     } else {
-      void window.api.terminal.crear({ cols: t.cols, rows: t.rows, cwd, proveedorId }).then((pid) => {
+      void window.api.terminal.crear({ cols: t.cols, rows: t.rows, cwd, proveedorId, proyectoId }).then((pid) => {
         if (!vivo) {
           window.api.terminal.cerrar(pid)
           return

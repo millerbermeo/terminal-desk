@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
+import type { BibliotecaAgentes, DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
 import { IconoCerrar, IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, IconoTerminal, IconoVentana } from './components/Iconos'
 import { Sidebar, type Vista } from './components/Sidebar'
+import { ConfigAgentes } from './components/ConfigAgentes'
 import { ConfigProveedores } from './components/ConfigProveedores'
 import { ConfigProyectos } from './components/ConfigProyectos'
 import { ModalConfirmar } from './components/ModalConfirmar'
@@ -62,6 +63,7 @@ export function App() {
   const [ventanaActiva, setVentanaActiva] = useState<string | null>(null)
   const [vista, setVista] = useState<Vista>('terminales')
   const [proveedores, setProveedores] = useState<ProveedorEstado[]>([])
+  const [biblioteca, setBiblioteca] = useState<BibliotecaAgentes>({ recursos: [], activaciones: { proyectos: {}, grupos: {} } })
   const [porCerrar, setPorCerrar] = useState<string | null>(null)
   const [separando, setSeparando] = useState<{ id: string; x: number; y: number } | null>(null) // pestaña arrastrada fuera de la barra
   const drag = useRef<{ id: string; x0: number; y0: number; movido: boolean } | null>(null)
@@ -70,6 +72,7 @@ export function App() {
   useEffect(() => {
     void window.api.proyectos.listar().then(setDatos)
     void window.api.proveedores.listar().then(setProveedores).catch(() => undefined)
+    void window.api.agentes.listar().then(setBiblioteca).catch(() => undefined)
   }, [])
 
   const cambiar = useCallback((id: string, f: (v: Ventana) => Ventana): void => {
@@ -283,6 +286,7 @@ export function App() {
         onVista={setVista}
       />
       {vista === 'config' && <ConfigProyectos datos={datos} onDatos={setDatos} />}
+      {vista === 'agentes' && <ConfigAgentes datos={datos} biblioteca={biblioteca} onBiblioteca={setBiblioteca} />}
       {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}
       {/* siempre montado (oculto en las pantallas de configuración) para no matar los procesos de las terminales */}
       <main className="principal" style={{ display: vista !== 'terminales' ? 'none' : 'flex' }}>

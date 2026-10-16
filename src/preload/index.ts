@@ -8,6 +8,12 @@ function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
 }
 
 const api: ApiCentro = {
+  agentes: {
+    listar: () => ipcRenderer.invoke(Canales.agentesListar),
+    guardar: (r) => ipcRenderer.invoke(Canales.agentesGuardar, r),
+    eliminar: (id) => ipcRenderer.invoke(Canales.agentesEliminar, id),
+    activar: (destino, id, activo) => ipcRenderer.invoke(Canales.agentesActivar, destino, id, activo)
+  },
   ventana: {
     separar: (payload, pos) => ipcRenderer.send(Canales.ventanaSeparar, payload, pos),
     tomar: (token) => ipcRenderer.invoke(Canales.ventanaTomar, token),

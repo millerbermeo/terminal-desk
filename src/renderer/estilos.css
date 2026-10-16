@@ -277,3 +277,43 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
 .menu-terminal button:disabled { opacity: 0.4; }
 .menu-terminal kbd { margin-left: auto; font: 11px system-ui, sans-serif; color: var(--texto-suave); padding-left: 16px; }
 .menu-sep { height: 1px; background: var(--borde); margin: 4px 6px; }
+
+/* agentes y skills */
+.rec-desc { flex: 1; min-width: 0; color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cfg-proyecto .chip { flex: none; }
+.pestanas-cfg { margin-bottom: 18px; }
+.modal-ancho { width: min(820px, 100%); }
+.modal textarea, textarea { background: var(--bg); color: var(--texto); font: inherit; border: 1px solid var(--borde-fuerte); border-radius: 6px; padding: 8px 10px; resize: vertical; line-height: 1.5; transition: border-color var(--rapido), box-shadow var(--rapido); }
+textarea:focus { border-color: var(--acento); box-shadow: 0 0 0 3px rgba(122, 162, 247, 0.15); outline: none; }
+.fila-opciones { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.fila-opciones > .ancho { flex: 1 1 320px; display: flex; flex-direction: column; gap: 5px; }
+.fila-opciones > label { min-width: 200px; }
+.etiqueta { color: var(--texto-suave); font-size: 12px; }
+.chips-sel { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-sel { flex-direction: row !important; align-items: center; max-width: none !important; gap: 6px !important; padding: 3px 10px; border-radius: 14px; border: 1px solid var(--borde-fuerte); color: var(--texto-suave); cursor: pointer; transition: background var(--rapido), color var(--rapido), border-color var(--rapido); font-size: 12px !important; }
+.chip-sel input { position: absolute; opacity: 0; pointer-events: none; }
+.chip-sel:hover { border-color: #444d60; color: var(--texto); }
+.chip-sel.on { background: rgba(122, 162, 247, 0.16); border-color: var(--acento); color: var(--acento); }
+.chip-sel:focus-within { outline: 2px solid var(--acento); outline-offset: 1px; }
+
+.act-columnas { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 22px; align-items: start; max-width: 1100px; }
+.config > .act-columnas { max-width: 1100px; }
+.act-destinos { position: sticky; top: 0; display: flex; flex-direction: column; gap: 2px; background: var(--bg-sidebar); border: 1px solid var(--borde); border-radius: 10px; padding: 8px; }
+.act-item.activo { background: rgba(122, 162, 247, 0.14); color: var(--acento); }
+.act-item.activo svg { color: var(--acento); }
+.act-grupo { font-weight: 600; margin-top: 4px; }
+.act-proyecto { padding-left: 26px; }
+.act-etiqueta { color: var(--texto-suave); font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; padding: 8px 10px 2px; }
+.act-titulo { margin: 0 0 4px; font-size: 16px; }
+.act-resumen { color: var(--texto-suave); padding: 10px 12px; background: var(--bg-elevado); border: 1px solid var(--borde); border-radius: 8px; }
+.act-resumen strong { color: var(--ok); }
+.act-panel .cfg-intro { margin: 0 0 14px; }
+
+.interruptor { position: relative; flex: none; width: 34px; height: 20px; display: inline-block; cursor: pointer; }
+.interruptor input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: inherit; }
+.interruptor span { position: absolute; inset: 0; border-radius: 10px; background: var(--borde-fuerte); transition: background var(--medio) var(--ease); }
+.interruptor span::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform var(--medio) var(--ease); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); }
+.interruptor input:checked + span { background: var(--acento-fuerte); }
+.interruptor input:checked + span::after { transform: translateX(14px); }
+.interruptor input:focus-visible + span { outline: 2px solid var(--acento); outline-offset: 2px; }
+.interruptor.bloqueado { opacity: 0.5; cursor: not-allowed; }

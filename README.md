@@ -64,6 +64,16 @@ Un proveedor es un CLI que se ejecuta dentro de una terminal (Claude Code, Codex
 - «No detectado» = el ejecutable no está en el PATH de la app; puede funcionar igual si tu shell lo carga.
 - `env` se guarda en texto plano: si ya iniciaste sesión en el CLI no hace falta poner claves.
 
+## Agentes y skills (Claude Code)
+
+Pantalla **Agentes y skills**: biblioteca de subagentes y skills de Claude Code, guardada en `~/.centro-proyectos/agentes.json`.
+
+- **Compartidos:** se definen una vez y se activan por **grupo** (todos sus proyectos) o por **proyecto**. Lo del grupo se suma a lo del proyecto.
+- **Individuales:** pertenecen a un solo proyecto y siempre se cargan en él.
+- **Cuándo se aplican:** solo al abrir una terminal con Claude desde un proyecto (✦ → Claude Code). Una terminal normal, o escribir `claude` a mano, no los lleva.
+- **Cómo:** la app genera un plugin de Claude Code en `~/.centro-proyectos/sesiones/` y arranca `claude --plugin-dir <carpeta>`. No se escribe nada en el repositorio del proyecto. Los subagentes aparecen como `centro:<nombre>`. Las carpetas generadas se borran a los 14 días.
+- Cambiar la configuración afecta a las terminales que abras después; las sesiones de Claude ya abiertas no se actualizan.
+
 ## Pestañas por grupo
 
 Cada grupo se abre en su propia pestaña (arriba) con sus terminales; al abrir otro grupo se crea otra pestaña y las anteriores siguen vivas en segundo plano, con sus procesos. ▶ en un grupo abre una terminal por proyecto (si ya tiene pestaña, va a ella); un clic en un proyecto lo abre en la pestaña de su grupo, o te lleva a su terminal si ya la tiene (no duplica); para una terminal extra usa «+ Terminal» dentro de la pestaña (proyecto del grupo o terminal vacía); «+» (arriba) crea una pestaña suelta. Cerrar una pestaña (× o clic central) pide confirmación y cierra sus procesos. Cada pestaña tiene su propio layout.

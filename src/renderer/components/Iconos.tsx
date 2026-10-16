@@ -71,3 +71,6 @@ export const IconoLimpiar = () => (
 export const IconoVolver = () => (
   <Icono width={14} height={14}><path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 5 5v6" /></Icono>
 )
+export const IconoAgente = () => (
+  <Icono><rect x="4" y="8" width="16" height="12" rx="3" /><path d="M12 8V4M9 14h.01M15 14h.01M2 14h2M20 14h2" /><circle cx="12" cy="3" r="1" /></Icono>
+)

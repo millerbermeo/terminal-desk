@@ -192,6 +192,7 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPers
                 id={t.id}
                 cwd={t.cwd}
                 proveedorId={t.proveedorId}
+                proyectoId={t.proyectoId}
                 ptyExistente={t.ptyId}
                 onPty={onPty}
                 visible={visible}

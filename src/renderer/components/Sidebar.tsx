@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
-import { IconoCarpeta, IconoAbrirTodas, IconoChevron, IconoChispa, IconoEngranaje, IconoMas } from './Iconos'
+import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoMas } from './Iconos'
 
 interface Props {
   datos: DatosProyectos
@@ -16,7 +16,7 @@ interface Props {
   onVista: (v: Vista) => void
 }
 
-export type Vista = 'terminales' | 'config' | 'proveedores'
+export type Vista = 'terminales' | 'config' | 'proveedores' | 'agentes'
 
 interface MenuIA {
   proyecto: Proyecto
@@ -128,6 +128,10 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
         {sinGrupo.length > 0 && seccion('__sin-grupo__', 'Sin grupo', sinGrupo)}
       </nav>
       <footer>
+        <button className={`item item-config${vista === 'agentes' ? ' activo' : ''}`} onClick={() => onVista(vista === 'agentes' ? 'terminales' : 'agentes')}>
+          <IconoAgente />
+          <span>Agentes y skills</span>
+        </button>
         <button className={`item item-config${vista === 'proveedores' ? ' activo' : ''}`} onClick={() => onVista(vista === 'proveedores' ? 'terminales' : 'proveedores')}>
           <IconoChispa />
           <span>Proveedores de IA</span>
