@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EventoAgente, SolicitudAgente } from '@shared/core/agente'
+import type { EstadoTurno, TurnoGuardado } from '@shared/core/sesion'
 import { etiquetarEjecucion, limpiarEjecucion } from './solicitudes'
 
-export type EstadoTurno = 'en_curso' | 'completado' | 'limite_pasos' | 'cancelado' | 'error' | 'rechazado' | 'fallido'
+export type { EstadoTurno }
 
 export interface Turno {
   clave: string
@@ -15,6 +16,7 @@ export interface Turno {
   parcial: string // texto que el modelo está escribiendo ahora mismo (streaming)
   estado: EstadoTurno
   error?: string
+  proyectoId?: string
 }
 
 export interface OpcionesEnvio {
@@ -42,13 +44,36 @@ function aplicar(t: Turno, e: EventoAgente): Turno {
   }
 }
 
+// Conversación activa de cada proyecto (clave -> id de sesión), recordada entre reinicios en el almacenamiento del renderer.
+const leerActiva = (clave: string): string | undefined => {
+  try {
+    return localStorage.getItem(clave) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+const guardarActiva = (clave: string, id: string | undefined): void => {
+  try {
+    if (id) localStorage.setItem(clave, id)
+    else localStorage.removeItem(clave)
+  } catch {
+    /* sin almacenamiento: la conversación no se recordará al reiniciar */
+  }
+}
+// Solo una instancia por clave recupera la conversación activa (dos celdas del mismo proyecto no deben compartirla).
+const reclamadas = new Set<string>()
+const reclamar = (clave: string): boolean => (reclamadas.has(clave) ? false : (reclamadas.add(clave), true))
+const liberar = (clave: string): void => void reclamadas.delete(clave)
+
 /**
  * Conversación con el agente. Cada llamada es independiente (una por celda o pantalla): solo atiende los eventos de las
  * ejecuciones que lanzó ella. Las confirmaciones pendientes van a un almacén global (`solicitudes.ts`).
  */
-export function useAgente() {
+export function useAgente(opciones: { clave?: string } = {}) {
+  const claveActiva = `asistente:activa:${opciones.clave ?? 'global'}`
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [sesionId, setSesionId] = useState<string | undefined>()
+  const guardados = useRef(0) // cuántos turnos terminados ya están guardados
   const ref = useRef<Turno[]>([]) // fuente de verdad: los efectos secundarios no van dentro de actualizadores de estado
   // Los eventos pueden llegar antes de que `ejecutar` devuelva el id: se guardan solo mientras esta instancia tiene un envío en vuelo.
   const huerfanos = useRef(new Map<string, EventoAgente[]>())
@@ -74,6 +99,38 @@ export function useAgente() {
 
   useEffect(() => window.api.core.onEvento(procesar), [procesar])
 
+  // Al montar: se retoma la conversación activa de este proyecto (sobrevive a cerrar la celda o reiniciar la app).
+  useEffect(() => {
+    if (!reclamar(claveActiva)) return // otra celda del mismo proyecto ya la tiene
+    const id = leerActiva(claveActiva)
+    if (id)
+      void window.api.core.sesionObtener(id).then((s) => {
+        if (!s) return guardarActiva(claveActiva, undefined)
+        if (ref.current.length > 0) return // el usuario ya empezó otra cosa
+        const recuperados: Turno[] = s.transcripcion.map((t, i) => ({ ...t, clave: `r${i}`, parcial: '' }))
+        guardados.current = recuperados.length
+        contador.current = recuperados.length
+        actualizar(() => recuperados)
+        setSesionId(s.id)
+      })
+    return () => liberar(claveActiva)
+  }, [claveActiva, actualizar])
+
+  // La conversación actual es la «activa» del proyecto hasta que se abra otra o se empiece una nueva.
+  useEffect(() => {
+    if (sesionId) guardarActiva(claveActiva, sesionId)
+  }, [claveActiva, sesionId])
+
+  // Lo que se ve en pantalla se guarda al terminar cada turno (para poder releerlo y retomarlo).
+  useEffect(() => {
+    const terminados = turnos.filter((t) => t.estado !== 'en_curso')
+    if (!sesionId || terminados.length === guardados.current || terminados.length === 0) return
+    guardados.current = terminados.length
+    const pid = terminados.find((t) => t.proyectoId)?.proyectoId
+    const lista: TurnoGuardado[] = terminados.map(({ clave: _c, ejecucionId: _e, parcial: _p, ...t }) => t)
+    void window.api.core.sesionTranscripcion(sesionId, lista, pid).catch(() => undefined)
+  }, [turnos, sesionId])
+
   // Una ejecución que terminó (o se canceló) ya no espera confirmaciones.
   useEffect(() => {
     for (const t of turnos) if (t.ejecucionId && t.estado !== 'en_curso') limpiarEjecucion(t.ejecucionId)
@@ -92,7 +149,10 @@ export function useAgente() {
       const clave = `t${++contador.current}`
       const modo = solicitud.modo === 'flujo' ? 'flujo' : solicitud.grupoId ? 'grupo' : 'chat'
       const raiz = modo === 'flujo' ? 'flujo' : modo === 'grupo' ? 'coordinador' : (solicitud.agenteId ?? 'asistente')
-      actualizar((ts) => [...ts, { clave, prompt: solicitud.prompt, modo, destino, raiz, eventos: [], parcial: '', estado: 'en_curso' }])
+      actualizar((ts) => [
+        ...ts,
+        { clave, prompt: solicitud.prompt, modo, destino, raiz, eventos: [], parcial: '', estado: 'en_curso', ...(solicitud.proyectoId ? { proyectoId: solicitud.proyectoId } : {}) }
+      ])
       enVuelo.current++
       try {
         const { ejecucionId, sesionId: sid } = await window.api.core.ejecutar({ ...solicitud, ...(sesionId ? { sesionId } : {}) })
@@ -114,14 +174,39 @@ export function useAgente() {
     if (t.ejecucionId) void window.api.core.cancelar(t.ejecucionId)
   }, [])
 
+  /** La conversación actual queda en el historial; se empieza una nueva en blanco. */
   const nuevaConversacion = useCallback((): void => {
-    if (sesionId) void window.api.core.sesionBorrar(sesionId)
+    guardarActiva(claveActiva, undefined)
     setSesionId(undefined)
+    guardados.current = 0
     actualizar(() => [])
-  }, [actualizar, sesionId])
+  }, [actualizar, claveActiva])
+
+  /** Retoma una conversación del historial (el modelo continúa con su contexto). */
+  const abrirSesion = useCallback(
+    async (id: string): Promise<void> => {
+      const s = await window.api.core.sesionObtener(id)
+      if (!s) return
+      const recuperados: Turno[] = s.transcripcion.map((t, i) => ({ ...t, clave: `r${i}`, parcial: '' }))
+      guardados.current = recuperados.length
+      contador.current = recuperados.length
+      actualizar(() => recuperados)
+      setSesionId(s.id)
+    },
+    [actualizar]
+  )
+
+  /** Borra una conversación del historial; si era la actual, se vacía la pantalla. */
+  const borrarSesion = useCallback(
+    async (id: string): Promise<void> => {
+      await window.api.core.sesionBorrar(id)
+      if (id === sesionId) nuevaConversacion()
+    },
+    [nuevaConversacion, sesionId]
+  )
 
   const enCurso = turnos.some((t) => t.estado === 'en_curso')
-  return { turnos, enCurso, sesionId, enviar, cancelar, nuevaConversacion }
+  return { turnos, enCurso, sesionId, enviar, cancelar, nuevaConversacion, abrirSesion, borrarSesion }
 }
 
 export type Agente = ReturnType<typeof useAgente>

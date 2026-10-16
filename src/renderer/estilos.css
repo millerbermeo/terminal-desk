@@ -428,3 +428,14 @@ button.peligro-solido:hover:not(:disabled) { background: #cf4660; }
 .panel-asistente .vacio { max-width: 280px; font-size: 12px; }
 .ag-chips .chip { max-width: 100%; }
 .panel-terminal { flex: 1; min-height: 0; flex-direction: column; }
+
+/* historial de conversaciones */
+.ag-chat { position: relative; }
+.ag-historial { position: absolute; right: 12px; bottom: 124px; width: min(420px, calc(100% - 24px)); max-height: 55%; overflow-y: auto; z-index: 5; background: var(--bg-sidebar); border: 1px solid var(--borde-fuerte); border-radius: 10px; box-shadow: var(--sombra); padding: 8px; animation: subir var(--rapido) var(--ease) both; }
+.ag-historial-cab { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px 6px; }
+.ag-historial ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.ag-historial li { display: flex; gap: 4px; align-items: center; }
+.ag-historial li.activa .ag-historial-abrir { border-color: var(--acento); }
+.ag-historial-abrir { flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; background: var(--bg-elevado); }
+.ag-historial-titulo { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-historial-meta { font-size: 11px; color: var(--texto-suave); }

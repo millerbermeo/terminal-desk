@@ -1,6 +1,7 @@
 import type { DecisionHumana, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, ResultadoPublicar, SolicitudAgente } from './core/agente'
 import type { InfoSuite, InformeEval, ResultadoEvals } from './core/evals'
 import type { ResumenTraza, Traza } from './core/traza'
+import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion'
 import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
 import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso } from './modelos'
 
@@ -41,6 +42,9 @@ export const Canales = {
   coreEvalsSuites: 'core:evals-suites',
   coreEvalsEjecutar: 'core:evals-ejecutar',
   coreEvalsInformes: 'core:evals-informes',
+  coreSesionesListar: 'core:sesiones-listar',
+  coreSesionObtener: 'core:sesion-obtener',
+  coreSesionTranscripcion: 'core:sesion-transcripcion',
   coreSesionBorrar: 'core:sesion-borrar',
   coreMemoriaListar: 'core:memoria-listar',
   coreMemoriaGuardar: 'core:memoria-guardar',
@@ -142,7 +146,13 @@ export interface ApiCentro {
     evalsSuites(): Promise<InfoSuite[]>
     evalsEjecutar(suiteId: string, casos?: string[]): Promise<ResultadoEvals>
     evalsInformes(suiteId: string): Promise<InformeEval[]>
-    /** Olvida una conversación (memoria de corto plazo). */
+    /** Historial: conversaciones guardadas (del proyecto, o de todos si se omite), más recientes primero. */
+    sesionesListar(proyectoId?: string): Promise<ResumenSesion[]>
+    /** Lo que se veía en pantalla en una conversación guardada, para retomarla. */
+    sesionObtener(sesionId: string): Promise<SesionGuardada | undefined>
+    /** Guarda lo que se ve en pantalla (turnos terminados) de una conversación. */
+    sesionTranscripcion(sesionId: string, turnos: TurnoGuardado[], proyectoId?: string): Promise<void>
+    /** Elimina una conversación del historial. */
     sesionBorrar(sesionId: string): Promise<void>
     /** Memoria de largo plazo: proyectoId vacío = global (todos los proyectos). */
     memoriaListar(proyectoId?: string): Promise<EntradaMemoria[]>

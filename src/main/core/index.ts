@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { ipcMain } from 'electron'
 import type { InfoSuite, ResultadoEvals } from '@shared/core/evals'
+import type { TurnoGuardado } from '@shared/core/sesion'
 import type { ResumenTraza, Traza } from '@shared/core/traza'
 import type { DecisionHumana, EstadoFlujo, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, Mensaje, ResultadoPublicar, SolicitudAgente } from '@shared/core/agente'
 import type { NuevaEntradaMemoria } from '@shared/core/memoria'
@@ -384,6 +385,11 @@ export function registrarIpcCore(nucleo: Nucleo): void {
   ipcMain.handle(Canales.coreEvalsSuites, () => nucleo.evalsSuites())
   ipcMain.handle(Canales.coreEvalsEjecutar, (_e, suiteId: string, casos?: string[]) => nucleo.ejecutarEvals(String(suiteId), Array.isArray(casos) ? casos.map(String) : undefined))
   ipcMain.handle(Canales.coreEvalsInformes, (_e, suiteId: string) => nucleo.evalsInformes(suiteId))
+  ipcMain.handle(Canales.coreSesionesListar, (_e, proyectoId?: string) => nucleo.sesiones.listar(proyectoId ? String(proyectoId) : undefined))
+  ipcMain.handle(Canales.coreSesionObtener, (_e, id: string) => nucleo.sesiones.transcripcion(validarId(String(id))))
+  ipcMain.handle(Canales.coreSesionTranscripcion, (_e, id: string, turnos: TurnoGuardado[], proyectoId?: string) =>
+    nucleo.sesiones.guardarTranscripcion(validarId(String(id)), Array.isArray(turnos) ? turnos : [], proyectoId ? validarId(String(proyectoId)) : undefined)
+  )
   ipcMain.handle(Canales.coreSesionBorrar, (_e, id: string) => nucleo.sesiones.borrar(String(id)))
   ipcMain.handle(Canales.coreMemoriaListar, (_e, proyectoId?: string) => nucleo.memoria.listar(proyectoId || undefined))
   ipcMain.handle(Canales.coreMemoriaGuardar, (_e, entrada: NuevaEntradaMemoria, proyectoId?: string) =>

@@ -49,7 +49,7 @@ interface Arrastre {
 
 /** Asistente de una celda: conversación propia (estado por celda) con el proyecto fijado. */
 function AsistenteCelda({ proyecto }: { proyecto: { id: string; nombre: string } }) {
-  const agente = useAgente()
+  const agente = useAgente({ clave: proyecto.id }) // cada proyecto recuerda su conversación activa
   return <ChatAgente agente={agente} proyectoFijo={proyecto} />
 }
 

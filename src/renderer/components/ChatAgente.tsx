@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EventoAgente } from '@shared/core/agente'
 import type { DatosProyectos } from '@shared/modelos'
 import type { Agente, Turno } from '../agente/useAgente'
+import { HistorialAgente } from './HistorialAgente'
 
 interface Props {
   agente: Agente
@@ -131,6 +132,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [modo, setModo] = useState<'chat' | 'flujo'>('chat')
   const [aislado, setAislado] = useState(true)
   const [texto, setTexto] = useState('')
+  const [verHistorial, setVerHistorial] = useState(false)
   const fin = useRef<HTMLDivElement>(null)
 
   const grupoSeleccionado = !proyectoFijo && destino.startsWith('g:')
@@ -166,6 +168,16 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const actual = agente.turnos.at(-1)
   return (
     <div className="ag-chat">
+      {verHistorial && (
+        <HistorialAgente
+          {...(proyecto ? { proyectoId: proyecto.id } : {})}
+          {...(agente.sesionId ? { activaId: agente.sesionId } : {})}
+          deshabilitado={agente.enCurso}
+          onAbrir={(id) => void agente.abrirSesion(id)}
+          onBorrar={(id) => void agente.borrarSesion(id)}
+          onCerrar={() => setVerHistorial(false)}
+        />
+      )}
       <div className="ag-hilo">
         {agente.turnos.length === 0 && (
           <div className="vacio">
@@ -212,8 +224,10 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             </label>
           )}
           <span className="ag-espacio" />
-          {agente.sesionId && <span className="chip" title={agente.sesionId}>conversación en curso</span>}
-          <button onClick={agente.nuevaConversacion} disabled={agente.enCurso || agente.turnos.length === 0}>
+          <button onClick={() => setVerHistorial((v) => !v)} aria-expanded={verHistorial} title="Conversaciones guardadas">
+            Historial
+          </button>
+          <button onClick={agente.nuevaConversacion} disabled={agente.enCurso || agente.turnos.length === 0} title="La actual queda guardada en el historial">
             Nueva conversación
           </button>
         </div>

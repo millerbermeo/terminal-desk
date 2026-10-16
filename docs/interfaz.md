@@ -18,6 +18,17 @@ Cada celda de la rejilla que pertenece a un proyecto tiene un selector **Termina
 - Al abrir un grupo (▶) siguen creándose terminales; el asistente se activa por celda.
 - El asistente integrado usa por ahora solo Anthropic (`Nucleo.llm()`); elegir otros proveedores queda pendiente.
 
+## Historial de conversaciones
+
+- Al terminar cada respuesta se guarda lo que se ve en pantalla (turnos, herramientas, confirmaciones…) junto al contexto del modelo, en
+  `~/.centro-proyectos/conversaciones/<id>.json` (0600). Se quitan los trozos de streaming, se recortan los textos largos y se redactan las credenciales.
+- Cada proyecto **recuerda su conversación activa** entre reinicios (en el almacenamiento del renderer): al reabrir su asistente, se restaura y el
+  modelo continúa con su contexto. Si dos celdas son del mismo proyecto, solo la primera la recupera.
+- **Historial** (botón del chat): lista las conversaciones del proyecto (de todos, en la pantalla global), con fecha, turnos y tokens. Se pueden retomar o eliminar.
+- **Nueva conversación** ya no borra nada: la actual queda en el historial.
+- Se conservan las 50 más recientes por proyecto y hasta 1,5 MB de transcripción por conversación (se descartan los turnos más antiguos).
+- Qué no se guarda: el texto parcial de una respuesta en curso ni las ejecuciones canceladas a mitad.
+
 ## Pestañas
 
 | Pestaña | Qué hace |
