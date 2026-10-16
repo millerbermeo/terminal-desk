@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
-import { Canales, type OpcionesTerminal, type SolicitudAgregar } from '@shared/ipc'
+import { Canales, type OpcionesTerminal, type ResultadoEliminarGrupo, type SolicitudAgregar } from '@shared/ipc'
 import { GestorTerminales } from './terminales'
+import { verificarPassword } from './autenticacion'
 import { agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, validarRuta } from './proyectos'
 
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
@@ -55,7 +56,11 @@ function registrarIpc(): void {
   ipcMain.handle(Canales.proyectosValidarRuta, (_e, ruta: string) => validarRuta(ruta))
   ipcMain.handle(Canales.proyectosAgregar, (_e, sol: SolicitudAgregar) => agregarProyectos(sol))
   ipcMain.handle(Canales.proyectosEliminar, (_e, id: string) => eliminarProyecto(id))
-  ipcMain.handle(Canales.grupoEliminar, (_e, id: string) => eliminarGrupo(id))
+  ipcMain.handle(Canales.grupoEliminar, async (_e, id: string, password: string): Promise<ResultadoEliminarGrupo> => {
+    const auth = await verificarPassword(String(password ?? ''))
+    if (!auth.ok) return auth
+    return { ok: true, datos: await eliminarGrupo(id) }
+  })
   ipcMain.handle(Canales.terminalCrear, (_e, op: OpcionesTerminal) => terminales.crear(op))
   ipcMain.on(Canales.terminalEscribir, (_e, id: string, datos: string) => terminales.escribir(id, datos))
   ipcMain.on(Canales.terminalRedimensionar, (_e, id: string, cols: number, rows: number) =>

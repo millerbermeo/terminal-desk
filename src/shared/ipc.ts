@@ -52,6 +52,10 @@ export interface ValidacionRuta {
   mensaje?: string // motivo si no es válida
 }
 
+export type ResultadoEliminarGrupo =
+  | { ok: true; datos: DatosProyectos }
+  | { ok: false; motivo: 'incorrecta' | 'no-disponible' }
+
 /** Si hay errores no se agrega nada (todo o nada). */
 export interface ResultadoAgregar {
   datos: DatosProyectos
@@ -65,7 +69,8 @@ export interface ApiCentro {
     validarRuta(ruta: string): Promise<ValidacionRuta>
     agregar(solicitud: SolicitudAgregar): Promise<ResultadoAgregar>
     eliminar(id: string): Promise<DatosProyectos>
-    eliminarGrupo(id: string): Promise<DatosProyectos>
+    /** Exige la contraseña del usuario del sistema. */
+    eliminarGrupo(id: string, password: string): Promise<ResultadoEliminarGrupo>
   }
   terminal: {
     crear(opciones: OpcionesTerminal): Promise<string>

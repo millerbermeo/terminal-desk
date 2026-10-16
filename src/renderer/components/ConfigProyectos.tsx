@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { DatosProyectos } from '@shared/modelos'
 import { IconoBasura, IconoCarpeta, IconoMas } from './Iconos'
 import { ModalAgregar } from './ModalAgregar'
+import { ModalEliminarGrupo } from './ModalEliminarGrupo'
 
 interface Props {
   datos: DatosProyectos
@@ -10,6 +11,7 @@ interface Props {
 
 export function ConfigProyectos({ datos, onDatos }: Props) {
   const [modal, setModal] = useState(false)
+  const [grupoAEliminar, setGrupoAEliminar] = useState<string | null>(null)
   const sinGrupo = datos.proyectos.filter((p) => !p.grupo || !datos.grupos.some((g) => g.id === p.grupo))
 
   const lista = (grupoId: string | undefined, nombre: string, proyectos: typeof datos.proyectos) => (
@@ -19,7 +21,7 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
           {nombre} <small>{proyectos.length}</small>
         </h3>
         {grupoId && (
-          <button className="peligro" title="Elimina el grupo; sus proyectos pasan a «Sin grupo»" onClick={() => void window.api.proyectos.eliminarGrupo(grupoId).then(onDatos)}>
+          <button className="peligro" title="Elimina el grupo; sus proyectos pasan a «Sin grupo»" onClick={() => setGrupoAEliminar(grupoId)}>
             Eliminar grupo
           </button>
         )}
@@ -51,6 +53,14 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
         lista(g.id, g.nombre, datos.proyectos.filter((p) => p.grupo === g.id))
       )}
       {(sinGrupo.length > 0 || datos.grupos.length === 0) && lista(undefined, 'Sin grupo', sinGrupo)}
+      {grupoAEliminar && datos.grupos.some((g) => g.id === grupoAEliminar) && (
+        <ModalEliminarGrupo
+          grupo={datos.grupos.find((g) => g.id === grupoAEliminar)!}
+          proyectos={datos.proyectos.filter((p) => p.grupo === grupoAEliminar).length}
+          onEliminado={onDatos}
+          onCerrar={() => setGrupoAEliminar(null)}
+        />
+      )}
       {modal && (
         <ModalAgregar
           datos={datos}
