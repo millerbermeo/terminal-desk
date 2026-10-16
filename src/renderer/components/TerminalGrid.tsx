@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
-import { IconoCerrar, IconoChispa, IconoTerminal } from './Iconos'
+import { IconoCarpeta, IconoCerrar, IconoChispa, IconoTerminal } from './Iconos'
 import { ChatAgente } from './ChatAgente'
 import { TerminalPanel } from './TerminalPanel'
 import { useAgente } from '../agente/useAgente'
+import { PanelArchivos } from '../editor/PanelArchivos'
 import type { TerminalInfo } from '../App'
 import {
   calcular,
@@ -29,7 +30,7 @@ interface Props {
   onCerrar: (id: string) => void
   onPty?: (terminalId: string, ptyId: string) => void
   /** Cambia lo que muestra una celda (terminal o asistente). */
-  onVista?: (terminalId: string, vista: 'terminal' | 'asistente') => void
+  onVista?: (terminalId: string, vista: 'terminal' | 'asistente' | 'archivos') => void
 }
 
 const MIN_ANCHO = 260 // px
@@ -54,12 +55,13 @@ function AsistenteCelda({ proyecto }: { proyecto: { id: string; nombre: string }
 }
 
 export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPersonalizado, onActivar, onCerrar, onPty, onVista }: Props) {
-  // El asistente de una celda se monta la primera vez que se muestra y ya no se desmonta (conserva su conversación).
-  const [conAsistente, setConAsistente] = useState<Set<string>>(new Set())
+  // El asistente y el editor de una celda se montan la primera vez que se muestran y ya no se desmontan (conservan la conversación
+  // y los archivos abiertos con su historial de deshacer).
+  const [montados, setMontados] = useState<Set<string>>(new Set())
   useEffect(() => {
-    const nuevos = terminales.filter((t) => t.vista === 'asistente' && !conAsistente.has(t.id)).map((t) => t.id)
-    if (nuevos.length) setConAsistente((s) => new Set([...s, ...nuevos]))
-  }, [terminales, conAsistente])
+    const nuevos = terminales.filter((t) => (t.vista === 'asistente' || t.vista === 'archivos') && !montados.has(`${t.id}:${t.vista}`)).map((t) => `${t.id}:${t.vista}`)
+    if (nuevos.length) setMontados((s) => new Set([...s, ...nuevos]))
+  }, [terminales, montados])
 
   const ids = terminales.map((t) => t.id)
   const contenedor = useRef<HTMLDivElement>(null)
@@ -207,20 +209,28 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPers
               )}
               {t.proyectoId && onVista && (
                 <div className="panel-vista" role="group" aria-label="Contenido de la celda">
-                  <button className={t.vista !== 'asistente' ? 'on' : ''} onClick={() => onVista(t.id, 'terminal')}>
+                  <button className={!t.vista || t.vista === 'terminal' ? 'on' : ''} onClick={() => onVista(t.id, 'terminal')}>
                     <IconoTerminal /> Terminal
                   </button>
                   <button className={t.vista === 'asistente' ? 'on' : ''} onClick={() => onVista(t.id, 'asistente')} title="Asistente integrado: conversa con el agente en este proyecto (la terminal sigue viva)">
                     <IconoChispa /> Asistente
                   </button>
+                  <button className={t.vista === 'archivos' ? 'on' : ''} onClick={() => onVista(t.id, 'archivos')} title="Archivos del proyecto: árbol y editor con guardado automático (la terminal sigue viva)">
+                    <IconoCarpeta /> Archivos
+                  </button>
                 </div>
               )}
-              {t.proyectoId && conAsistente.has(t.id) && (
+              {t.proyectoId && montados.has(`${t.id}:archivos`) && (
+                <div className="panel-archivos" style={{ display: t.vista === 'archivos' ? 'flex' : 'none' }}>
+                  <PanelArchivos proyectoId={t.proyectoId} nombre={t.titulo.split(' · ')[0] ?? t.titulo} visible={visible && t.vista === 'archivos'} />
+                </div>
+              )}
+              {t.proyectoId && montados.has(`${t.id}:asistente`) && (
                 <div className="panel-asistente" style={{ display: t.vista === 'asistente' ? 'flex' : 'none' }}>
                   <AsistenteCelda proyecto={{ id: t.proyectoId, nombre: t.titulo }} />
                 </div>
               )}
-              <div className="panel-terminal" style={{ display: t.vista === 'asistente' ? 'none' : 'flex' }}>
+              <div className="panel-terminal" style={{ display: !t.vista || t.vista === 'terminal' ? 'flex' : 'none' }}>
                 <TerminalPanel
                   id={t.id}
                   cwd={t.cwd}
@@ -228,8 +238,8 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPers
                   proyectoId={t.proyectoId}
                   ptyExistente={t.ptyId}
                   onPty={onPty}
-                  visible={visible && t.vista !== 'asistente'}
-                  activa={t.id === activa && t.vista !== 'asistente'}
+                  visible={visible && (!t.vista || t.vista === 'terminal')}
+                  activa={t.id === activa && (!t.vista || t.vista === 'terminal')}
                   onActivar={onActivar}
                 />
               </div>

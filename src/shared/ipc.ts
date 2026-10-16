@@ -1,6 +1,7 @@
 import type { DecisionHumana, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, ResultadoPublicar, SolicitudAgente } from './core/agente'
 import type { InfoSuite, InformeEval, ResultadoEvals } from './core/evals'
 import type { ResumenTraza, Traza } from './core/traza'
+import type { CambioArchivo, EntradaArchivo, MarcaGit, ResultadoGuardar, ResultadoLeer } from './archivos'
 import type { Adjunto } from './core/adjuntos'
 import type { ComandoUsuario } from './core/comandos'
 import type { NuevaRegla, ReglaPermiso } from './core/permisos'
@@ -71,6 +72,19 @@ export const Canales = {
   terminalSalida: 'terminal:salida'
 } as const
 
+/** Canales del editor de archivos integrado. */
+export const CanalesArchivos = {
+  listar: 'archivos:listar',
+  leer: 'archivos:leer',
+  guardar: 'archivos:guardar',
+  crear: 'archivos:crear',
+  renombrar: 'archivos:renombrar',
+  borrar: 'archivos:borrar',
+  estadoGit: 'archivos:estado-git',
+  vigilar: 'archivos:vigilar',
+  cambio: 'archivos:cambio'
+} as const
+
 export interface OpcionesTerminal {
   cwd?: string
   proveedorId?: string // si se indica, se ejecuta su comando al abrir
@@ -128,7 +142,7 @@ export interface PayloadVentana {
   ventanaId: string // id de la pestaña de origen (clave del grupo)
   nombre: string
   modo: 'rejilla' | 'pestanas'
-  terminales: { id: string; titulo: string; ptyId: string; cwd?: string; proveedorId?: string; proyectoId?: string; vista?: 'terminal' | 'asistente' }[]
+  terminales: { id: string; titulo: string; ptyId: string; cwd?: string; proveedorId?: string; proyectoId?: string; vista?: 'terminal' | 'asistente' | 'archivos' }[]
 }
 
 export type ResultadoRecurso = { ok: true; biblioteca: BibliotecaAgentes } | { ok: false; mensaje: string }
@@ -146,6 +160,22 @@ export interface ResultadoAgregar {
 
 /** API expuesta en window.api por el preload. */
 export interface ApiCentro {
+  /** Editor de archivos de un proyecto: todo queda confinado a su carpeta. */
+  archivos: {
+    /** Contenido de una carpeta (ruta relativa; vacía = raíz): carpetas primero, sin `.git` ni `node_modules`. */
+    listar(proyectoId: string, ruta?: string): Promise<EntradaArchivo[]>
+    leer(proyectoId: string, ruta: string): Promise<ResultadoLeer>
+    /** Guarda de forma atómica; con `mtimeEsperado` no pisa un archivo que cambió en disco (devuelve `conflicto`). */
+    guardar(proyectoId: string, ruta: string, contenido: string, mtimeEsperado?: number): Promise<ResultadoGuardar>
+    crear(proyectoId: string, ruta: string, tipo: 'archivo' | 'carpeta'): Promise<void>
+    renombrar(proyectoId: string, desde: string, hasta: string): Promise<void>
+    /** A la papelera del sistema (recuperable). */
+    borrar(proyectoId: string, ruta: string): Promise<void>
+    estadoGit(proyectoId: string): Promise<Record<string, MarcaGit>>
+    /** Carpetas cuyos cambios en disco se quieren recibir (sustituye a las anteriores de este proyecto en esta ventana). */
+    vigilar(proyectoId: string, carpetas: string[]): Promise<void>
+    onCambio(cb: (c: CambioArchivo) => void): () => void
+  }
   core: {
     /** Lanza el agente. El progreso y el resultado llegan por onEvento. */
     ejecutar(solicitud: SolicitudAgente): Promise<EjecucionIniciada>

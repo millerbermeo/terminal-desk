@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { CambioArchivo } from '@shared/archivos'
 import type { EventoAgente } from '@shared/core/agente'
 import type { ResumenUso } from '@shared/core/uso'
-import { Canales, type ApiCentro, type DatosTerminal, type PayloadVentana, type SalidaTerminal } from '@shared/ipc'
+import { Canales, CanalesArchivos as CA, type ApiCentro, type DatosTerminal, type PayloadVentana, type SalidaTerminal } from '@shared/ipc'
 
 function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
   const handler = (_: unknown, e: T): void => cb(e)
@@ -10,6 +11,17 @@ function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
 }
 
 const api: ApiCentro = {
+  archivos: {
+    listar: (id, ruta) => ipcRenderer.invoke(CA.listar, id, ruta),
+    leer: (id, ruta) => ipcRenderer.invoke(CA.leer, id, ruta),
+    guardar: (id, ruta, contenido, mtime) => ipcRenderer.invoke(CA.guardar, id, ruta, contenido, mtime),
+    crear: (id, ruta, tipo) => ipcRenderer.invoke(CA.crear, id, ruta, tipo),
+    renombrar: (id, desde, hasta) => ipcRenderer.invoke(CA.renombrar, id, desde, hasta),
+    borrar: (id, ruta) => ipcRenderer.invoke(CA.borrar, id, ruta),
+    estadoGit: (id) => ipcRenderer.invoke(CA.estadoGit, id),
+    vigilar: (id, carpetas) => ipcRenderer.invoke(CA.vigilar, id, carpetas),
+    onCambio: (cb) => suscribir<CambioArchivo>(CA.cambio, cb)
+  },
   core: {
     ejecutar: (solicitud) => ipcRenderer.invoke(Canales.coreEjecutar, solicitud),
     cancelar: (id) => ipcRenderer.invoke(Canales.coreCancelar, id),

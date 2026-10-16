@@ -19,7 +19,7 @@ export interface TerminalInfo {
   proveedorId?: string
   proyectoId?: string // proyecto de origen (para no duplicar al hacer clic de nuevo)
   ptyId?: string // proceso real (lo informa el panel al crearlo; también viene así de otra ventana)
-  vista?: 'terminal' | 'asistente' // qué se muestra en la celda; la terminal sigue viva debajo
+  vista?: 'terminal' | 'asistente' | 'archivos' // qué se muestra en la celda; la terminal sigue viva debajo
 }
 
 /** Una pestaña de la app: normalmente un grupo de proyectos con sus terminales. */

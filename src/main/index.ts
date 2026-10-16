@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { Proveedor, Recurso } from '@shared/modelos'
 import { Canales, type DestinoActivacion, type OpcionesTerminal, type PayloadVentana, type ResultadoEliminarGrupo, type SolicitudAgregar } from '@shared/ipc'
+import { registrarIpcArchivos } from './archivos-ipc'
 import { Nucleo, registrarIpcCore } from './core'
 import { GestorTerminales } from './terminales'
 import { eliminarProveedor, guardarProveedor, listarProveedores, obtenerProveedor } from './proveedores'
@@ -91,6 +92,7 @@ function crearVentana(opciones: { token?: string; x?: number; y?: number; titulo
 
 function registrarIpc(): void {
   registrarIpcCore(nucleo)
+  registrarIpcArchivos()
   ipcMain.handle(Canales.proyectosListar, () => leerProyectos())
   ipcMain.handle(Canales.proyectosValidarRuta, (_e, ruta: string) => validarRuta(ruta))
   ipcMain.handle(Canales.proyectosAgregar, (_e, sol: SolicitudAgregar) => agregarProyectos(sol))

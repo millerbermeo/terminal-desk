@@ -18,6 +18,25 @@ Cada celda de la rejilla que pertenece a un proyecto tiene un selector **Termina
 - Al abrir un grupo (▶) siguen creándose terminales; el asistente se activa por celda.
 - El asistente integrado usa por ahora solo Anthropic (`Nucleo.llm()`); elegir otros proveedores queda pendiente.
 
+## Editor de archivos (pestaña «Archivos» de cada celda)
+
+Cada celda de un proyecto tiene un tercer selector **Terminal | Asistente | Archivos**: un mini editor de código con el árbol del proyecto
+(`src/renderer/editor/`, CodeMirror 6). Como las otras dos vistas, se monta la primera vez que se muestra y conserva archivos abiertos, historial de deshacer y cursor;
+lo abierto y lo desplegado se recuerdan por proyecto.
+
+- **Árbol**: carpetas que se cargan al desplegarlas, sin `.git` ni `node_modules`, con una insignia por tipo (TS, JS, `{}`, `#`, `<>`, `M↓`, PY…) y **marcas de git** (M modificado, A añadido,
+  D borrado, R renombrado, U sin seguimiento, C conflicto; las carpetas con cambios llevan un punto). Clic derecho: nuevo archivo, nueva carpeta, renombrar, copiar ruta relativa y **mover a la papelera** (recuperable).
+- **Editor**: resaltado para TypeScript/JavaScript (con JSX), JSON, CSS, HTML, Markdown y Python; números de línea, buscar y reemplazar (`Ctrl+F`), plegado, autocompletado de paréntesis, varias pestañas (clic central o ✕ para cerrar).
+- **Guardado automático** un segundo después de dejar de escribir (`Ctrl+S` guarda al instante). La pestaña muestra ● mientras hay cambios sin guardar y la barra inferior «Guardado» / «Sin guardar…» / errores.
+  Se desactiva con la casilla «Guardado automático» (entonces aparece el botón «Guardar», y al cerrar con cambios se pregunta). También se guarda al cambiar de archivo, al perder el foco y al cerrar la celda.
+  Un servidor con recarga en caliente se reiniciará con cada guardado: por eso es configurable.
+- **Cambios en disco** (el agente u otro programa): si el archivo abierto no tiene cambios tuyos, se actualiza solo; si los tiene, aparece un aviso para **cargar el del disco** o **conservar los tuyos**. Antes de escribir se comprueba que el archivo no haya cambiado desde que se
+  abrió, así que nunca se pisa en silencio. Si el archivo se borra, se cierra (o se ofrece guardarlo de nuevo si tenías cambios).
+- **Límites**: no se abren binarios, archivos de más de 1 MB ni archivos que no estén en UTF-8 (se explica el motivo); no se escribe en `.git` ni en `node_modules`. `.env` y claves **sí** se pueden editar (son tuyos), aunque el agente tiene prohibido leerlos.
+- **Seguridad**: todo el acceso a archivos pasa por el proceso principal (`src/main/archivos.ts`) y queda confinado a la carpeta del proyecto (se rechazan `..`, rutas absolutas y enlaces simbólicos que escapen); los guardados son atómicos (archivo temporal + rename) y conservan los permisos.
+- **Responsive**: en celdas estrechas (< 560 px) el árbol pasa a ser un cajón que se abre con ☰.
+- La vigilancia de cambios es por carpetas (solo las desplegadas y las de los archivos abiertos) para no agotar los vigilantes del sistema en proyectos grandes.
+
 ## Modelo, contexto y consumo
 
 - **Selector de modelo** (desplegable junto a la autonomía): «Modelo: automático» (el router elige según la complejidad) o un modelo concreto. La lista sale de la
