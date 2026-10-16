@@ -1,6 +1,7 @@
 import type { DecisionHumana, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, ResultadoPublicar, SolicitudAgente } from './core/agente'
 import type { InfoSuite, InformeEval, ResultadoEvals } from './core/evals'
 import type { ResumenTraza, Traza } from './core/traza'
+import type { Adjunto } from './core/adjuntos'
 import type { ComandoUsuario } from './core/comandos'
 import type { NuevaRegla, ReglaPermiso } from './core/permisos'
 import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion'
@@ -44,6 +45,9 @@ export const Canales = {
   coreEvalsSuites: 'core:evals-suites',
   coreEvalsEjecutar: 'core:evals-ejecutar',
   coreEvalsInformes: 'core:evals-informes',
+  coreAdjuntoSubir: 'core:adjunto-subir',
+  coreAdjuntoLeer: 'core:adjunto-leer',
+  coreAdjuntoEliminar: 'core:adjunto-eliminar',
   coreComandosListar: 'core:comandos-listar',
   coreComandosEfectivos: 'core:comandos-efectivos',
   coreComandosGuardar: 'core:comandos-guardar',
@@ -156,6 +160,11 @@ export interface ApiCentro {
     evalsSuites(): Promise<InfoSuite[]>
     evalsEjecutar(suiteId: string, casos?: string[]): Promise<ResultadoEvals>
     evalsInformes(suiteId: string): Promise<InformeEval[]>
+    /** Valida y guarda un archivo (imagen, PDF o texto) para adjuntarlo a un mensaje; lanza con un motivo claro si no es admisible. */
+    adjuntoSubir(nombre: string, datos: Uint8Array): Promise<Adjunto>
+    /** Contenido de una imagen adjunta (para mostrar su miniatura). */
+    adjuntoLeer(id: string): Promise<{ mime: string; base64: string } | undefined>
+    adjuntoEliminar(id: string): Promise<void>
     /** Comandos propios (`/nombre`). `ambito` vacío = globales. */
     comandosListar(ambito?: string): Promise<ComandoUsuario[]>
     /** Los de un proyecto más los globales (el del proyecto manda). */

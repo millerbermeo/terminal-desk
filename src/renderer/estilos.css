@@ -451,3 +451,81 @@ button.peligro-solido:hover:not(:disabled) { background: #cf4660; }
 .ag-sugerencias small { color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .ag-sugerencias .propio { color: var(--acento); }
 .gestion-cuerpo .cfg-intro, .permisos .cfg-intro { margin-top: 0; }
+
+/* adjuntos */
+.ag-adjuntos { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.ag-adjunto { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 3px 6px 3px 4px; background: var(--bg-elevado); border: 1px solid var(--borde-fuerte); border-radius: 8px; font-size: 12px; }
+.ag-adjunto small { color: var(--texto-suave); flex: none; }
+.ag-adjunto-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 180px; }
+.ag-miniatura { width: 28px; height: 28px; object-fit: cover; border-radius: 5px; flex: none; background: var(--bg); }
+.ag-icono-adjunto { width: 28px; height: 28px; display: grid; place-items: center; flex: none; font-size: 16px; }
+.ag-adjunto button { padding: 0 4px; }
+.ag-usuario .ag-adjuntos { margin: 8px 0 0; }
+.ag-soltar { position: absolute; inset: 8px; z-index: 8; display: grid; place-items: center; text-align: center; padding: 16px; border: 2px dashed var(--acento); border-radius: 12px; background: rgba(15, 17, 21, 0.88); color: var(--acento); font-weight: 600; pointer-events: none; }
+
+/* selector de autonomía */
+.ag-autonomia { flex: 0 1 auto; min-width: 0; max-width: 100%; text-overflow: ellipsis; }
+.ag-autonomia.ediciones { border-color: rgba(122, 162, 247, 0.55); }
+.ag-autonomia.autonomo { border-color: rgba(224, 175, 104, 0.7); color: #e0af68; }
+
+/* el compositor se adapta al ancho del panel (celda pequeña, ventana estrecha o ventana grande) */
+.ag-chat { container-type: inline-size; container-name: chat; }
+.ag-opciones > * { min-width: 0; }
+.ag-opciones select { max-width: 100%; }
+.ag-opciones .corto { display: none; }
+.ag-compositor { flex: none; }
+.ag-hilo { min-height: 80px; }
+.ag-historial { max-height: calc(100% - 150px); }
+@container chat (max-width: 640px) {
+  .ag-hilo { padding: 10px 14px; }
+  .ag-compositor { padding: 8px 14px 12px; }
+  .ag-opciones .ag-espacio { display: none; }
+  .ag-opciones .largo { display: none; }
+  .ag-opciones .corto { display: inline; }
+  .ag-opciones button { padding: 4px 8px; }
+}
+@container chat (max-width: 480px) {
+  .ag-hilo { padding: 8px 10px; }
+  .ag-compositor { padding: 6px 10px 10px; }
+  .ag-opciones { gap: 6px; }
+  .ag-opciones .ag-check { flex: 1 1 100%; }
+  .ag-entrada { flex-direction: column; align-items: stretch; }
+  .ag-entrada button { min-width: 0; }
+  .ag-entrada textarea { min-height: 54px; }
+  .ag-sugerencias { right: 0; }
+  .ag-adjunto-nombre { max-width: 110px; }
+  .ag-usuario, .ag-burbuja { max-width: 100%; }
+}
+@container chat (min-width: 1100px) {
+  .ag-hilo, .ag-compositor { padding-left: max(28px, calc((100cqw - 980px) / 2)); padding-right: max(28px, calc((100cqw - 980px) / 2)); }
+}
+@media (max-height: 560px) {
+  .ag-entrada textarea { min-height: 44px; }
+  .ag-vacio, .ag-chat .vacio { display: none; }
+}
+
+/* ---- la ventana entera se adapta al achicarla ---- */
+.barra { flex-wrap: wrap; row-gap: 6px; }
+.barra-acciones { flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; min-width: 0; }
+@media (max-width: 900px) {
+  .sidebar { width: 200px; }
+  .config { padding: 18px 20px; }
+  .ag-vista.scroll { padding: 16px 18px; }
+}
+@media (max-width: 640px) {
+  .sidebar { width: 152px; }
+  .marca { padding: 10px 10px 6px; }
+  .marca h1, .barra-info { display: none; }
+  .acciones { padding: 4px 8px 8px; }
+  .lista { padding: 0 4px 6px; }
+  .config { padding: 14px; }
+  .ag-vista.scroll { padding: 12px; }
+  .ag-pestanas { padding: 6px 8px 0; overflow-x: auto; }
+  .ag-pestanas button { padding: 6px 10px; white-space: nowrap; }
+  .tr { flex-direction: column; }
+  .tr-lista { width: auto; max-height: 38%; border-right: none; border-bottom: 1px solid var(--borde); }
+  .tr-panel { padding: 10px 12px; }
+  .tr-fila { grid-template-columns: minmax(110px, 45%) 1fr 56px; }
+  .modal { padding: 14px; }
+  .gestion { width: 100%; }
+}

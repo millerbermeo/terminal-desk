@@ -21,19 +21,24 @@ export interface ResultadoCompresion {
 
 const esResultado = (b: BloqueContenido): boolean => b.tipo === 'herramienta_resultado'
 
-/** Reemplaza los resultados de herramientas antiguos y largos por un marcador (reduce ruido sin llamar al modelo). */
+/**
+ * Reduce el ruido de la conversación sin llamar al modelo: los resultados de herramientas antiguos y largos y los adjuntos
+ * (imágenes y PDFs) de mensajes antiguos se sustituyen por un marcador.
+ */
 export function podarResultados(mensajes: readonly Mensaje[], recientes: number, minimo: number): Mensaje[] {
   const limite = mensajes.length - recientes
+  const esAdjunto = (b: BloqueContenido): boolean => b.tipo === 'imagen' || b.tipo === 'documento'
+  const podable = (b: BloqueContenido): boolean => (b.tipo === 'herramienta_resultado' && b.texto.length > minimo) || esAdjunto(b)
   return mensajes.map((m, i) =>
-    i >= limite || !m.contenido.some((b) => esResultado(b) && b.tipo === 'herramienta_resultado' && b.texto.length > minimo)
+    i >= limite || !m.contenido.some(podable)
       ? m
       : {
           ...m,
-          contenido: m.contenido.map((b) =>
-            b.tipo === 'herramienta_resultado' && b.texto.length > minimo
-              ? { ...b, texto: `[resultado antiguo omitido: ${b.texto.length} caracteres]` }
-              : b
-          )
+          contenido: m.contenido.map((b): BloqueContenido => {
+            if (b.tipo === 'herramienta_resultado' && b.texto.length > minimo) return { ...b, texto: `[resultado antiguo omitido: ${b.texto.length} caracteres]` }
+            if (b.tipo === 'imagen' || b.tipo === 'documento') return { tipo: 'texto', texto: `[adjunto antiguo omitido: ${b.nombre}]` }
+            return b
+          })
         }
   )
 }
@@ -58,6 +63,7 @@ function transcribir(mensajes: readonly Mensaje[]): string {
         .map((b) => {
           if (b.tipo === 'texto') return recorte(b.texto)
           if (b.tipo === 'herramienta_uso') return `(usa ${b.nombre} ${recorte(JSON.stringify(b.entrada))})`
+          if (b.tipo === 'imagen' || b.tipo === 'documento') return `(adjunto ${b.tipo}: ${b.nombre})`
           return `(resultado${b.error ? ' con error' : ''}: ${recorte(b.texto)})`
         })
         .join('\n')

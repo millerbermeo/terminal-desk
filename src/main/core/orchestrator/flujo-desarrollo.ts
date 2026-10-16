@@ -33,6 +33,8 @@ export interface DepsFlujo {
   aprobar?: Aprobador
   /** Modo autónomo: el plan se aprueba solo (la confirmación del resultado sigue siendo del usuario). */
   autoAprobarPlan?: boolean
+  /** Imágenes, PDFs o texto adjuntos por el usuario: los ven el planificador y el generador. */
+  bloquesUsuario?: PeticionEjecucion['bloquesUsuario']
   sistemaExtra?: string
   contexto?: CompresorContexto
   modelo?: string
@@ -51,7 +53,8 @@ const recortar = (t: string, n = 3000): string => (t.length > n ? '[…]\n' + t.
 
 /** Planificación -> Aprobación -> Generación -> Pruebas -> Confirmación, con reintentos acotados. */
 export function crearFlujoDesarrollo(d: DepsFlujo, planificador: Agente, generador: Agente): GrafoEstados<EstadoFlujoDev> {
-  const base: Pick<PeticionEjecucion, 'cwd' | 'proyectoId' | 'ejecucionId' | 'alEvento' | 'sistemaExtra' | 'contexto' | 'modelo' | 'senal'> = {
+  const base: Pick<PeticionEjecucion, 'bloquesUsuario' | 'cwd' | 'proyectoId' | 'ejecucionId' | 'alEvento' | 'sistemaExtra' | 'contexto' | 'modelo' | 'senal'> = {
+    ...(d.bloquesUsuario ? { bloquesUsuario: d.bloquesUsuario } : {}),
     cwd: d.cwd,
     proyectoId: d.proyectoId,
     ejecucionId: d.ejecucionId,

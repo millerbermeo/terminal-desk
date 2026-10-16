@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EventoAgente } from '@shared/core/agente'
+import { LIMITES_ADJUNTOS, type Adjunto } from '@shared/core/adjuntos'
 import { COMANDOS_INCLUIDOS, expandirPlantilla, type ComandoUsuario } from '@shared/core/comandos'
 import type { ModoAutonomia } from '@shared/core/permisos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { Agente, Turno } from '../agente/useAgente'
+import { AdjuntosAgente } from './AdjuntosAgente'
 import { GestionProyecto } from './GestionProyecto'
 import { HistorialAgente } from './HistorialAgente'
 
@@ -122,6 +124,7 @@ function TurnoVista({ t, onCancelar }: { t: Turno; onCancelar: () => void }) {
           {t.autonomia && <span className="chip chip-aviso" title="Se ejecutó con menos confirmaciones">{t.autonomia === 'autonomo' ? 'autónomo' : 'acepta ediciones'}</span>}
         </div>
         <div className="ag-texto">{t.prompt}</div>
+        {t.adjuntos && <AdjuntosAgente adjuntos={t.adjuntos} />}
       </div>
       {t.eventos.map((e, i) => (
         <Linea key={i} e={e} todos={t.eventos} />
@@ -155,6 +158,11 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [comandos, setComandos] = useState<ComandoUsuario[]>([])
   const [seleccion, setSeleccion] = useState(0)
   const [sugOculta, setSugOculta] = useState(false)
+  const [pendientes, setPendientes] = useState<Adjunto[]>([])
+  const [subiendo, setSubiendo] = useState(0)
+  const [errorAdjunto, setErrorAdjunto] = useState('')
+  const [arrastrando, setArrastrando] = useState(false)
+  const selector = useRef<HTMLInputElement>(null)
   const claveAutonomia = `asistente:autonomia:${proyectoFijo?.id ?? 'global'}`
   const [autonomia, setAutonomiaEstado] = useState<ModoAutonomia>(() => {
     try {
@@ -204,8 +212,49 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     ].filter((c) => c.nombre.startsWith(m[1]!))
   }, [texto, comandos, sugOculta])
 
+  /** Sube los archivos (imágenes, PDFs, texto) al almacén; el proceso principal los valida por su contenido. */
+  const subir = async (archivos: File[]): Promise<void> => {
+    if (archivos.length === 0) return
+    setErrorAdjunto('')
+    try {
+      if (!localStorage.getItem('asistente:aviso-adjuntos')) {
+        if (!window.confirm('Los archivos que adjuntes se envían a la API de Anthropic junto con tu mensaje. No se puede detectar si una imagen o un PDF contienen credenciales: no adjuntes nada confidencial.\n\n¿Continuar?')) return
+        localStorage.setItem('asistente:aviso-adjuntos', '1')
+      }
+    } catch {
+      /* sin almacenamiento: se avisará de nuevo la próxima vez */
+    }
+    const errores: string[] = []
+    let hueco = LIMITES_ADJUNTOS.porMensaje - pendientes.length
+    for (const f of archivos) {
+      if (hueco <= 0) {
+        errores.push(`Máximo ${LIMITES_ADJUNTOS.porMensaje} archivos por mensaje`)
+        break
+      }
+      setSubiendo((n) => n + 1)
+      try {
+        const a = await window.api.core.adjuntoSubir(f.name || 'captura.png', new Uint8Array(await f.arrayBuffer()))
+        setPendientes((p) => [...p, a])
+        hueco--
+      } catch (err) {
+        errores.push((err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
+      } finally {
+        setSubiendo((n) => n - 1)
+      }
+    }
+    if (errores.length) setErrorAdjunto([...new Set(errores)].join(' · '))
+  }
+  const quitar = (a: Adjunto): void => {
+    setPendientes((p) => p.filter((x) => x.id !== a.id))
+    void window.api.core.adjuntoEliminar(a.id)
+  }
+
   const lanzar = (prompt: string, forzarFlujo = false): void => {
+    const adjuntos = pendientes
+    setPendientes([])
+    setErrorAdjunto('')
     void agente.enviar({
+      ...(adjuntos.length ? { adjuntos } : {}),
       destino: etiqueta,
       solicitud: {
         prompt,
@@ -252,8 +301,8 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   }
 
   const enviar = (): void => {
-    const prompt = texto.trim()
-    if (!prompt || agente.enCurso) return
+    const prompt = texto.trim() || (pendientes.length ? 'Revisa los archivos adjuntos.' : '')
+    if (!prompt || agente.enCurso || subiendo > 0) return
     setTexto('')
     if (prompt.startsWith('/')) return comandoSlash(prompt)
     lanzar(prompt)
@@ -266,7 +315,22 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
 
   const actual = agente.turnos.at(-1)
   return (
-    <div className="ag-chat">
+    <div
+      className={`ag-chat${arrastrando ? ' arrastrando' : ''}`}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('Files')) {
+          e.preventDefault()
+          setArrastrando(true)
+        }
+      }}
+      onDragLeave={(e) => e.currentTarget === e.target && setArrastrando(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setArrastrando(false)
+        void subir([...e.dataTransfer.files])
+      }}
+    >
+      {arrastrando && <div className="ag-soltar">Suelta para adjuntar (imágenes, PDF o texto)</div>}
       {verHistorial && (
         <HistorialAgente
           {...(proyecto ? { proyectoId: proyecto.id } : {})}
@@ -318,30 +382,49 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               Flujo
             </button>
           </div>
-          <div className="segmentado" role="group" aria-label="Autonomía">
-            <button className={autonomia === 'preguntar' ? 'on' : ''} onClick={() => cambiarAutonomia('preguntar')} title="Pide confirmación para cada escritura y cada comando (salvo los que permitan tus reglas)">
-              Preguntar
-            </button>
-            <button className={autonomia === 'ediciones' ? 'on' : ''} onClick={() => cambiarAutonomia('ediciones')} title="Los cambios en archivos del proyecto pasan solos; los comandos siguen preguntando">
-              Ediciones
-            </button>
-            <button className={autonomia === 'autonomo' ? 'on aviso' : ''} onClick={() => cambiarAutonomia('autonomo')} title="Edita, ejecuta typecheck/lint/test y aprueba el plan solo, con límite de tokens. Lo destructivo siempre pregunta.">
-              Autónomo
-            </button>
-          </div>
+          <select
+            className={`ag-autonomia ${autonomia}`}
+            value={autonomia}
+            onChange={(e) => cambiarAutonomia(e.target.value as ModoAutonomia)}
+            aria-label="Autonomía"
+            title="Cuánto te pregunta el agente. Lo destructivo siempre pregunta."
+          >
+            <option value="preguntar">Preguntar todo</option>
+            <option value="ediciones">Aceptar ediciones</option>
+            <option value="autonomo">Autónomo</option>
+          </select>
           {modo === 'flujo' && (
             <label className="ag-check" title="Trabaja en un git worktree propio; tu árbol de trabajo no se toca">
               <input type="checkbox" checked={aislado} onChange={(e) => setAislado(e.target.checked)} /> Aislar en rama git
             </label>
           )}
           <span className="ag-espacio" />
+          <button onClick={() => selector.current?.click()} disabled={pendientes.length >= LIMITES_ADJUNTOS.porMensaje} title="Adjuntar imágenes, PDF o archivos de texto (también puedes pegarlos o arrastrarlos)" aria-label="Adjuntar archivos">
+            📎<span className="largo"> Adjuntar</span>
+          </button>
           <button onClick={() => setVerHistorial((v) => !v)} aria-expanded={verHistorial} title="Conversaciones guardadas">
-            Historial
+            <span className="largo">Historial</span>
+            <span className="corto">Hist.</span>
           </button>
-          <button onClick={agente.nuevaConversacion} disabled={agente.enCurso || agente.turnos.length === 0} title="La actual queda guardada en el historial">
-            Nueva conversación
+          <button onClick={agente.nuevaConversacion} disabled={agente.enCurso || agente.turnos.length === 0} title="Nueva conversación: la actual queda guardada en el historial">
+            <span className="largo">Nueva conversación</span>
+            <span className="corto">Nueva</span>
           </button>
+          <input
+            ref={selector}
+            type="file"
+            multiple
+            hidden
+            accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,.txt,.md,.markdown,.csv,.tsv,.json,.yml,.yaml,.toml,.xml,.html,.css,.sql,.log,.sh,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.go,.rs,.java,.kt,.c,.h,.cpp,.hpp,.cs,.php,.rb,.swift,.vue,.svelte,.ini,.conf,.diff,.patch"
+            onChange={(e) => {
+              void subir([...(e.target.files ?? [])])
+              e.target.value = ''
+            }}
+          />
         </div>
+        <AdjuntosAgente adjuntos={pendientes} onQuitar={quitar} />
+        {subiendo > 0 && <div className="cfg-nota">Subiendo archivo…</div>}
+        {errorAdjunto && <div className="cfg-error" role="alert">{errorAdjunto}</div>}
         <div className="ag-entrada">
           {sugerencias.length > 0 && (
             <div className="ag-sugerencias" role="listbox" aria-label="Comandos">
@@ -356,7 +439,14 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           <textarea
             rows={3}
             value={texto}
-            placeholder={modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo sobre el proyecto…  (Ctrl+Enter para enviar · «/» para comandos)'}
+            placeholder={modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo…  (Ctrl+Enter envía · «/» comandos · pega o arrastra archivos)'}
+            onPaste={(e) => {
+              const archivos = [...e.clipboardData.files]
+              if (archivos.length) {
+                e.preventDefault()
+                void subir(archivos)
+              }
+            }}
             onChange={(e) => {
               setTexto(e.target.value)
               setSugOculta(false)
@@ -380,7 +470,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               }
             }}
           />
-          <button className="primario" onClick={enviar} disabled={!texto.trim() || agente.enCurso}>
+          <button className="primario" onClick={enviar} disabled={(!texto.trim() && pendientes.length === 0) || agente.enCurso || subiendo > 0}>
             {actual?.estado === 'en_curso' ? 'Trabajando…' : 'Enviar'}
           </button>
         </div>

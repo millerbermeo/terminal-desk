@@ -15,6 +15,9 @@ export function tokensBloque(b: BloqueContenido): number {
       return estimarTokens(b.nombre + JSON.stringify(b.entrada))
     case 'herramienta_resultado':
       return estimarTokens(b.texto)
+    case 'imagen':
+    case 'documento':
+      return b.tokens
   }
 }
 

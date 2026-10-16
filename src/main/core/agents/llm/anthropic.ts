@@ -4,33 +4,57 @@ import type { PeticionLLM, ProveedorLLM, RespuestaLLM } from './proveedor'
 
 export const MODELO_POR_DEFECTO = 'claude-sonnet-5-5'
 
-function aApi(m: Mensaje): Anthropic.MessageParam {
-  const content = m.contenido.map((b): Anthropic.ContentBlockParam => {
-    switch (b.tipo) {
-      case 'texto':
-        return { type: 'text', text: b.texto }
-      case 'herramienta_uso':
-        return { type: 'tool_use', id: b.id, name: b.nombre, input: b.entrada }
-      case 'herramienta_resultado':
-        return { type: 'tool_result', tool_use_id: b.usoId, content: b.texto, is_error: b.error ?? false }
-    }
-  })
-  return { role: m.rol, content }
+export interface OpcionesAnthropic {
+  /** Lee el contenido de un adjunto por su id (imágenes y PDFs). Sin él, los adjuntos se sustituyen por un aviso. */
+  leerAdjunto?: (id: string) => Promise<{ mime: string; base64: string } | undefined>
+  /** Cliente ya creado (pruebas). */
+  cliente?: Anthropic
 }
+
+type TipoImagen = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
 
 export class ProveedorAnthropic implements ProveedorLLM {
   private readonly cliente: Anthropic
 
-  constructor(apiKey: string, private readonly modeloPorDefecto: string = MODELO_POR_DEFECTO) {
-    this.cliente = new Anthropic({ apiKey })
+  constructor(
+    apiKey: string,
+    private readonly modeloPorDefecto: string = MODELO_POR_DEFECTO,
+    private readonly o: OpcionesAnthropic = {}
+  ) {
+    this.cliente = o.cliente ?? new Anthropic({ apiKey })
+  }
+
+  private async aApi(m: Mensaje): Promise<Anthropic.MessageParam> {
+    const content = await Promise.all(
+      m.contenido.map(async (b): Promise<Anthropic.ContentBlockParam> => {
+        switch (b.tipo) {
+          case 'texto':
+            return { type: 'text', text: b.texto }
+          case 'herramienta_uso':
+            return { type: 'tool_use', id: b.id, name: b.nombre, input: b.entrada }
+          case 'herramienta_resultado':
+            return { type: 'tool_result', tool_use_id: b.usoId, content: b.texto, is_error: b.error ?? false }
+          case 'imagen':
+          case 'documento': {
+            const datos = await this.o.leerAdjunto?.(b.adjuntoId).catch(() => undefined)
+            if (!datos) return { type: 'text', text: `[adjunto «${b.nombre}» no disponible: se eliminó del almacén]` }
+            return b.tipo === 'imagen'
+              ? { type: 'image', source: { type: 'base64', media_type: datos.mime as TipoImagen, data: datos.base64 } }
+              : { type: 'document', title: b.nombre, source: { type: 'base64', media_type: 'application/pdf', data: datos.base64 } }
+          }
+        }
+      })
+    )
+    return { role: m.rol, content }
   }
 
   async completar(p: PeticionLLM): Promise<RespuestaLLM> {
+    const mensajes = await Promise.all(p.mensajes.map((m) => this.aApi(m)))
     const params: Anthropic.MessageCreateParamsNonStreaming = {
       model: p.modelo ?? this.modeloPorDefecto,
       max_tokens: p.maxTokens,
       ...(p.sistema ? { system: p.sistema } : {}),
-      messages: p.mensajes.map(aApi),
+      messages: mensajes,
       ...(p.herramientas.length
         ? {
             tools: p.herramientas.map((h) => ({

@@ -5,6 +5,9 @@ export type BloqueContenido =
   | { tipo: 'texto'; texto: string }
   | { tipo: 'herramienta_uso'; id: string; nombre: string; entrada: Record<string, unknown> }
   | { tipo: 'herramienta_resultado'; usoId: string; texto: string; error?: boolean }
+  /** Imagen o PDF adjuntos: el contenido está en el almacén de adjuntos (no se duplica en la conversación). `tokens` = estimación de su coste en contexto. */
+  | { tipo: 'imagen'; adjuntoId: string; mime: string; nombre: string; tokens: number }
+  | { tipo: 'documento'; adjuntoId: string; mime: string; nombre: string; tokens: number }
 
 export interface Mensaje {
   rol: 'user' | 'assistant'
@@ -87,6 +90,7 @@ export interface SolicitudAgente {
   modo?: 'chat' | 'flujo' // flujo = planificación -> aprobación -> generación -> pruebas -> confirmación (exige proyectoId)
   grupoId?: string // consulta a todos los submódulos del grupo con agentes que se comunican entre sí (A2A)
   modelo?: string // fuerza un modelo (desactiva el router)
+  adjuntos?: string[] // ids de archivos subidos con `adjuntoSubir` (imágenes, PDFs, texto); máx. 5
   sesionId?: string // continúa esa conversación (memoria de corto plazo); sin él se crea una nueva
 }
 

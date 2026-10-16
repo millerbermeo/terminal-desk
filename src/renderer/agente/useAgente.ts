@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EventoAgente, SolicitudAgente } from '@shared/core/agente'
+import type { Adjunto } from '@shared/core/adjuntos'
 import type { EstadoTurno, TurnoGuardado } from '@shared/core/sesion'
 import { etiquetarEjecucion, limpiarEjecucion } from './solicitudes'
 
@@ -18,11 +19,14 @@ export interface Turno {
   error?: string
   proyectoId?: string
   autonomia?: 'preguntar' | 'ediciones' | 'autonomo'
+  adjuntos?: Adjunto[]
 }
 
 export interface OpcionesEnvio {
   solicitud: SolicitudAgente
   destino: string
+  /** Archivos ya subidos (se envían por id y se muestran en el mensaje). */
+  adjuntos?: Adjunto[]
 }
 
 /** Aplica un evento a un turno (el resultado de `fin`/`flujo_fin` cierra el turno). */
@@ -150,13 +154,14 @@ export function useAgente(opciones: { clave?: string } = {}) {
   )
 
   const enviar = useCallback(
-    async ({ solicitud, destino }: OpcionesEnvio): Promise<void> => {
+    async ({ solicitud: solicitudBase, destino, adjuntos }: OpcionesEnvio): Promise<void> => {
+      const solicitud: SolicitudAgente = adjuntos?.length ? { ...solicitudBase, adjuntos: adjuntos.map((a) => a.id) } : solicitudBase
       const clave = `t${++contador.current}`
       const modo = solicitud.modo === 'flujo' ? 'flujo' : solicitud.grupoId ? 'grupo' : 'chat'
       const raiz = modo === 'flujo' ? 'flujo' : modo === 'grupo' ? 'coordinador' : (solicitud.agenteId ?? 'asistente')
       actualizar((ts) => [
         ...ts,
-        { clave, prompt: solicitud.prompt, modo, destino, raiz, eventos: [], parcial: '', estado: 'en_curso', ...(solicitud.proyectoId ? { proyectoId: solicitud.proyectoId } : {}), ...(solicitud.autonomia && solicitud.autonomia !== 'preguntar' ? { autonomia: solicitud.autonomia } : {}) }
+        { clave, prompt: solicitud.prompt, modo, destino, raiz, eventos: [], parcial: '', estado: 'en_curso', ...(solicitud.proyectoId ? { proyectoId: solicitud.proyectoId } : {}), ...(solicitud.autonomia && solicitud.autonomia !== 'preguntar' ? { autonomia: solicitud.autonomia } : {}), ...(adjuntos?.length ? { adjuntos } : {}) }
       ])
       enVuelo.current++
       try {

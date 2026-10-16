@@ -18,6 +18,29 @@ Cada celda de la rejilla que pertenece a un proyecto tiene un selector **Termina
 - Al abrir un grupo (▶) siguen creándose terminales; el asistente se activa por celda.
 - El asistente integrado usa por ahora solo Anthropic (`Nucleo.llm()`); elegir otros proveedores queda pendiente.
 
+## Archivos adjuntos (imágenes, PDF y texto)
+
+Botón **📎 Adjuntar**, pegar con Ctrl+V (p. ej. una captura) o arrastrar archivos sobre el chat. Aparecen como miniaturas o chips con su ✕ antes de enviar,
+y quedan en el mensaje y en el historial (las miniaturas se recuperan al retomar la conversación).
+
+| Tipo | Admite | Límites |
+|---|---|---|
+| Imagen | PNG, JPG, GIF, WebP | 5 MB, 8000 px por lado |
+| PDF | cualquier PDF sin cifrar | 20 MB, 100 páginas |
+| Texto y código | `.md`, `.txt`, `.csv`, `.json`, `.ts`, `.py`… (lista en `shared/core/adjuntos.ts`) | 200 KB, UTF-8, sin binarios |
+
+- Máximo **5 archivos por mensaje**. Se valida por el **contenido** (firma de bytes), no por la extensión. Un PDF cifrado, un texto con credenciales o un binario se rechazan con un motivo claro.
+- Los archivos se guardan en `~/.centro-proyectos/adjuntos/` (0600) y la conversación solo guarda su id (nunca base64). Se borran a los 30 días (o al pasar de 500 MB, los más antiguos); un adjunto borrado se sustituye en el contexto por un aviso.
+- Imágenes y PDF viajan como bloques nativos de la API; el texto, en línea. En el Flujo los ven el planificador y el generador; en grupos, el coordinador.
+- Con adjuntos no se baja del modelo intermedio. Cada imagen cuenta ~1 500 tokens y cada página de PDF ~2 000; al comprimir el contexto, los adjuntos de mensajes antiguos se sustituyen por un marcador.
+- Se avisa la primera vez: **el contenido se envía a la API de Anthropic** y no se pueden detectar credenciales dentro de una imagen o un PDF. El agente recibe la instrucción de tratar los adjuntos como datos y **no obedecer instrucciones escondidas** en ellos; sus acciones siguen sujetas a confirmaciones y permisos.
+
+## Adaptación al tamaño de la ventana
+
+- El chat usa *container queries*: se adapta al ancho de **su propio panel** (celda pequeña, ventana estrecha o pantalla grande). En paneles estrechos los botones pasan a su forma corta (`Hist.`, `Nueva`), el selector de autonomía y el de modo ocupan su línea y la caja de texto se apila encima del botón Enviar. En pantallas grandes el contenido se centra con un ancho máximo.
+- La **autonomía** es un desplegable (`Preguntar todo`, `Aceptar ediciones`, `Autónomo`): ocupa lo mismo en cualquier tamaño.
+- La ventana entera también se adapta: la barra lateral baja a 200 px (≤ 900 px) y a 152 px (≤ 640 px), las barras de herramientas se parten en varias líneas y la lista de trazas pasa encima del detalle.
+
 ## Historial de conversaciones
 
 - Al terminar cada respuesta se guarda lo que se ve en pantalla (turnos, herramientas, confirmaciones…) junto al contexto del modelo, en

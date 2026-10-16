@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { EventoAgente, Mensaje, ResultadoAgente } from '@shared/core/agente'
+import type { BloqueContenido, EventoAgente, Mensaje, ResultadoAgente } from '@shared/core/agente'
 import type { LlamadaHerramienta, ResultadoHerramienta, Riesgo } from '@shared/core/herramientas'
 import type { CompresorContexto } from '../context/compresion'
 import { ejecutarHerramienta, type ContextoHerramienta, type Herramienta, type RegistroHerramientas } from '../tools/registro'
@@ -39,6 +39,8 @@ export interface PeticionEjecucion {
   proyectoId?: string
   /** Modelo del agente raíz (p. ej. elegido por el Router); los subagentes usan el suyo. */
   modelo?: string
+  /** Bloques adicionales del mensaje del usuario (imágenes, PDFs, texto adjunto), antes del prompt. Solo para el agente raíz. */
+  bloquesUsuario?: readonly BloqueContenido[]
   /** Herramientas solo para esta ejecución (agente raíz), p. ej. `consultar_agente` de A2A. */
   extras?: readonly Herramienta[]
   /** Sustituye al aprobador del Harness solo para esta ejecución. */
@@ -151,7 +153,7 @@ export class Harness {
         alHerramientaInicio: (llamada) => emitir({ tipo: 'herramienta_inicio', llamada }),
         alHerramientaFin: (llamada, res) => emitir({ tipo: 'herramienta_fin', llamada, resultado: res })
       },
-      [...historial, { rol: 'user', contenido: [{ tipo: 'texto', texto: prompt }] }]
+      [...historial, { rol: 'user', contenido: [...(profundidad === 0 ? (p.bloquesUsuario ?? []) : []), { tipo: 'texto', texto: prompt }] }]
     )
     emitir({ tipo: 'fin', resultado })
     return resultado

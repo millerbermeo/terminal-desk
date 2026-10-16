@@ -23,7 +23,7 @@ Reglas de seguridad:
 
 ## Modos de autonomía
 
-Selector **Preguntar | Ediciones | Autónomo** en la cabecera del chat (se recuerda por proyecto; `SolicitudAgente.autonomia`). Los guardrails y las reglas de
+Desplegable **Preguntar todo | Aceptar ediciones | Autónomo** en la cabecera del chat (se recuerda por proyecto; `SolicitudAgente.autonomia`). Los guardrails y las reglas de
 permisos valen en los tres modos, y **lo destructivo siempre pide confirmación**.
 
 | Modo | Escrituras de archivos | Comandos | Plan del Flujo | Presupuesto |

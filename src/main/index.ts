@@ -159,6 +159,7 @@ app.whenReady().then(() => {
   registrarIpc()
   void limpiarSesiones()
   void nucleo.iniciarMcp()
+  void nucleo.adjuntos.limpiar().catch(() => undefined) // adjuntos de más de 30 días
   principal = crearVentana()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) principal = crearVentana()

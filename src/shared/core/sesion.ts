@@ -1,3 +1,4 @@
+import type { Adjunto } from './adjuntos'
 import type { EventoAgente } from './agente'
 
 export type EstadoTurno = 'en_curso' | 'completado' | 'limite_pasos' | 'cancelado' | 'error' | 'rechazado' | 'fallido'
@@ -13,6 +14,7 @@ export interface TurnoGuardado {
   error?: string
   proyectoId?: string
   autonomia?: 'preguntar' | 'ediciones' | 'autonomo'
+  adjuntos?: Adjunto[]
 }
 
 export interface SesionGuardada {
