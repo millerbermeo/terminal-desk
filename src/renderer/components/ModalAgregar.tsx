@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { IconoCerrar, IconoCheck, IconoMas } from './Iconos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { ErrorProyecto, ValidacionRuta } from '@shared/ipc'
 
@@ -102,10 +103,10 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
 
   const estado = (f: Fila, i: number) => {
     if (!f.ruta.trim()) return null
-    if (!f.validacion) return <div className="cfg-nota">Comprobando…</div>
-    if (!f.validacion.ok) return <div className="cfg-error">✗ {f.validacion.mensaje}</div>
-    if (duplicada(i)) return <div className="cfg-error">✗ Ruta repetida en el formulario</div>
-    return <div className="cfg-ok">✓ {f.validacion.ruta}</div>
+    if (!f.validacion) return <div className="cfg-nota"><span className="spinner" /> Comprobando…</div>
+    if (!f.validacion.ok) return <div className="cfg-error"><IconoCerrar /> {f.validacion.mensaje}</div>
+    if (duplicada(i)) return <div className="cfg-error"><IconoCerrar /> Ruta repetida en el formulario</div>
+    return <div className="cfg-ok"><IconoCheck /> {f.validacion.ruta}</div>
   }
 
   return (
@@ -120,7 +121,12 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
           if (todoValido && !guardando) void enviar()
         }}
       >
-        <h3>Agregar proyectos</h3>
+        <div className="modal-cab">
+          <h3>Agregar proyectos</h3>
+          <button type="button" className="icono" onClick={onCerrar} title="Cerrar (Esc)">
+            <IconoCerrar />
+          </button>
+        </div>
         <label>
           Grupo
           <select value={grupo} onChange={(e) => setGrupo(e.target.value)}>
@@ -149,8 +155,8 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
                   onChange={(e) => cambiarRuta(i, e.target.value)}
                   autoFocus={i === 0 && grupo !== NUEVO}
                 />
-                <button type="button" title="Quitar fila" disabled={filas.length === 1} onClick={() => quitarFila(i)}>
-                  ×
+                <button type="button" className="icono" title="Quitar fila" disabled={filas.length === 1} onClick={() => quitarFila(i)}>
+                  <IconoCerrar />
                 </button>
               </div>
               {estado(f, i)}
@@ -163,7 +169,7 @@ export function ModalAgregar({ datos, onGuardado, onCerrar }: Props) {
           ))}
         </div>
         <button type="button" onClick={() => setFilas((fs) => [...fs, filaVacia()])}>
-          + Otra fila
+          <IconoMas /> Otra fila
         </button>
 
         {errores.filter((e) => e.indice < 0).map((e) => (

@@ -19,7 +19,8 @@ function crearVentana(): void {
     width: 1280,
     height: 800,
     title: 'Centro de Proyectos',
-    backgroundColor: '#1e1e1e',
+    backgroundColor: '#0f1115',
+    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

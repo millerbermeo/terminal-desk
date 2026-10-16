@@ -21,12 +21,21 @@ export function TerminalPanel({ id, cwd, visible, activa, onFoco }: Props) {
   useEffect(() => {
     const el = contenedor.current!
     const t = new Terminal({
-      fontFamily: 'monospace',
+      fontFamily: "'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', Menlo, Consolas, monospace",
       fontSize: 14,
       cursorBlink: true,
       scrollback: 5000,
       allowProposedApi: true,
-      theme: { background: '#1e1e1e' }
+      theme: {
+        background: '#0f1115',
+        foreground: '#d7dae0',
+        cursor: '#7aa2f7',
+        selectionBackground: '#33467c',
+        black: '#1a1d23', red: '#f7768e', green: '#9ece6a', yellow: '#e0af68',
+        blue: '#7aa2f7', magenta: '#bb9af7', cyan: '#7dcfff', white: '#c0caf5',
+        brightBlack: '#414868', brightRed: '#ff899d', brightGreen: '#b9f27c', brightYellow: '#ffc777',
+        brightBlue: '#9ab8ff', brightMagenta: '#c9aaff', brightCyan: '#a4daff', brightWhite: '#e6ebff'
+      }
     })
     const f = new FitAddon()
     t.loadAddon(f)

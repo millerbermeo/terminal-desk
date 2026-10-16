@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { DatosProyectos } from '@shared/modelos'
+import { IconoBasura, IconoCarpeta, IconoMas } from './Iconos'
 import { ModalAgregar } from './ModalAgregar'
 
 interface Props {
@@ -15,10 +16,10 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
     <section className="cfg-grupo" key={grupoId ?? 'sin-grupo'}>
       <div className="cfg-grupo-cab">
         <h3>
-          {nombre} <small>({proyectos.length})</small>
+          {nombre} <small>{proyectos.length}</small>
         </h3>
         {grupoId && (
-          <button title="Elimina el grupo; sus proyectos pasan a «Sin grupo»" onClick={() => void window.api.proyectos.eliminarGrupo(grupoId).then(onDatos)}>
+          <button className="peligro" title="Elimina el grupo; sus proyectos pasan a «Sin grupo»" onClick={() => void window.api.proyectos.eliminarGrupo(grupoId).then(onDatos)}>
             Eliminar grupo
           </button>
         )}
@@ -26,10 +27,11 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
       {proyectos.length === 0 && <p className="cfg-vacio">Sin proyectos</p>}
       {proyectos.map((p) => (
         <div className="cfg-proyecto" key={p.id}>
+          <IconoCarpeta />
           <strong>{p.nombre}</strong>
           <code>{p.ruta}</code>
-          <button title="Quitar de la lista (no borra la carpeta)" onClick={() => void window.api.proyectos.eliminar(p.id).then(onDatos)}>
-            Quitar
+          <button className="peligro" title="Quitar de la lista (no borra la carpeta)" onClick={() => void window.api.proyectos.eliminar(p.id).then(onDatos)}>
+            <IconoBasura /> Quitar
           </button>
         </div>
       ))}
@@ -40,7 +42,9 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
     <div className="config">
       <div className="cfg-cab">
         <h2>Configurar proyectos</h2>
-        <button className="primario" onClick={() => setModal(true)}>+ Agregar proyectos</button>
+        <button className="primario" onClick={() => setModal(true)}>
+          <IconoMas /> Agregar proyectos
+        </button>
       </div>
 
       {datos.grupos.map((g) =>

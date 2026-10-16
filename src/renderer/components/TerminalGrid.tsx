@@ -1,3 +1,4 @@
+import { IconoCerrar, IconoTerminal } from './Iconos'
 import { TerminalPanel } from './TerminalPanel'
 import type { TerminalInfo } from '../App'
 
@@ -20,15 +21,17 @@ export function TerminalGrid({ terminales, activa, modo, onActivar, onCerrar }: 
         <div className="pestanas">
           {terminales.map((t) => (
             <div key={t.id} className={`pestana${t.id === activa ? ' activa' : ''}`} onClick={() => onActivar(t.id)}>
+              <IconoTerminal />
               <span>{t.titulo}</span>
               <button
+                className="cerrar"
                 title="Cerrar"
                 onClick={(e) => {
                   e.stopPropagation()
                   onCerrar(t.id)
                 }}
               >
-                ×
+                <IconoCerrar />
               </button>
             </div>
           ))}
@@ -38,7 +41,13 @@ export function TerminalGrid({ terminales, activa, modo, onActivar, onCerrar }: 
         className={`paneles ${modo}`}
         style={modo === 'rejilla' ? { gridTemplateColumns: `repeat(${columnas}, minmax(0, 1fr))` } : undefined}
       >
-        {terminales.length === 0 && <div className="vacio">Sin terminales. Abre un proyecto o crea una nueva.</div>}
+        {terminales.length === 0 && (
+          <div className="vacio">
+            <div className="vacio-icono"><IconoTerminal /></div>
+            <strong>Sin terminales abiertas</strong>
+            <span>Elige un proyecto en la barra lateral o crea una terminal nueva.</span>
+          </div>
+        )}
         {terminales.map((t) => {
           const visible = modo === 'rejilla' || t.id === activa
           return (
@@ -49,9 +58,11 @@ export function TerminalGrid({ terminales, activa, modo, onActivar, onCerrar }: 
             >
               {modo === 'rejilla' && (
                 <div className="panel-barra">
-                  <span>{t.titulo}</span>
-                  <button title="Cerrar" onClick={() => onCerrar(t.id)}>
-                    ×
+                  <span className="panel-titulo">
+                    <IconoTerminal /> {t.titulo}
+                  </span>
+                  <button className="cerrar" title="Cerrar" onClick={() => onCerrar(t.id)}>
+                    <IconoCerrar />
                   </button>
                 </div>
               )}

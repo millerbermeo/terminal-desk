@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { DatosProyectos, Proyecto } from '@shared/modelos'
+import { IconoPestanas, IconoRejilla } from './components/Iconos'
 import { Sidebar } from './components/Sidebar'
 import { ConfigProyectos } from './components/ConfigProyectos'
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
@@ -48,10 +49,17 @@ export function App() {
       {/* siempre montado (oculto en config) para no matar los procesos de las terminales */}
       <main className="principal" style={{ display: vista === 'config' ? 'none' : 'flex' }}>
         <div className="barra">
-          <span>{terminales.length} terminal(es)</span>
-          <button onClick={() => setModo(modo === 'rejilla' ? 'pestanas' : 'rejilla')}>
-            Vista: {modo === 'rejilla' ? 'Rejilla' : 'Pestañas'}
-          </button>
+          <span className="barra-info">
+            <span className="punto" /> {terminales.length} {terminales.length === 1 ? 'terminal' : 'terminales'}
+          </span>
+          <div className="segmentado" role="group" aria-label="Vista">
+            <button className={modo === 'rejilla' ? 'on' : ''} onClick={() => setModo('rejilla')} title="Rejilla">
+              <IconoRejilla /> Rejilla
+            </button>
+            <button className={modo === 'pestanas' ? 'on' : ''} onClick={() => setModo('pestanas')} title="Pestañas">
+              <IconoPestanas /> Pestañas
+            </button>
+          </div>
         </div>
         <TerminalGrid terminales={terminales} activa={activa} modo={modo} onActivar={setActiva} onCerrar={cerrar} />
       </main>
