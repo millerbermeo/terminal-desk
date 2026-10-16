@@ -190,6 +190,8 @@ export function App() {
 
   const pedirCierre = (v: Ventana): void => (v.terminales.length > 0 ? setPorCerrar(v.id) : cerrarVentana(v.id))
   const abiertos = new Set(ventanas.map((v) => v.id))
+  const terminalesPorProyecto: Record<string, number> = {}
+  for (const v of ventanas) for (const t of v.terminales) if (t.proyectoId) terminalesPorProyecto[t.proyectoId] = (terminalesPorProyecto[t.proyectoId] ?? 0) + 1
   const ventanaConfirmar = ventanas.find((v) => v.id === porCerrar)
 
   return (
@@ -199,6 +201,7 @@ export function App() {
         onAbrir={(p) => abrirProyecto(p)}
         onAbrirGrupo={abrirGrupo}
         abiertos={abiertos}
+        terminalesPorProyecto={terminalesPorProyecto}
         onNueva={abrirLibre}
         proveedores={proveedores}
         onAbrirConProveedor={abrirProyecto}

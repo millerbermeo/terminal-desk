@@ -93,7 +93,7 @@ input:focus, select:focus { border-color: var(--acento); box-shadow: 0 0 0 3px r
 .lista ul { list-style: none; margin: 0; padding: 0; }
 .item { width: 100%; justify-content: flex-start; gap: 9px; background: transparent; border-color: transparent; padding: 6px 10px; color: var(--texto); border-radius: 6px; }
 .item svg { color: var(--texto-suave); transition: color var(--rapido); }
-.item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .item-nombre { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item:hover:not(:disabled) { background: var(--bg-hover); border-color: transparent; transform: translateX(2px); }
 .item:hover svg { color: var(--acento); }
 .item-vacio { color: #5b6275; padding: 4px 12px; font-size: 12px; }
@@ -256,3 +256,7 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
 
 .menu-nueva { position: relative; }
 .menu-nueva-lista { position: absolute; top: calc(100% + 4px); right: 0; left: auto; min-width: 240px; max-height: 60vh; overflow-y: auto; transform-origin: top right; }
+
+/* bolita con el nº de terminales abiertas de un proyecto */
+.insignia { flex: none; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: inline-grid; place-items: center; font-size: 11px; font-weight: 600; line-height: 1; color: #0f1115; background: var(--ok); box-shadow: 0 0 8px rgba(158, 206, 106, 0.45); animation: insignia-pop 260ms var(--ease) both; }
+@keyframes insignia-pop { from { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.18); } to { transform: scale(1); opacity: 1; } }

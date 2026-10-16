@@ -8,6 +8,7 @@ interface Props {
   /** clave de grupo, nombre y proyectos: abre (o enfoca) la pestaña de ese grupo */
   onAbrirGrupo: (clave: string, nombre: string, p: Proyecto[]) => void
   abiertos: Set<string> // claves de grupo con pestaña abierta
+  terminalesPorProyecto: Record<string, number> // terminales abiertas de cada proyecto
   onNueva: () => void
   proveedores: ProveedorEstado[]
   onAbrirConProveedor: (p: Proyecto, prov: ProveedorEstado) => void
@@ -23,7 +24,7 @@ interface MenuIA {
   left: number
 }
 
-export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, onNueva, proveedores, onAbrirConProveedor, vista, onVista }: Props) {
+export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, proveedores, onAbrirConProveedor, vista, onVista }: Props) {
   const [cerrados, setCerrados] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<MenuIA | null>(null)
 
@@ -77,7 +78,16 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, onNueva, prove
               <div className="fila-proyecto">
                 <button className="item" title={p.ruta} onClick={() => onAbrir(p)}>
                   <IconoCarpeta />
-                  <span>{p.nombre}</span>
+                  <span className="item-nombre">{p.nombre}</span>
+                  {terminalesPorProyecto[p.id] > 0 && (
+                    <span
+                      key={terminalesPorProyecto[p.id]}
+                      className="insignia"
+                      title={`${terminalesPorProyecto[p.id]} terminal${terminalesPorProyecto[p.id] === 1 ? '' : 'es'} abierta${terminalesPorProyecto[p.id] === 1 ? '' : 's'}`}
+                    >
+                      {terminalesPorProyecto[p.id]}
+                    </span>
+                  )}
                 </button>
                 <button
                   className="icono abrir-ia"
