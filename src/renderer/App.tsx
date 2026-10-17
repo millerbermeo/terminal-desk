@@ -5,6 +5,7 @@ import { IconoCerrar, IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, Ico
 import { Sidebar, type Vista } from './components/Sidebar'
 import { Asistente } from './components/Asistente'
 import { Tareas } from './components/Tareas'
+import { Versiones } from './components/Versiones'
 import { ModalSolicitudGlobal } from './components/ModalSolicitud'
 import { escucharSolicitudes, useSolicitudes } from './agente/solicitudes'
 import { ConfigAgentes } from './components/ConfigAgentes'
@@ -332,6 +333,7 @@ export function App() {
       {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}
       <Asistente datos={datos} visible={vista === 'asistente'} />
       <Tareas datos={datos} visible={vista === 'tareas'} />
+      <Versiones datos={datos} visible={vista === 'versiones'} />
       {/* siempre montado (oculto en las pantallas de configuración) para no matar los procesos de las terminales */}
       <main className="principal" style={{ display: vista !== 'terminales' ? 'none' : 'flex' }}>
         <div className="ventanas" role="tablist" ref={barraPestanas}>

@@ -72,6 +72,9 @@ const api: ApiCentro = {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.tareasOperar, op, entrada),
     onCambio: (cb) => suscribir<null>(Canales.tareasCambio, () => cb())
   },
+  git: {
+    operar: (op, entrada) => ipcRenderer.invoke(Canales.gitOperar, op, entrada)
+  },
   agentes: {
     listar: () => ipcRenderer.invoke(Canales.agentesListar),
     guardar: (r) => ipcRenderer.invoke(Canales.agentesGuardar, r),

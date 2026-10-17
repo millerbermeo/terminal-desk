@@ -8,6 +8,7 @@ import type { NuevaRegla, ReglaPermiso } from './core/permisos'
 import type { InfoModelo, ResumenUso } from './core/uso'
 import type { EstadoCuenta, ProveedorModelo } from './core/cuenta'
 import type { NombreOperacionTareas, OperacionesTareas } from './tareas'
+import type { NombreOperacionGit, OperacionesGit } from './versiones'
 import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion'
 import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
 import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso } from './modelos'
@@ -57,6 +58,7 @@ export const Canales = {
   coreCuentaIniciar: 'core:cuenta-iniciar',
   coreCuentaCerrar: 'core:cuenta-cerrar',
   tareasOperar: 'tareas:operar',
+  gitOperar: 'git:operar',
   tareasCambio: 'tareas:cambio',
   coreCuentaAgregar: 'core:cuenta-agregar',
   coreCuentaQuitar: 'core:cuenta-quitar',
@@ -266,6 +268,10 @@ export interface ApiCentro {
     operar<K extends NombreOperacionTareas>(op: K, entrada: OperacionesTareas[K]['entrada']): Promise<OperacionesTareas[K]['salida']>
     /** Algo cambió las tareas (la propia interfaz, o la IA por herramientas o MCP): hay que volver a leer. */
     onCambio(cb: () => void): () => void
+  }
+  /** Control de versiones con git: una sola operación tipada (`OperacionesGit`); main resuelve la carpeta del proyecto. */
+  git: {
+    operar<K extends NombreOperacionGit>(op: K, entrada: OperacionesGit[K]['entrada']): Promise<OperacionesGit[K]['salida']>
   }
   agentes: {
     listar(): Promise<BibliotecaAgentes>

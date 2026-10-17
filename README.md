@@ -21,6 +21,7 @@ Electron · Vite · React · TypeScript · xterm.js · node-pty
 - **Agentes y skills de Claude Code**: biblioteca compartida o por proyecto, activable por grupo; se inyecta como plugin sin tocar el repositorio.
 - **Asistente integrado**: núcleo de agentes propio sobre la API de Anthropic, con subagentes, herramientas, cliente MCP, memoria corta y larga, flujos en git worktrees, guardrails, confirmación humana, permisos persistentes, comandos con `/`, trazas y evals.
 - **Tareas por grupos y proyectos** (tablero, lista, resumen y actividad) que la IA también lee y cambia con las mismas reglas: criterios de aceptación, dependencias, estados configurables e historial de quién hizo qué.
+- **Control de versiones con git** por proyecto: cambios y diff, commits, historial, ramas y fusiones, versiones (etiquetas con la siguiente versión semántica sugerida), stash y sincronización con el remoto.
 - **Editor de archivos** (CodeMirror 6) en cada celda, con árbol del proyecto, pestañas y guardado automático.
 - **Seguro por defecto**: `contextIsolation`, `sandbox` y CSP activos; las credenciales se redactan en las trazas.
 
@@ -267,5 +268,6 @@ Los instaladores se ejecutan sin privilegios (en Linux piden `sudo` solo para el
 - [docs/fase-4.md](docs/fase-4.md) — worktrees, guardrails, confirmación humana
 - [docs/fase-5.md](docs/fase-5.md) — trazas y evals
 - [docs/interfaz.md](docs/interfaz.md) — editor de archivos y pestaña Asistente
+- [docs/versiones.md](docs/versiones.md) — control de versiones con git (cambios, historial, ramas, versiones, stash)
 - [docs/tareas.md](docs/tareas.md) — tareas por grupos y proyectos, y su integración con la IA (MCP)
 - [docs/permisos-autonomia-comandos.md](docs/permisos-autonomia-comandos.md) — permisos, autonomía y comandos `/`

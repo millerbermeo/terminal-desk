@@ -13,6 +13,7 @@ import { verificarPassword } from './autenticacion'
 import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones } from './agentes'
 import { DIR, agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, sugerirRutas, validarRuta } from './proyectos'
 import { configurarMcpTareas } from './core/tareas/mcp-config'
+import { ejecutarOperacionGit } from './core/git/operaciones'
 import { iniciarServidorTareas, type ServidorTareas } from './core/tareas/servidor'
 
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
@@ -103,6 +104,13 @@ function crearVentana(opciones: { token?: string; x?: number; y?: number; titulo
 function registrarIpc(): void {
   registrarIpcCore(nucleo)
   registrarIpcArchivos()
+  ipcMain.handle(Canales.gitOperar, (_e, op: string, entrada: unknown) =>
+    ejecutarOperacionGit(async (id) => {
+      const p = (await leerProyectos()).proyectos.find((x) => x.id === String(id))
+      if (!p) throw new Error('El proyecto ya no existe.')
+      return p.ruta
+    }, op, entrada)
+  )
   ipcMain.handle(Canales.proyectosListar, () => leerProyectos())
   ipcMain.handle(Canales.proyectosValidarRuta, (_e, ruta: string) => validarRuta(ruta))
   ipcMain.handle(Canales.proyectosAgregar, (_e, sol: SolicitudAgregar) => agregarProyectos(sol))

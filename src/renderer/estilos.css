@@ -785,3 +785,120 @@ button.enlace:hover:not(:disabled) { background: none; text-decoration: underlin
 .estado-vacio.minimo h3 { font-size: 12px; font-weight: 500; color: var(--texto-tenue); }
 .columna.sobre .estado-vacio.minimo { border-color: var(--acento); }
 
+
+/* ---- control de versiones (git) ---- */
+.versiones { flex: 1; min-width: 0; flex-direction: column; animation: aparecer var(--medio) var(--ease) both; }
+.vc-rama { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--acento-suave); border: 1px solid rgba(129, 140, 248, 0.3); color: #c7cbff; font-weight: 550; font-family: 'JetBrains Mono', 'DejaVu Sans Mono', monospace; font-size: 12px; }
+.vc-tabs { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 20px; border-bottom: 1px solid var(--borde); }
+.vc-cuenta { margin-left: 6px; min-width: 18px; padding: 0 6px; border-radius: 999px; background: var(--bg-hover); color: var(--texto-suave); font-size: 10px; font-weight: 600; line-height: 16px; text-align: center; }
+.segmentado button.on .vc-cuenta { background: var(--acento-suave); color: #c7cbff; }
+.vc-ocupado { display: inline-flex; align-items: center; gap: 8px; color: var(--texto-suave); font-size: 12px; }
+.vc-cuerpo { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.vc-pagina { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 28px; max-width: 980px; width: 100%; }
+.vc-nota { margin: 0; color: var(--texto-tenue); font-size: 12px; line-height: 1.6; }
+.vc-nota.error { color: var(--error); padding: 8px 12px; }
+.vc-casilla { flex-direction: row !important; align-items: center; gap: 8px !important; color: var(--texto-suave); cursor: pointer; font-size: 12px; max-width: none !important; }
+
+.vc-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 10px 20px 0; padding: 10px 14px; border-radius: var(--radio-lg); border: 1px solid var(--borde-fuerte); background: var(--bg-sutil); }
+.vc-banner.aviso { border-color: rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.07); color: #fde68a; }
+.vc-banner.error { border-color: rgba(248, 113, 113, 0.4); background: rgba(248, 113, 113, 0.08); color: #fca5a5; align-items: flex-start; justify-content: space-between; }
+.vc-banner.ok { border-color: rgba(52, 211, 153, 0.35); background: rgba(52, 211, 153, 0.07); color: #6ee7b7; animation: subir var(--rapido) var(--ease) both; }
+.vc-banner.info { border-color: rgba(129, 140, 248, 0.35); background: rgba(129, 140, 248, 0.07); }
+.vc-banner input[type='text'], .vc-banner input:not([type]) { min-width: 150px; }
+.vc-error-texto { white-space: pre-wrap; overflow-wrap: anywhere; flex: 1; font-size: 12.5px; line-height: 1.55; }
+
+/* cambios */
+.vc-cambios, .vc-historial { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(320px, 400px) 1fr; }
+.vc-lista { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--borde); background: var(--bg-sidebar); }
+.vc-lista-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 0; }
+.vc-seccion header { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px 4px; }
+.vc-seccion h4 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--texto-tenue); }
+.vc-seccion ul, .vc-commits, .vc-archivos-commit { list-style: none; margin: 0; padding: 0; }
+.vc-fila { display: flex; align-items: center; position: relative; }
+.vc-fila-btn { flex: 1; min-width: 0; justify-content: flex-start; gap: 10px; text-align: left; background: transparent; border-color: transparent; border-radius: 0; padding: 5px 14px; font-weight: 400; }
+.vc-fila:hover { background: var(--bg-hover); }
+.vc-fila-btn:hover:not(:disabled) { background: transparent; border-color: transparent; }
+.vc-fila.sel { background: var(--acento-suave); }
+.vc-fila-btn.sel { background: var(--acento-suave); }
+.vc-nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.vc-dir { color: var(--texto-tenue); font-weight: 400; font-size: 11.5px; }
+.vc-nombre .vc-dir { font-size: inherit; }
+.vc-estado { flex: none; width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; font: 600 11px 'JetBrains Mono', 'DejaVu Sans Mono', monospace; background: var(--bg-hover); color: var(--texto-suave); }
+.vc-e-M { color: var(--aviso); background: rgba(251, 191, 36, 0.12); }
+.vc-e-A, .vc-e-U { color: var(--ok); background: rgba(52, 211, 153, 0.12); }
+.vc-e-D { color: var(--error); background: rgba(248, 113, 113, 0.12); }
+.vc-e-R, .vc-e-C { color: var(--acento); background: var(--acento-suave); }
+.vc-e-conf { color: #fff; background: #dc3b3b; }
+.vc-acciones { display: inline-flex; gap: 2px; opacity: 0; transition: opacity var(--rapido); }
+.vc-acciones.visibles { opacity: 1; }
+.vc-fila:hover .vc-acciones, .vc-fila:focus-within .vc-acciones { opacity: 1; }
+.vc-fila .vc-acciones { padding-right: 8px; }
+.vc-acciones button.icono { padding: 3px 7px; font-size: 12px; }
+.vc-commit { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--borde); background: var(--bg-sidebar); }
+.vc-commit textarea { width: 100%; resize: none; }
+.vc-commit-pie { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* diff */
+.vc-diff { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.vc-diff-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 16px; border-bottom: 1px solid var(--borde); background: var(--bg-sutil); }
+.vc-diff-cab strong { font-weight: 600; overflow-wrap: anywhere; }
+.vc-mas { color: var(--ok); font-weight: 600; font-variant-numeric: tabular-nums; }
+.vc-menos { color: var(--error); font-weight: 600; font-variant-numeric: tabular-nums; }
+.vc-diff-cuerpo { flex: 1; min-height: 0; overflow: auto; font: 12px/1.6 'JetBrains Mono', 'DejaVu Sans Mono', monospace; padding: 4px 0; }
+.vc-l { display: grid; grid-template-columns: 44px 44px 18px 1fr; min-width: max-content; }
+.vc-l > span { padding: 0 6px; white-space: pre; }
+.vc-n { text-align: right; color: var(--texto-tenue); user-select: none; font-variant-numeric: tabular-nums; }
+.vc-signo { text-align: center; color: var(--texto-tenue); user-select: none; padding: 0 !important; }
+.vc-l-add { background: rgba(52, 211, 153, 0.1); }
+.vc-l-add .vc-signo { color: var(--ok); }
+.vc-l-del { background: rgba(248, 113, 113, 0.1); }
+.vc-l-del .vc-signo { color: var(--error); }
+.vc-l-hunk { background: var(--acento-suave); color: #c7cbff; margin: 6px 0 2px; }
+.vc-l-hunk .vc-t { grid-column: 1 / -1; }
+.vc-l-info { color: var(--texto-tenue); font-style: italic; }
+
+/* historial */
+.vc-filtros { display: flex; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--borde); }
+.vc-filtros select { flex: 0 1 150px; min-width: 0; }
+.vc-filtros input { flex: 1; min-width: 0; }
+.vc-commits { flex: 1; min-height: 0; overflow-y: auto; }
+.vc-commit-fila { width: 100%; justify-content: flex-start; align-items: flex-start; gap: 12px; text-align: left; background: transparent; border-color: transparent; border-radius: 0; padding: 10px 14px; border-bottom: 1px solid var(--borde); font-weight: 400; }
+.vc-commit-fila:hover:not(:disabled) { background: var(--bg-hover); border-color: transparent; border-bottom-color: var(--borde); }
+.vc-commit-fila.sel { background: var(--acento-suave); }
+.vc-punto-commit { flex: none; width: 10px; height: 10px; margin-top: 5px; border-radius: 50%; background: var(--acento); box-shadow: 0 0 0 3px var(--acento-suave); }
+.vc-punto-commit[data-merge='true'] { background: var(--violeta); box-shadow: 0 0 0 3px rgba(192, 132, 252, 0.18); }
+.vc-commit-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.vc-asunto { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vc-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--texto-tenue); font-size: 11.5px; margin: 0; }
+.vc-meta code { font: 11px 'JetBrains Mono', 'DejaVu Sans Mono', monospace; color: var(--texto-suave); }
+.vc-ref { font-size: 10px; }
+.vc-ref-cabeza { color: #c7cbff; background: var(--acento-suave); border-color: rgba(129, 140, 248, 0.4); }
+.vc-ref-rama { color: var(--ok); border-color: rgba(52, 211, 153, 0.35); }
+.vc-ref-remota { color: var(--texto-suave); }
+.vc-ref-etiqueta { color: var(--violeta); border-color: rgba(192, 132, 252, 0.35); }
+.vc-mas-btn { margin: 10px 14px; }
+.vc-detalle { min-width: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.vc-detalle-cab { padding: 18px 20px 12px; border-bottom: 1px solid var(--borde); display: flex; flex-direction: column; gap: 8px; }
+.vc-detalle-cab h3 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.vc-cuerpo-commit { margin: 0; color: var(--texto-suave); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.vc-archivos-commit { padding: 6px 0; border-bottom: 1px solid var(--borde); }
+.vc-cifras { flex: none; font: 11.5px 'JetBrains Mono', 'DejaVu Sans Mono', monospace; color: var(--texto-tenue); }
+.vc-detalle .vc-diff { min-height: 320px; flex: none; max-height: 70vh; }
+
+/* ramas, versiones, stash */
+.vc-rama-fila { flex-wrap: wrap; }
+.vc-rama-nombre { width: auto !important; max-width: 260px; font-family: 'JetBrains Mono', 'DejaVu Sans Mono', monospace; font-size: 12.5px; }
+.vc-rama-fila .rec-desc { flex: 1 1 200px; }
+.vc-rama-fila .vc-acciones { opacity: 1; }
+.vc-rama-fila button, .vc-rama-fila:hover button { opacity: 1; }
+.vc-form { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.vc-form label { display: flex; flex-direction: column; gap: 6px; color: var(--texto-suave); font-size: 12px; font-weight: 500; }
+.vc-form .vc-casilla { flex-direction: row; }
+.vc-form input:not([type='checkbox']), .vc-form textarea { width: 100%; }
+.vc-casilla input[type='checkbox'] { width: auto; flex: none; }
+
+@media (max-width: 900px) {
+  .vc-cambios, .vc-historial { grid-template-columns: 1fr; grid-template-rows: minmax(180px, 45%) 1fr; }
+  .vc-lista { border-right: none; border-bottom: 1px solid var(--borde); }
+  .vc-pagina { padding: 16px; }
+}
