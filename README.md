@@ -22,6 +22,8 @@ Electron · Vite · React · TypeScript · xterm.js · node-pty
 - **Asistente integrado**: núcleo de agentes propio sobre la API de Anthropic, con subagentes, herramientas, cliente MCP, memoria corta y larga, flujos en git worktrees, guardrails, confirmación humana, permisos persistentes, comandos con `/`, trazas y evals.
 - **Tareas por grupos y proyectos** (tablero, lista, resumen y actividad) que la IA también lee y cambia con las mismas reglas: criterios de aceptación, dependencias, estados configurables e historial de quién hizo qué.
 - **Control de versiones con git** por proyecto: cambios y diff, commits, historial, ramas y fusiones, versiones (etiquetas con la siguiente versión semántica sugerida), stash y sincronización con el remoto.
+- **Navegador integrado**: abre lo que desarrollas en una ventana con barra de direcciones y herramientas de desarrollo, detecta los servidores locales en marcha y también lo abre en el navegador del sistema.
+- **Cliente API** (estilo Postman): peticiones HTTP con entornos (`{{variables}}`), colecciones, historial, importar/copiar cURL y la respuesta con el JSON en árbol.
 - **Editor de archivos** (CodeMirror 6) en cada celda, con árbol del proyecto, pestañas y guardado automático.
 - **Seguro por defecto**: `contextIsolation`, `sandbox` y CSP activos; las credenciales se redactan en las trazas.
 
@@ -191,6 +193,7 @@ Todo se guarda en `~/.centro-proyectos/`:
 | `agentes.json` | Biblioteca de agentes y skills |
 | `preferencias.json`, `sesiones-cli.json` | Proveedor elegido (suscripción/API) y sesiones del CLI para continuar conversaciones |
 | `sesiones/` | Plugins generados para Claude Code |
+| `api/` | Cliente API: colecciones, entornos (con sus tokens, sin cifrar; 0600) e historial |
 | `tareas/`, `tareas.token`, `tareas.sock`, `mcp/` | Tareas (con su historial), credencial y socket local del servidor MCP de tareas y su configuración |
 | `conversaciones/`, `memoria/`, `trazas/`, `evals/`, `permisos/`, `comandos/`, `worktrees/` | Estado del Asistente |
 
@@ -268,6 +271,7 @@ Los instaladores se ejecutan sin privilegios (en Linux piden `sudo` solo para el
 - [docs/fase-4.md](docs/fase-4.md) — worktrees, guardrails, confirmación humana
 - [docs/fase-5.md](docs/fase-5.md) — trazas y evals
 - [docs/interfaz.md](docs/interfaz.md) — editor de archivos y pestaña Asistente
+- [docs/navegador-api.md](docs/navegador-api.md) — navegador integrado y cliente API
 - [docs/versiones.md](docs/versiones.md) — control de versiones con git (cambios, historial, ramas, versiones, stash)
 - [docs/tareas.md](docs/tareas.md) — tareas por grupos y proyectos, y su integración con la IA (MCP)
 - [docs/permisos-autonomia-comandos.md](docs/permisos-autonomia-comandos.md) — permisos, autonomía y comandos `/`

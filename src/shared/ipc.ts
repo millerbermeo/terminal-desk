@@ -9,6 +9,8 @@ import type { InfoModelo, ResumenUso } from './core/uso'
 import type { EstadoCuenta, ProveedorModelo } from './core/cuenta'
 import type { NombreOperacionTareas, OperacionesTareas } from './tareas'
 import type { NombreOperacionGit, OperacionesGit } from './versiones'
+import type { NombreOperacionApi, OperacionesApi } from './api'
+import type { AccionNavegador, EstadoNavegador, ServidorLocal } from './navegador'
 import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion'
 import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
 import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso } from './modelos'
@@ -59,6 +61,13 @@ export const Canales = {
   coreCuentaCerrar: 'core:cuenta-cerrar',
   tareasOperar: 'tareas:operar',
   gitOperar: 'git:operar',
+  apiOperar: 'api:operar',
+  navegadorAbrir: 'navegador:abrir',
+  navegadorAccion: 'navegador:accion',
+  navegadorObtener: 'navegador:obtener',
+  navegadorEstado: 'navegador:estado',
+  navegadorPuertos: 'navegador:puertos',
+  navegadorExterno: 'navegador:externo',
   tareasCambio: 'tareas:cambio',
   coreCuentaAgregar: 'core:cuenta-agregar',
   coreCuentaQuitar: 'core:cuenta-quitar',
@@ -272,6 +281,21 @@ export interface ApiCentro {
   /** Control de versiones con git: una sola operación tipada (`OperacionesGit`); main resuelve la carpeta del proyecto. */
   git: {
     operar<K extends NombreOperacionGit>(op: K, entrada: OperacionesGit[K]['entrada']): Promise<OperacionesGit[K]['salida']>
+  }
+  /** Cliente API integrado (estilo Postman): las peticiones se ejecutan en main, sin CORS y con acceso a localhost. */
+  api: {
+    operar<K extends NombreOperacionApi>(op: K, entrada: OperacionesApi[K]['entrada']): Promise<OperacionesApi[K]['salida']>
+  }
+  /** Navegador integrado: una ventana con barra de direcciones y vista web aislada, para probar lo que se desarrolla. */
+  navegador: {
+    abrir(url: string): Promise<number>
+    accion(id: number, accion: AccionNavegador): Promise<void>
+    obtener(id: number): Promise<EstadoNavegador>
+    onEstado(cb: (e: EstadoNavegador) => void): () => void
+    /** Servidores de desarrollo que están escuchando ahora mismo en esta máquina. */
+    puertos(): Promise<ServidorLocal[]>
+    /** Abre la dirección en el navegador del sistema. */
+    externo(url: string): Promise<void>
   }
   agentes: {
     listar(): Promise<BibliotecaAgentes>

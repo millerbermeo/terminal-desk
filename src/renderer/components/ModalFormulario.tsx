@@ -17,12 +17,14 @@ interface Props {
   /** Casilla opcional (p. ej. «Cambiar a la rama nueva»). */
   casilla?: { etiqueta: string; valor: boolean }
   etiquetaBoton: string
+  /** Error de validación que se muestra sobre los botones (lo pone quien recibe el envío). */
+  error?: string
   onEnviar: (valores: Record<string, string>, casilla: boolean) => Promise<boolean> | boolean
   onCerrar: () => void
 }
 
 /** Formulario breve en un modal: nombre de una rama, mensaje de una versión… Se cierra solo si `onEnviar` devuelve `true`. */
-export function ModalFormulario({ titulo, descripcion, campos, casilla, etiquetaBoton, onEnviar, onCerrar }: Props) {
+export function ModalFormulario({ titulo, descripcion, campos, casilla, etiquetaBoton, error, onEnviar, onCerrar }: Props) {
   const [valores, setValores] = useState<Record<string, string>>(() => Object.fromEntries(campos.map((c) => [c.id, c.valor ?? ''])))
   const [marca, setMarca] = useState(casilla?.valor ?? false)
   const [enviando, setEnviando] = useState(false)
@@ -80,6 +82,7 @@ export function ModalFormulario({ titulo, descripcion, campos, casilla, etiqueta
             <input type="checkbox" checked={marca} onChange={(e) => setMarca(e.target.checked)} /> {casilla.etiqueta}
           </label>
         )}
+        {error && <p className="tareas-error-texto" role="alert" style={{ whiteSpace: 'pre-wrap' }}>{error}</p>}
         <div className="cfg-acciones">
           <button className="primario" type="submit" disabled={!completo || enviando}>
             {enviando ? 'Trabajando…' : etiquetaBoton}

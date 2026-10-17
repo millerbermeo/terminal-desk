@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import icono from '../../resources/icon.png?asset'
 import type { Proveedor, Recurso } from '@shared/modelos'
+import type { AccionNavegador } from '@shared/navegador'
 import { Canales, type DestinoActivacion, type OpcionesTerminal, type PayloadVentana, type ResultadoEliminarGrupo, type SolicitudAgregar } from '@shared/ipc'
 import { registrarIpcArchivos } from './archivos-ipc'
 import { Nucleo, registrarIpcCore } from './core'
@@ -14,6 +15,12 @@ import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, lee
 import { DIR, agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, sugerirRutas, validarRuta } from './proyectos'
 import { configurarMcpTareas } from './core/tareas/mcp-config'
 import { ejecutarOperacionGit } from './core/git/operaciones'
+import { writeFile } from 'node:fs/promises'
+import { AlmacenJson } from './core/memory/almacen'
+import { ServicioApi } from './api/servicio'
+import { ejecutarOperacionApi } from './api/operaciones'
+import { abrirEnNavegadorDelSistema, GestorNavegador, rutaPreload } from './navegador'
+import { servidoresLocales } from './puertos'
 import { iniciarServidorTareas, type ServidorTareas } from './core/tareas/servidor'
 
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
@@ -25,6 +32,26 @@ app.setPath('userData', join(app.getPath('appData'), 'ODESK AI'))
 app.setDesktopName('odesk-ai.desktop')
 
 let principal: BrowserWindow | null = null
+
+// Cliente API: los datos (colecciones, entornos con tokens, historial) viven en ~/.centro-proyectos/api/ con permisos 0600.
+const servicioApi = new ServicioApi(new AlmacenJson(join(DIR, 'api'), 0o600), async (nombre, datos) => {
+  const ventana = BrowserWindow.getFocusedWindow() ?? principal
+  const opciones = { title: 'Guardar respuesta', defaultPath: join(homedir(), nombre) }
+  const r = ventana ? await dialog.showSaveDialog(ventana, opciones) : await dialog.showSaveDialog(opciones)
+  if (r.canceled || !r.filePath) return undefined
+  await writeFile(r.filePath, datos)
+  return r.filePath
+})
+
+// Navegador integrado: cada ventana carga la interfaz con ?navegador=<id> (su barra de direcciones).
+const navegador = new GestorNavegador(
+  (win, id) => {
+    if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(`${process.env.ELECTRON_RENDERER_URL}?navegador=${id}`)
+    else void win.loadFile(join(__dirname, '../renderer/index.html'), { query: { navegador: String(id) } })
+  },
+  icono,
+  rutaPreload()
+)
 
 // Cada terminal envía su salida a la ventana que la tiene (puede cambiar al separar una pestaña).
 const duenos = new Map<string, number>() // id del pty -> id del webContents
@@ -111,6 +138,12 @@ function registrarIpc(): void {
       return p.ruta
     }, op, entrada)
   )
+  ipcMain.handle(Canales.apiOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionApi(servicioApi, op, entrada))
+  ipcMain.handle(Canales.navegadorAbrir, (_e, url: string) => navegador.abrir(String(url)))
+  ipcMain.handle(Canales.navegadorAccion, (e, id: number, accion: AccionNavegador) => navegador.accion(Number(id), accion, e.sender))
+  ipcMain.handle(Canales.navegadorObtener, (e, id: number) => navegador.obtener(Number(id), e.sender))
+  ipcMain.handle(Canales.navegadorPuertos, () => servidoresLocales())
+  ipcMain.handle(Canales.navegadorExterno, (_e, url: string) => abrirEnNavegadorDelSistema(String(url)))
   ipcMain.handle(Canales.proyectosListar, () => leerProyectos())
   ipcMain.handle(Canales.proyectosValidarRuta, (_e, ruta: string) => validarRuta(ruta))
   ipcMain.handle(Canales.proyectosAgregar, (_e, sol: SolicitudAgregar) => agregarProyectos(sol))

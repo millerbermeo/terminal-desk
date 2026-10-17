@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
 import logo from '../assets/logo.png'
-import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoMas, IconoRama, IconoTareas } from './Iconos'
+import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoGlobo, IconoMas, IconoRama, IconoTareas } from './Iconos'
 
 interface Props {
   datos: DatosProyectos
@@ -25,7 +25,7 @@ interface Props {
   onAbrirAsistente: (p: Proyecto) => void
 }
 
-export type Vista = 'terminales' | 'config' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones'
+export type Vista = 'terminales' | 'config' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones' | 'api' | 'navegador'
 
 interface MenuIA {
   proyecto: Proyecto
@@ -157,6 +157,14 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
         <button className={`item item-config${vista === 'versiones' ? ' activo' : ''}`} onClick={() => onVista(vista === 'versiones' ? 'terminales' : 'versiones')}>
           <IconoRama />
           <span>Versiones</span>
+        </button>
+        <button className={`item item-config${vista === 'api' ? ' activo' : ''}`} onClick={() => onVista(vista === 'api' ? 'terminales' : 'api')}>
+          <IconoApi />
+          <span>Cliente API</span>
+        </button>
+        <button className={`item item-config${vista === 'navegador' ? ' activo' : ''}`} onClick={() => onVista(vista === 'navegador' ? 'terminales' : 'navegador')}>
+          <IconoGlobo />
+          <span>Navegador</span>
         </button>
         <button className={`item item-config${vista === 'agentes' ? ' activo' : ''}`} onClick={() => onVista(vista === 'agentes' ? 'terminales' : 'agentes')}>
           <IconoAgente />

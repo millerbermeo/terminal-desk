@@ -108,3 +108,10 @@ export const IconoBuscar = () => (
 export const IconoEvals = () => (
   <Icono><path d="M9 11l3 3 8-8" /><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" /></Icono>
 )
+
+export const IconoApi = () => (
+  <Icono><path d="M4 8h6M4 16h6M14 6l6 6-6 6" /><circle cx="7" cy="12" r="1.5" /></Icono>
+)
+export const IconoGlobo = () => (
+  <Icono><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18" /></Icono>
+)

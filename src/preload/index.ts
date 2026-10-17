@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { CambioArchivo } from '@shared/archivos'
 import type { EventoAgente } from '@shared/core/agente'
 import type { ResumenUso } from '@shared/core/uso'
+import type { EstadoNavegador } from '@shared/navegador'
 import { Canales, CanalesArchivos as CA, type ApiCentro, type DatosTerminal, type PayloadVentana, type SalidaTerminal } from '@shared/ipc'
 
 function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
@@ -74,6 +75,17 @@ const api: ApiCentro = {
   },
   git: {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.gitOperar, op, entrada)
+  },
+  api: {
+    operar: (op, entrada) => ipcRenderer.invoke(Canales.apiOperar, op, entrada)
+  },
+  navegador: {
+    abrir: (url) => ipcRenderer.invoke(Canales.navegadorAbrir, url),
+    accion: (id, accion) => ipcRenderer.invoke(Canales.navegadorAccion, id, accion),
+    obtener: (id) => ipcRenderer.invoke(Canales.navegadorObtener, id),
+    onEstado: (cb) => suscribir<EstadoNavegador>(Canales.navegadorEstado, cb),
+    puertos: () => ipcRenderer.invoke(Canales.navegadorPuertos),
+    externo: (url) => ipcRenderer.invoke(Canales.navegadorExterno, url)
   },
   agentes: {
     listar: () => ipcRenderer.invoke(Canales.agentesListar),
