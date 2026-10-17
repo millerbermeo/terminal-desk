@@ -21,7 +21,7 @@ Dos pantallas de la barra lateral para probar lo que se desarrolla sin salir de 
 
 - `src/shared/api.ts` y `src/shared/navegador.ts`: tipos, un canal tipado por módulo y la lógica pura (variables, URL final, cURL, `normalizarUrl`).
 - Las peticiones se ejecutan en el proceso principal (`src/main/api/cliente.ts`, con `http`/`https` de Node): sin CORS y con acceso a localhost. Redirecciones propias (303 pasa a GET; las credenciales no viajan a otro servidor), descompresión gzip/deflate/brotli, límite de 20 MB (se avisa si se corta), tiempo total y cancelación, y errores de red explicados (conexión rechazada, DNS, certificado…).
-- `src/main/api/servicio.ts`: colecciones, entornos e historial en `~/.centro-proyectos/api/datos.json` (0600). **Los tokens de los entornos se guardan sin cifrar** en tu equipo.
+- `src/main/api/servicio.ts`: colecciones, entornos e historial en `~/.odesk-agent/api/datos.json` (0600). **Los tokens de los entornos se guardan sin cifrar** en tu equipo.
 - `src/main/navegador.ts`: ventana con la barra de direcciones de la aplicación (`?navegador=<id>`) y una `WebContentsView` aislada; `src/main/puertos.ts` detecta los servidores locales (IPv4 e IPv6).
 - Las dos operaciones llegan por un solo canal IPC cada una (`api:operar`, y `navegador:*`), con la entrada validada en main.
 

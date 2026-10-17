@@ -58,8 +58,8 @@ describe('Nucleo.ejecutarComando', () => {
     ruta = join(home, 'proy')
     await mkdir(ruta)
     await writeFile(join(ruta, '.env'), 'X=1')
-    await mkdir(join(home, '.centro-proyectos'))
-    await writeFile(join(home, '.centro-proyectos', 'proyectos.json'), JSON.stringify({ grupos: [], proyectos: [{ id: 'p1', nombre: 'P', ruta }] }))
+    await mkdir(join(home, '.odesk-agent'))
+    await writeFile(join(home, '.odesk-agent', 'proyectos.json'), JSON.stringify({ grupos: [], proyectos: [{ id: 'p1', nombre: 'P', ruta }] }))
     ;({ Nucleo } = await import('../src/main/core/index'))
   })
 

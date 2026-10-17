@@ -106,7 +106,7 @@ export function ModalProveedor({ inicial, onGuardado, onCerrar }: Props) {
             </div>
           ))}
           {vars.length > 0 && (
-            <span className="ayuda">Se guardan en texto plano en ~/.centro-proyectos/proveedores.json (permisos 600). Si ya iniciaste sesión en el CLI no hace falta ponerlas.</span>
+            <span className="ayuda">Se guardan en texto plano en ~/.odesk-agent/proveedores.json (permisos 600). Si ya iniciaste sesión en el CLI no hace falta ponerlas.</span>
           )}
         </div>
 

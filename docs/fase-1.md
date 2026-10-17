@@ -17,7 +17,7 @@ src/main/core/
     registro.ts         RegistroHerramientas: registrar / validar entrada / llamar (nunca lanza)
     integradas/         leer_archivo, listar_directorio, escribir_archivo, ejecutar_comando
   mcp/
-    config.ts           ~/.centro-proyectos/mcp.json (0600), validado con zod
+    config.ts           ~/.odesk-agent/mcp.json (0600), validado con zod
     cliente.ts          ClienteMcp (stdio)
     orquestador.ts      conecta servidores y registra sus tools como mcp__<servidor>__<tool>
   agentes-base.ts       agente raíz «asistente» y subagente «investigador»

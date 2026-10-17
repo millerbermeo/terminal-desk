@@ -3,13 +3,18 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/millerbermeo/terminal-desk/main/install.ps1 | iex"
 #
 # Ejecutarlo de nuevo actualiza a la última versión (solo reconstruye lo que cambió).
-# Variables de entorno: CENTRO_REPO, CENTRO_REF, CENTRO_DIR, CENTRO_UNINSTALL=1 (desinstalar) o CENTRO_UNINSTALL=all (desinstalar y borrar datos).
+# Variables de entorno: ODESK_REPO, ODESK_REF, ODESK_DIR, CENTRO_UNINSTALL=1 (desinstalar) o CENTRO_UNINSTALL=all (desinstalar y borrar datos).
+# (Se siguen aceptando las antiguas CENTRO_REPO, CENTRO_REF y CENTRO_DIR.)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$Repo = if ($env:CENTRO_REPO) { $env:CENTRO_REPO } else { 'https://github.com/millerbermeo/terminal-desk.git' }
-$Ref = $env:CENTRO_REF
-$Dir = if ($env:CENTRO_DIR) { $env:CENTRO_DIR } else { Join-Path $env:LOCALAPPDATA 'centro-proyectos' }
+$Repo = if ($env:ODESK_REPO) { $env:ODESK_REPO } elseif ($env:CENTRO_REPO) { $env:CENTRO_REPO } else { 'https://github.com/millerbermeo/terminal-desk.git' }
+$Ref = if ($env:ODESK_REF) { $env:ODESK_REF } else { $env:CENTRO_REF }
+$DirNuevo = Join-Path $env:LOCALAPPDATA 'odesk-agent'
+$DirAntiguo = Join-Path $env:LOCALAPPDATA 'centro-proyectos' # nombre anterior de la app
+$DirPersonalizado = if ($env:ODESK_DIR) { $env:ODESK_DIR } else { $env:CENTRO_DIR }
+# Una instalación existente se actualiza donde está (no se mueve); las nuevas usan la carpeta con el nombre actual.
+$Dir = if ($DirPersonalizado) { $DirPersonalizado } elseif ((-not (Test-Path $DirNuevo)) -and (Test-Path $DirAntiguo)) { $DirAntiguo } else { $DirNuevo }
 $NodeMajor = 24
 $NodeMin = 20
 $Lanzador = Join-Path $Dir 'odesk.cmd'
@@ -26,13 +31,15 @@ function Ejecutar([string]$exe, [string[]]$args_) {
 if ($env:CENTRO_UNINSTALL -in '1', 'all') {
   Paso "Desinstalando de $Dir"
   Remove-Item -Recurse -Force $Dir, $Atajo, $AtajoAntiguo -ErrorAction SilentlyContinue
+  if (-not $DirPersonalizado) { Remove-Item -Recurse -Force $DirAntiguo -ErrorAction SilentlyContinue }
   $u = [Environment]::GetEnvironmentVariable('Path', 'User')
   $nuevo = ($u -split ';' | Where-Object { $_ -and $_ -ne $Dir }) -join ';'
   [Environment]::SetEnvironmentVariable('Path', $nuevo, 'User')
-  $datos = Join-Path $env:USERPROFILE '.centro-proyectos'
+  $datos = Join-Path $env:USERPROFILE '.odesk-agent'
+  $datosAntiguos = Join-Path $env:USERPROFILE '.centro-proyectos' # la app los mueve sola al abrirse
   if ($env:CENTRO_UNINSTALL -eq 'all') {
     Paso "Borrando datos de usuario en $datos"
-    Remove-Item -Recurse -Force $datos -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $datos, $datosAntiguos -ErrorAction SilentlyContinue
     Write-Host 'Listo. Odesk Agent y todos sus datos eliminados.'
   } else {
     Write-Host "Listo. Tus proyectos y ajustes siguen en $datos (para borrarlos también: CENTRO_UNINSTALL=all)."

@@ -21,7 +21,7 @@ pnpm package        # build + electron-builder (node-pty va en asarUnpack)
 
 - **Cambios en `src/main` o `src/preload` requieren reiniciar `pnpm dev` por completo**; el renderer se recarga solo (Ctrl+R).
 - Si el entorno tiene `ELECTRON_RUN_AS_NODE=1` (p. ej. dentro de VSCode), Electron arranca como Node y falla con `Cannot read properties of undefined (reading 'commandLine')`: lanza con `env -u ELECTRON_RUN_AS_NODE pnpm dev`.
-- Para probar la app real sin ver la ventana: lanzar `electron . --remote-debugging-port=9222` (con `HOME` apuntando a una carpeta temporal para no tocar `~/.centro-proyectos`) y manejarla por CDP. Hay que enviar `Page.bringToFront` y `Emulation.setFocusEmulationEnabled` o los eventos de ratón tardan ~5 s cada uno. Los ptys se miden con `ps` (hijos del proceso principal).
+- Para probar la app real sin ver la ventana: lanzar `electron . --remote-debugging-port=9222` (con `HOME` apuntando a una carpeta temporal para no tocar `~/.odesk-agent`) y manejarla por CDP. Hay que enviar `Page.bringToFront` y `Emulation.setFocusEmulationEnabled` o los eventos de ratón tardan ~5 s cada uno. Los ptys se miden con `ps` (hijos del proceso principal).
 - La lógica pura (`src/renderer/arbol.ts`, `src/shared/*`, y `src/main/*.ts` con un loader de alias para `@shared/*`) se puede probar con `node --experimental-strip-types`.
 
 ## Arquitectura
@@ -39,7 +39,8 @@ Tres procesos con un contrato IPC tipado. **Añadir una operación IPC toca siem
 - `App.tsx` mantiene `ventanas` (pestañas, normalmente una por grupo; id = id del grupo, `__sin-grupo__` o `__libre__`). **Todas las pestañas y la vista principal permanecen montadas** (`display: none`) para no matar los ptys: nunca desmontes condicionalmente `TerminalPanel`/`TerminalGrid`. Un clic en un proyecto enfoca su terminal si ya existe (`proyectoId`); duplicar solo es posible a propósito (✦ con proveedor, «+ Terminal»).
 - `TerminalGrid` pinta un **árbol de divisiones** (`arbol.ts`, funciones puras): siempre cubre el área sin huecos; cada divisor mueve una línea completa; mover una terminal = intercambiar hojas. El árbol guardado conserva las proporciones y `normalizar()` aplica los mínimos (260×150 px) solo al dibujar. `reconciliar()` ajusta el árbol al abrir/cerrar terminales. Los ajustes de tamaño de xterm se limitan a uno cada 50 ms.
 
-### Persistencia (`~/.centro-proyectos/`)
+### Persistencia (`~/.odesk-agent/`)
+Antes era `~/.centro-proyectos/`: `src/main/migracion.ts` la mueve sola al arrancar (se ejecuta al evaluar `proyectos.ts`, antes de que nada lea `DIR`; renombra, y si no puede copia y borra el origen solo si la copia terminó; si falla se sigue usando la antigua para no parecer «vacía»). Tras mover, `core/git/reparar.ts` rehace con `git worktree repair` los worktrees de agentes (guardan rutas absolutas). El perfil de Electron (`userData`) también se mueve (`resolverPerfil`).
 `proyectos.json`, `proveedores.json` (0600; `env` en texto plano), `agentes.json` y `sesiones/`. Los módulos de `src/main` serializan sus escrituras con una cola `enCola`.
 
 ### Agentes y skills de Claude Code

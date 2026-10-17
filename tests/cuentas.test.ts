@@ -70,8 +70,8 @@ beforeAll(async () => {
   vi.stubEnv('FALSO_VOLCADO', volcado)
   const proyecto = join(home, 'proyecto')
   await mkdir(proyecto)
-  await mkdir(join(home, '.centro-proyectos'))
-  await writeFile(join(home, '.centro-proyectos', 'proyectos.json'), JSON.stringify({ grupos: [], proyectos: [{ id: 'p1', nombre: 'P', ruta: proyecto }] }))
+  await mkdir(join(home, '.odesk-agent'))
+  await writeFile(join(home, '.odesk-agent', 'proyectos.json'), JSON.stringify({ grupos: [], proyectos: [{ id: 'p1', nombre: 'P', ruta: proyecto }] }))
   ;({ Nucleo } = await import('../src/main/core/index'))
 })
 
@@ -176,11 +176,11 @@ describe('Nucleo: varias cuentas de suscripción', () => {
     await tocar(join(principal, 'sesion'))
     await tocar(join(principal, 'limite'))
     await tocar(join(principal, 'projects', '-proy', 'prev.jsonl'), '{}\n')
-    await writeFile(join(home, '.centro-proyectos', 'sesiones-cli.json'), JSON.stringify({ s1: 'prev' }))
+    await writeFile(join(home, '.odesk-agent', 'sesiones-cli.json'), JSON.stringify({ s1: 'prev' }))
 
     await nucleo.cuentaAgregar('Trabajo')
     const trabajo = (await nucleo.cuentaEstado()).cuentas.find((c) => c.nombre === 'Trabajo')!
-    await tocar(join(home, '.centro-proyectos', 'cuentas', trabajo.id, 'sesion'))
+    await tocar(join(home, '.odesk-agent', 'cuentas', trabajo.id, 'sesion'))
     await nucleo.cuentaActivar('principal')
     await nucleo.cuentaCambioAutomatico(true)
 
@@ -193,7 +193,7 @@ describe('Nucleo: varias cuentas de suscripción', () => {
     expect(llamadas).toHaveLength(2)
     expect(llamadas[0]).toMatchObject({ dir: principal, reanuda: 'prev' })
     // La conversación se copió a la otra cuenta y su --resume funcionó
-    expect(llamadas[1]).toMatchObject({ dir: join(home, '.centro-proyectos', 'cuentas', trabajo.id), reanuda: 'prev', sesionOk: true, clave: null })
+    expect(llamadas[1]).toMatchObject({ dir: join(home, '.odesk-agent', 'cuentas', trabajo.id), reanuda: 'prev', sesionOk: true, clave: null })
 
     const estado = await nucleo.cuentaEstado()
     expect(estado.cuentaActivaId).toBe(trabajo.id)

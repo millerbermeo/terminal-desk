@@ -75,7 +75,7 @@ interface Documento {
   reglas: ReglaPermiso[]
 }
 
-/** Reglas persistentes por proyecto (más una lista global), en ~/.centro-proyectos/permisos/ (0600). */
+/** Reglas persistentes por proyecto (más una lista global), en ~/.odesk-agent/permisos/ (0600). */
 export class PermisosStore {
   private readonly almacen: AlmacenJson<Documento>
 

@@ -60,11 +60,11 @@ Node.js 20+ y pnpm **no** hacen falta: si no existen, el instalador descarga un 
 ### Qué hace el instalador
 
 1. Comprueba dependencias y, si hace falta, descarga Node.js y pnpm en una carpeta privada.
-2. Clona el repositorio en `~/.local/share/centro-proyectos` (Windows: `%LOCALAPPDATA%\centro-proyectos`).
+2. Clona el repositorio en `~/.local/share/odesk-agent` (Windows: `%LOCALAPPDATA%\odesk-agent`). Si ya tenías la app instalada con el nombre anterior (`centro-proyectos`), se actualiza donde estaba, sin moverla.
 3. Instala dependencias, prepara Electron, compila `node-pty` si procede y construye la app.
 4. Crea el lanzador `~/.local/bin/odesk` y la entrada del menú de aplicaciones.
 
-Variables opcionales: `CENTRO_DIR` (carpeta de instalación), `CENTRO_BIN` (carpeta del lanzador, solo Linux/macOS), `CENTRO_REPO` (repositorio) y `CENTRO_REF` (rama, etiqueta o commit a instalar).
+Variables opcionales: `ODESK_DIR` (carpeta de instalación), `ODESK_BIN` (carpeta del lanzador, solo Linux/macOS), `ODESK_REPO` (repositorio) y `ODESK_REF` (rama, etiqueta o commit a instalar). Las antiguas `CENTRO_DIR`, `CENTRO_BIN`, `CENTRO_REPO` y `CENTRO_REF` siguen funcionando.
 
 ## Actualizar
 
@@ -74,7 +74,7 @@ Vuelve a ejecutar **el mismo comando de instalación**, o bien:
 odesk actualizar
 ```
 
-El instalador detecta la instalación existente, consulta el repositorio y, si hay cambios, solo hace lo necesario: reconstruye la app y reinstala dependencias únicamente si cambió el lockfile. Si ya tienes la última versión termina en un segundo. Tus proyectos y ajustes (`~/.centro-proyectos`) no se tocan. Cierra la app antes de actualizar.
+El instalador detecta la instalación existente, consulta el repositorio y, si hay cambios, solo hace lo necesario: reconstruye la app y reinstala dependencias únicamente si cambió el lockfile. Si ya tienes la última versión termina en un segundo. Tus proyectos y ajustes (`~/.odesk-agent`) no se tocan. Cierra la app antes de actualizar.
 
 Para instalar una versión concreta: `curl -fsSL …/install.sh | bash -s -- --ref v0.2.0`.
 
@@ -82,7 +82,7 @@ Para instalar una versión concreta: `curl -fsSL …/install.sh | bash -s -- --r
 
 Un solo comando, igual que para instalar. Con la app instalada también sirve `odesk desinstalar`.
 
-**Solo la app** (conserva tus proyectos y ajustes en `~/.centro-proyectos`):
+**Solo la app** (conserva tus proyectos y ajustes en `~/.odesk-agent`):
 
 ```bash
 # Linux y macOS
@@ -108,7 +108,7 @@ Se elimina la carpeta de instalación (incluidos el Node.js y pnpm privados), el
 
 ## Primeros pasos
 
-1. Abre la app. Si no existe `~/.centro-proyectos/proyectos.json`, se crea con datos de ejemplo.
+1. Abre la app. Si no existe `~/.odesk-agent/proyectos.json`, se crea con datos de ejemplo.
 2. Añade tus proyectos desde la barra lateral con **Abrir carpeta** (explorador nativo, admite varias carpetas) o **Agregar ruta** (escribe o pega una ruta, con autocompletado y botón «Examinar»). También puedes editar el archivo:
 
    ```json
@@ -126,7 +126,7 @@ Se elimina la carpeta de instalación (incluidos el Node.js y pnpm privados), el
 
 ### Proveedores de IA
 
-Un proveedor es un CLI que corre dentro de una terminal. Se gestionan en **Proveedores de IA** (barra lateral) y se guardan en `~/.centro-proyectos/proveedores.json` (permisos 600; se crea con `claude`, `codex` y `gemini`).
+Un proveedor es un CLI que corre dentro de una terminal. Se gestionan en **Proveedores de IA** (barra lateral) y se guardan en `~/.odesk-agent/proveedores.json` (permisos 600; se crea con `claude`, `codex` y `gemini`).
 
 ```json
 [{ "id": "claude", "nombre": "Claude Code", "comando": "claude --model sonnet", "env": { "VAR": "valor" } }]
@@ -138,12 +138,12 @@ Un proveedor es un CLI que corre dentro de una terminal. Se gestionan en **Prove
 
 ### Agentes y skills (Claude Code)
 
-Pantalla **Agentes y skills**, guardada en `~/.centro-proyectos/agentes.json`.
+Pantalla **Agentes y skills**, guardada en `~/.odesk-agent/agentes.json`.
 
 - **Compartidos:** se definen una vez y se activan por **grupo** o por **proyecto** (lo del grupo se suma a lo del proyecto).
 - **Individuales:** pertenecen a un proyecto y siempre se cargan en él.
 - **Cuándo se aplican:** solo al abrir una terminal con Claude desde un proyecto (✦ → Claude Code). Una terminal normal, o escribir `claude` a mano, no los lleva.
-- **Cómo:** la app genera un plugin en `~/.centro-proyectos/sesiones/` y arranca `claude --plugin-dir <carpeta>`. No se escribe nada en el repositorio. Los subagentes aparecen como `centro:<nombre>`; las carpetas generadas se borran a los 14 días.
+- **Cómo:** la app genera un plugin en `~/.odesk-agent/sesiones/` y arranca `claude --plugin-dir <carpeta>`. No se escribe nada en el repositorio. Los subagentes aparecen como `centro:<nombre>`; las carpetas generadas se borran a los 14 días.
 - Los cambios afectan a las terminales que abras después, no a las sesiones ya abiertas.
 
 ### Pestañas, ventanas y rejilla
@@ -177,14 +177,15 @@ La barra superior del Asistente elige con qué se paga el modelo:
 | Flujos y grupos | No disponibles | Sí |
 
 - **Iniciar sesión:** el botón «Iniciar sesión» abre el navegador (correo, Google o SSO), igual que en la extensión de VSCode. La app nunca ve tus credenciales: lo hace el CLI (`claude auth login`). Si no hay sesión, el Asistente no envía y te lo indica.
-- **Varias cuentas:** «＋ Cuenta» añade otra cuenta de Claude (cada una con su propio inicio de sesión, aislada en `~/.centro-proyectos/cuentas/<id>/`) y el selector cambia de cuenta. Con «Cambiar sola al llegar al límite», si la cuenta activa agota su límite de uso el mensaje continúa con otra cuenta con sesión (solo si aún no había ejecutado nada, para no repetir cambios) y la conversación se lleva sin reenviar el historial. Úsalo con cuentas tuyas (p. ej. trabajo y personal); rotar cuentas para esquivar límites puede ir contra los términos de Anthropic.
+- **Varias cuentas:** «＋ Cuenta» añade otra cuenta de Claude (cada una con su propio inicio de sesión, aislada en `~/.odesk-agent/cuentas/<id>/`) y el selector cambia de cuenta. Con «Cambiar sola al llegar al límite», si la cuenta activa agota su límite de uso el mensaje continúa con otra cuenta con sesión (solo si aún no había ejecutado nada, para no repetir cambios) y la conversación se lleva sin reenviar el historial. Úsalo con cuentas tuyas (p. ej. trabajo y personal); rotar cuentas para esquivar límites puede ir contra los términos de Anthropic.
 - **Permisos con suscripción:** el CLI no puede pedir confirmación en este modo, así que lo que requiere permiso se deniega. «Preguntar todo» = solo lectura; «Aceptar ediciones» permite modificar archivos; «Autónomo» añade las verificaciones del proyecto (typecheck, lint, test). Los comandos peligrosos no se ejecutan.
 - La clave `ANTHROPIC_API_KEY` se ignora en modo suscripción para no cobrarte por tokens sin querer.
 - Las terminales con Claude Code (✦) siempre usan la sesión del CLI, independientemente de esta opción.
 
 ## Datos de usuario
 
-Todo se guarda en `~/.centro-proyectos/`:
+Todo se guarda en `~/.odesk-agent/`. Si venías de una versión anterior (la app se llamaba «Centro de Proyectos» y guardaba en `~/.centro-proyectos/`), esa carpeta se mueve sola a la nueva al abrir la app por primera vez: no se pierde nada y los worktrees de agentes que tuvieras se reparan. Si no se pudiera mover (permisos, archivos abiertos), la app sigue usando la carpeta antigua y lo deja anotado en el registro. Cierra otras instancias de la app antes de actualizar.
+
 
 | Ruta | Contenido |
 |---|---|
@@ -244,8 +245,8 @@ Añadir una operación IPC toca tres sitios: `src/shared/ipc.ts`, `src/preload/i
 |---|---|
 | `odesk: command not found` | Añade `~/.local/bin` al PATH (`export PATH="$HOME/.local/bin:$PATH"`) o abre una terminal nueva |
 | Falla la compilación de `node-pty` (Linux) | Instala `build-essential python3` y repite el instalador |
-| El instalador pide usuario/contraseña de GitHub | El repositorio debe ser público, o define `CENTRO_REPO` con una URL accesible (por ejemplo SSH) |
-| `The SUID sandbox helper binary was found, but is not configured correctly` | El instalador lo arregla pidiendo `sudo` una vez. Si no pudo, ejecuta `sudo chown root:root ~/.local/share/centro-proyectos/repo/node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 ~/.local/share/centro-proyectos/repo/node_modules/electron/dist/chrome-sandbox` o vuelve a lanzar el comando de instalación |
+| El instalador pide usuario/contraseña de GitHub | El repositorio debe ser público, o define `ODESK_REPO` con una URL accesible (por ejemplo SSH) |
+| `The SUID sandbox helper binary was found, but is not configured correctly` | El instalador lo arregla pidiendo `sudo` una vez. Si no pudo, ejecuta `sudo chown root:root <instalación>/repo/node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 <instalación>/repo/node_modules/electron/dist/chrome-sandbox` (`<instalación>` es `~/.local/share/odesk-agent`, o `~/.local/share/centro-proyectos` si la instalaste con el nombre anterior) o vuelve a lanzar el comando de instalación |
 | `Cannot read properties of undefined (reading 'commandLine')` | Hay `ELECTRON_RUN_AS_NODE=1` en el entorno (el lanzador ya lo limpia) |
 | Windows: no se compila `node-pty` | Instala Visual Studio Build Tools y Python 3 |
 

@@ -11,7 +11,7 @@ export interface HerramientaMcp {
 
 /** Cliente de un servidor MCP por stdio. */
 export class ClienteMcp {
-  private readonly cliente = new Client({ name: 'centro-proyectos', version: '0.1.0' })
+  private readonly cliente = new Client({ name: 'odesk-agent', version: '0.1.0' })
 
   constructor(private readonly cfg: Pick<ServidorMcpConfig, 'comando' | 'args' | 'env' | 'cwd'>) {}
 

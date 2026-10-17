@@ -47,7 +47,7 @@ lo abierto y lo desplegado se recuerdan por proyecto.
   comprime sola: poda de resultados y adjuntos antiguos y resumen) y a rojo al 90 %. Si cambias de modelo, el porcentaje usa la ventana del nuevo.
 - **Consumo en tiempo real** (chip «Sesión · Hoy»): tokens de la conversación y de hoy, y al pulsarlo un detalle con el consumo por modelo, los últimos 7 días y los **límites de tasa**
   que la API informa en las cabeceras de cada respuesta (tokens, entrada, salida y solicitudes por minuto, con cuenta atrás hasta la renovación). Se actualiza tras cada llamada.
-  Los datos se guardan en `~/.centro-proyectos/uso/` (35 días).
+  Los datos se guardan en `~/.odesk-agent/uso/` (35 días).
 - **Qué no se puede mostrar:** el **saldo y la facturación de la cuenta**. Con una clave de API normal no hay forma de consultarlos (están en console.anthropic.com, o en la API de
   administración con una clave de administrador). Lo que se muestra es lo que ha consumido esta aplicación (incluidos resúmenes de contexto y evals) y el margen de tasa de la API.
 
@@ -64,7 +64,7 @@ y quedan en el mensaje y en el historial (las miniaturas se recuperan al retomar
 
 - **El mensaje es opcional**: con archivos adjuntos y la caja vacía, el botón pasa a «Enviar archivos» y **Enter** (o clic) los envía solos; el agente recibe «Revisa los archivos adjuntos.».
 - Máximo **5 archivos por mensaje**. Se valida por el **contenido** (firma de bytes), no por la extensión. Un PDF cifrado, un texto con credenciales o un binario se rechazan con un motivo claro.
-- Los archivos se guardan en `~/.centro-proyectos/adjuntos/` (0600) y la conversación solo guarda su id (nunca base64). Se borran a los 30 días (o al pasar de 500 MB, los más antiguos); un adjunto borrado se sustituye en el contexto por un aviso.
+- Los archivos se guardan en `~/.odesk-agent/adjuntos/` (0600) y la conversación solo guarda su id (nunca base64). Se borran a los 30 días (o al pasar de 500 MB, los más antiguos); un adjunto borrado se sustituye en el contexto por un aviso.
 - Imágenes y PDF viajan como bloques nativos de la API; el texto, en línea. En el Flujo los ven el planificador y el generador; en grupos, el coordinador.
 - Con adjuntos no se baja del modelo intermedio. Cada imagen cuenta ~1 500 tokens y cada página de PDF ~2 000; al comprimir el contexto, los adjuntos de mensajes antiguos se sustituyen por un marcador.
 - Se avisa la primera vez: **el contenido se envía a la API de Anthropic** y no se pueden detectar credenciales dentro de una imagen o un PDF. El agente recibe la instrucción de tratar los adjuntos como datos y **no obedecer instrucciones escondidas** en ellos; sus acciones siguen sujetas a confirmaciones y permisos.
@@ -78,7 +78,7 @@ y quedan en el mensaje y en el historial (las miniaturas se recuperan al retomar
 ## Historial de conversaciones
 
 - Al terminar cada respuesta se guarda lo que se ve en pantalla (turnos, herramientas, confirmaciones…) junto al contexto del modelo, en
-  `~/.centro-proyectos/conversaciones/<id>.json` (0600). Se quitan los trozos de streaming, se recortan los textos largos y se redactan las credenciales.
+  `~/.odesk-agent/conversaciones/<id>.json` (0600). Se quitan los trozos de streaming, se recortan los textos largos y se redactan las credenciales.
 - Cada proyecto **recuerda su conversación activa** entre reinicios (en el almacenamiento del renderer): al reabrir su asistente, se restaura y el
   modelo continúa con su contexto. Si dos celdas son del mismo proyecto, solo la primera la recupera.
 - **Historial** (botón del chat): lista las conversaciones del proyecto (de todos, en la pantalla global), con fecha, turnos y tokens. Se pueden retomar o eliminar.

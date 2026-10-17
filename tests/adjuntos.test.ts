@@ -140,7 +140,7 @@ describe('Nucleo con adjuntos', () => {
   beforeAll(async () => {
     const home = await mkdtemp(join(tmpdir(), 'home-'))
     vi.stubEnv('HOME', home)
-    await mkdir(join(home, '.centro-proyectos'))
+    await mkdir(join(home, '.odesk-agent'))
     ;({ Nucleo } = await import('../src/main/core/index'))
   })
 

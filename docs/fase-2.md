@@ -34,9 +34,9 @@ Los tokens son una **estimación**; el uso real que devuelve la API se acumula e
 
 ## Memoria de dos niveles
 
-- **Corto plazo** (`~/.centro-proyectos/conversaciones/<sesionId>.json`): `SolicitudAgente.sesionId` continúa una conversación;
+- **Corto plazo** (`~/.odesk-agent/conversaciones/<sesionId>.json`): `SolicitudAgente.sesionId` continúa una conversación;
   `ejecutar` devuelve `{ ejecucionId, sesionId }`. No se guarda un `tool_use` sin su resultado. `sesionBorrar` la olvida.
-- **Largo plazo** (`~/.centro-proyectos/memoria/<proyectoId>.json`, más `global.json`): fuera del repo del proyecto.
+- **Largo plazo** (`~/.odesk-agent/memoria/<proyectoId>.json`, más `global.json`): fuera del repo del proyecto.
   Al ejecutar, `contextoPara` añade al prompt del agente raíz todas las reglas (hasta la mitad de 1500 tokens)
   y las decisiones/hechos más relevantes para el prompt (BM25). La búsqueda tiene una interfaz simple (`buscar`) para sustituirla por una vectorial.
 - El usuario gestiona la memoria por IPC (`memoriaListar/Guardar/Eliminar`). El agente puede guardar con `guardar_memoria`,

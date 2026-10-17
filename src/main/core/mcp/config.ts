@@ -26,7 +26,7 @@ export function analizarConfigMcp(crudo: unknown): ConfigMcp {
   return ConfigMcpSchema.parse(crudo)
 }
 
-/** Lee ~/.centro-proyectos/mcp.json; si no existe lo crea vacío (0600: `env` puede llevar claves). */
+/** Lee ~/.odesk-agent/mcp.json; si no existe lo crea vacío (0600: `env` puede llevar claves). */
 export async function leerConfigMcp(): Promise<ConfigMcp> {
   try {
     return analizarConfigMcp(JSON.parse(await readFile(ARCHIVO, 'utf8')))

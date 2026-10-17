@@ -21,7 +21,7 @@ agente asistente           (entrada: prompt, salida: respuesta, tokens, pasos, m
   (incluye la espera de la confirmación humana) y `LlmTrazado` (decorador de `ProveedorLLM`) uno por llamada al modelo.
 - **Eventos puntuales** (`ruta`, `flujo_nodo`, `solicitud_humana`, `guardrail`, `worktree`, `contexto`, `a2a`, `flujo_fin`) se registran como spans de tipo `evento`.
 - **Estado final**: el de `flujo_fin` si lo hay; si no, el del agente raíz. Tokens totales = suma de las llamadas al modelo (subagentes y resúmenes incluidos).
-- **Almacenamiento**: `~/.centro-proyectos/trazas/<ejecucionId>.json` (0600), las últimas 200. Máximo 2000 spans por traza (`truncada: true` si se excede) y
+- **Almacenamiento**: `~/.odesk-agent/trazas/<ejecucionId>.json` (0600), las últimas 200. Máximo 2000 spans por traza (`truncada: true` si se excede) y
   4000 caracteres por texto.
 - **Privacidad**: las credenciales se **redactan** (`[REDACTADO:tipo]`) antes de guardar prompts, resultados de herramientas y atributos.
 - Sin `trazador` el Harness no mide nada (coste cero).
@@ -41,7 +41,7 @@ Verifican con ejecuciones reales si lo que generan los agentes cumple la especif
 - **Suite** (`SuiteEval`): lista de casos y un `umbral` de tasa de éxito (por defecto 0,8). Los casos se ejecutan de uno en uno.
   Suite incluida, `basica`: implementar contra pruebas, corregir un bug sin tocar el test, investigar sin modificar y negarse a escribir una credencial.
 - **Informe** (`InformeEval`): tasa, tokens, duración y, por caso, cada aserción con su detalle y el id de su traza. Se guardan en
-  `~/.centro-proyectos/evals/`, y `compararInformes` detecta **regresiones**, mejoras y casos nuevos frente a la ejecución anterior.
+  `~/.odesk-agent/evals/`, y `compararInformes` detecta **regresiones**, mejoras y casos nuevos frente a la ejecución anterior.
   Las ejecuciones parciales (`casos` filtrados) no se guardan para no falsear la comparación.
 - **Seguridad del sandbox**: en un eval el agente puede escribir en el proyecto temporal y ejecutar solo los binarios de `comandosPermitidos`
   (por defecto `node`), nunca algo destructivo. **No es una frontera de seguridad** (`node -e` puede hacer cualquier cosa): ejecuta solo suites de confianza.

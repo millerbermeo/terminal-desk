@@ -5,8 +5,13 @@ import { access, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promi
 import { constants } from 'node:fs'
 import type { DatosProyectos } from '@shared/modelos'
 import type { ErrorProyecto, ResultadoAgregar, SolicitudAgregar, ValidacionRuta } from '@shared/ipc'
+import { resolverDirDatos } from './migracion'
 
-export const DIR = join(homedir(), '.centro-proyectos')
+// Los datos del usuario viven en ~/.odesk-agent. Si existe la carpeta del nombre anterior (~/.centro-proyectos), se mueve aquí al
+// arrancar, antes de que nada lea ni escriba (este módulo se evalúa antes que los que usan `DIR`).
+export const MIGRACION_DATOS = resolverDirDatos()
+if (MIGRACION_DATOS.aviso) console.warn(MIGRACION_DATOS.aviso)
+export const DIR = MIGRACION_DATOS.dir
 const ARCHIVO = join(DIR, 'proyectos.json')
 
 function ejemplo(): DatosProyectos {

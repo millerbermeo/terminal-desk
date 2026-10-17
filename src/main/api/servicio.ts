@@ -41,7 +41,7 @@ interface Reciente {
 
 /**
  * Cliente API: ejecuta las peticiones con el entorno activo y guarda colecciones, entornos e historial en
- * `~/.centro-proyectos/api/datos.json` (0600: los entornos suelen llevar tokens).
+ * `~/.odesk-agent/api/datos.json` (0600: los entornos suelen llevar tokens).
  */
 export class ServicioApi {
   private readonly activos = new Map<string, AbortController>()

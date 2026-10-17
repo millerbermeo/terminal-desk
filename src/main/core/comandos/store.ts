@@ -34,7 +34,7 @@ interface Documento {
   comandos: ComandoUsuario[]
 }
 
-/** Comandos propios por proyecto (más globales) en ~/.centro-proyectos/comandos/ (0600). El del proyecto manda sobre el global. */
+/** Comandos propios por proyecto (más globales) en ~/.odesk-agent/comandos/ (0600). El del proyecto manda sobre el global. */
 export class ComandosStore {
   private readonly almacen: AlmacenJson<Documento>
 

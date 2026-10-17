@@ -1,4 +1,4 @@
-appId: dev.centro-proyectos.app
+appId: dev.odesk.agent
 productName: Odesk Agent
 directories:
   output: dist

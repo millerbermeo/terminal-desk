@@ -5,18 +5,28 @@
 #
 # Ejecutarlo de nuevo actualiza a la última versión (solo reconstruye lo que cambió).
 # Opciones (después de `bash -s --`):  --desinstalar · --ref <rama|etiqueta|commit> · --ayuda
-# Variables: CENTRO_REPO, CENTRO_REF, CENTRO_DIR (carpeta de instalación), CENTRO_BIN (carpeta del lanzador).
+# Variables: ODESK_REPO, ODESK_REF, ODESK_DIR (carpeta de instalación), ODESK_BIN (carpeta del lanzador).
+# (Se siguen aceptando las antiguas CENTRO_REPO, CENTRO_REF, CENTRO_DIR y CENTRO_BIN.)
 set -euo pipefail
 
-REPO="${CENTRO_REPO:-https://github.com/millerbermeo/terminal-desk.git}"
-REF="${CENTRO_REF:-}"
-DIR="${CENTRO_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/centro-proyectos}"
-BIN="${CENTRO_BIN:-$HOME/.local/bin}"
+REPO="${ODESK_REPO:-${CENTRO_REPO:-https://github.com/millerbermeo/terminal-desk.git}}"
+REF="${ODESK_REF:-${CENTRO_REF:-}}"
+DATOS_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+DIR_ANTIGUO="$DATOS_HOME/centro-proyectos"   # nombre anterior de la app
+if [ -n "${ODESK_DIR:-${CENTRO_DIR:-}}" ]; then
+  DIR="${ODESK_DIR:-$CENTRO_DIR}"
+elif [ ! -e "$DATOS_HOME/odesk-agent" ] && [ -e "$DIR_ANTIGUO" ]; then
+  DIR="$DIR_ANTIGUO"   # instalación existente: se actualiza donde está (no se mueve)
+else
+  DIR="$DATOS_HOME/odesk-agent"
+fi
+BIN="${ODESK_BIN:-${CENTRO_BIN:-$HOME/.local/bin}}"
 NODE_MAJOR=24
 NODE_MIN=20
 ACCION=instalar
 BORRAR_DATOS=0
-DATOS="$HOME/.centro-proyectos"
+DATOS="$HOME/.odesk-agent"
+DATOS_ANTIGUO="$HOME/.centro-proyectos"   # la app los mueve sola a la carpeta nueva al abrirse
 
 if [ -t 1 ]; then V=$'\033[32m'; R=$'\033[31m'; A=$'\033[33m'; N=$'\033[0m'; else V=; R=; A=; N=; fi
 paso() { printf '%s==>%s %s\n' "$V" "$N" "$*"; }
@@ -30,9 +40,9 @@ while [ $# -gt 0 ]; do
     --ref) shift; [ $# -gt 0 ] || fallo "--ref necesita un valor"; REF="$1" ;;
     --ayuda|-h|--help)
       echo "Uso: install.sh [--desinstalar | --todo] [--ref <rama|etiqueta|commit>]"
-      echo "  --desinstalar  borra la app; conserva tus datos (~/.centro-proyectos)"
+      echo "  --desinstalar  borra la app; conserva tus datos (~/.odesk-agent)"
       echo "  --todo         borra la app Y todos tus datos (proyectos, ajustes, memoria)"
-      echo "Variables: CENTRO_REPO, CENTRO_REF, CENTRO_DIR, CENTRO_BIN"
+      echo "Variables: ODESK_REPO, ODESK_REF, ODESK_DIR, ODESK_BIN (también valen CENTRO_REPO, CENTRO_REF, CENTRO_DIR, CENTRO_BIN)"
       exit 0 ;;
     *) fallo "opción desconocida: $1" ;;
   esac
@@ -53,15 +63,19 @@ esac
 
 LANZADOR="$BIN/odesk"
 LANZADOR_ANTIGUO="$BIN/centro-proyectos"
-ESCRITORIO="${XDG_DATA_HOME:-$HOME/.local/share}/applications/odesk-ai.desktop"
+ESCRITORIO="${XDG_DATA_HOME:-$HOME/.local/share}/applications/odesk-agent.desktop"
+# Nombres anteriores del acceso del menú de aplicaciones
 ESCRITORIO_ANTIGUO="${XDG_DATA_HOME:-$HOME/.local/share}/applications/centro-proyectos.desktop"
+ESCRITORIO_ANTIGUO2="${XDG_DATA_HOME:-$HOME/.local/share}/applications/odesk-ai.desktop"
 
 desinstalar() {
   paso "Desinstalando de $DIR"
-  rm -rf "$DIR" "$LANZADOR" "$LANZADOR_ANTIGUO" "$ESCRITORIO" "$ESCRITORIO_ANTIGUO"
+  rm -rf "$DIR" "$LANZADOR" "$LANZADOR_ANTIGUO" "$ESCRITORIO" "$ESCRITORIO_ANTIGUO" "$ESCRITORIO_ANTIGUO2"
+  # Una instalación movida a mano puede haber dejado la carpeta con el nombre anterior.
+  [ -z "${ODESK_DIR:-${CENTRO_DIR:-}}" ] && rm -rf "$DIR_ANTIGUO"
   if [ "$BORRAR_DATOS" = 1 ]; then
     paso "Borrando datos de usuario en $DATOS"
-    rm -rf "$DATOS"
+    rm -rf "$DATOS" "$DATOS_ANTIGUO"
     echo "Listo. Odesk Agent y todos sus datos eliminados."
   else
     echo "Listo. Tus proyectos y ajustes siguen en $DATOS (para borrarlos también: --todo)."
@@ -225,7 +239,7 @@ StartupWMClass=Odesk Agent
 Terminal=false
 Categories=Development;
 EOF
-  rm -f "$ESCRITORIO_ANTIGUO"
+  rm -f "$ESCRITORIO_ANTIGUO" "$ESCRITORIO_ANTIGUO2"
   command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$(dirname "$ESCRITORIO")" >/dev/null 2>&1 || true
 fi
 

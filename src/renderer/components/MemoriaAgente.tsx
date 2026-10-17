@@ -40,7 +40,7 @@ export function MemoriaAgente({ datos, visible }: { datos: DatosProyectos; visib
   return (
     <div className="mem">
       <p className="cfg-intro">
-        Reglas y decisiones que el agente recuerda entre sesiones. Se guardan fuera de tu repositorio (<code>~/.centro-proyectos/memoria</code>). Las reglas van siempre
+        Reglas y decisiones que el agente recuerda entre sesiones. Se guardan fuera de tu repositorio (<code>~/.odesk-agent/memoria</code>). Las reglas van siempre
         en su contexto; el resto, solo cuando son relevantes para lo que le pides. No guardes credenciales: se rechazan.
       </p>
       <div className="ag-opciones">

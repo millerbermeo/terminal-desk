@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { llamarTareas } from './core/tareas/cliente'
 import { servirMcpTareas } from './core/tareas/mcp-servidor'
 
-const dir = process.env.ODESK_DIR || join(homedir(), '.centro-proyectos')
+const dir = process.env.ODESK_DIR || join(homedir(), '.odesk-agent')
 const proyectoId = process.env.ODESK_PROYECTO_ID || undefined
 
 void servirMcpTareas(process.stdin, process.stdout, (herramienta, entrada) => llamarTareas(dir, herramienta, entrada, proyectoId)).then(() => process.exit(0))

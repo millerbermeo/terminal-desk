@@ -19,7 +19,7 @@ src/main/core/
 ## Git worktrees
 
 Los flujos (`modo: 'flujo'`) se ejecutan **por defecto** (`aislado !== false`) en un worktree propio:
-`~/.centro-proyectos/worktrees/<proyectoId>/<id>` con la rama `agente/<resumen>-<id>`, creado desde `HEAD`. Vive fuera del repo, así que el
+`~/.odesk-agent/worktrees/<proyectoId>/<id>` con la rama `agente/<resumen>-<id>`, creado desde `HEAD`. Vive fuera del repo, así que el
 agente no toca el árbol de trabajo del usuario. Se enlaza `node_modules` del repo para poder ejecutar las verificaciones (se excluye al confirmar).
 
 Ciclo de vida (eventos `worktree`):

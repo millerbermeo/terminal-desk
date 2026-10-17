@@ -84,7 +84,7 @@ export function validarAdjunto(nombreOriginal: string, datos: Uint8Array): Omit<
   return { nombre, tipo: 'texto', mime: 'text/plain', bytes: datos.byteLength, tokens: Math.ceil(texto.length / 3.5) }
 }
 
-/** Adjuntos validados en ~/.centro-proyectos/adjuntos/ (0600): el contenido va en `<id>.dat` y la descripción en `<id>.json`. */
+/** Adjuntos validados en ~/.odesk-agent/adjuntos/ (0600): el contenido va en `<id>.dat` y la descripción en `<id>.json`. */
 export class AlmacenAdjuntos {
   private readonly meta: AlmacenJson<Adjunto>
 

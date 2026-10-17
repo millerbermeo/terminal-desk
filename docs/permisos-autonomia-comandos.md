@@ -2,7 +2,7 @@
 
 ## Permisos persistentes
 
-Reglas por proyecto (y globales) en `~/.centro-proyectos/permisos/<proyecto|global>.json` (0600). Se gestionan en la pestaña **Permisos**
+Reglas por proyecto (y globales) en `~/.odesk-agent/permisos/<proyecto|global>.json` (0600). Se gestionan en la pestaña **Permisos**
 del Asistente, y desde el modal de confirmación con **«Permitir siempre en este proyecto»**, que guarda la regla exacta.
 
 | Campo | Valores |
@@ -45,7 +45,7 @@ Se escriben en la caja del chat; al teclear `/` aparece el autocompletado (↑�
 **Incluidos:** `/flujo <petición>`, `/chat`, `/modo preguntar|ediciones|autonomo`, `/nueva`, `/historial`, `/permisos`, `/comandos`, `/ayuda`.
 
 **Propios** (`/comandos` o la pestaña **Comandos /** del Asistente; por proyecto o globales, el del proyecto manda), guardados en
-`~/.centro-proyectos/comandos/<proyecto|global>.json` (0600):
+`~/.odesk-agent/comandos/<proyecto|global>.json` (0600):
 
 | Tipo | Qué hace |
 |---|---|

@@ -8,7 +8,7 @@ import type { EventoAgente } from '@shared/core/agente'
 import type { Nucleo as TipoNucleo } from '../src/main/core/index'
 import { LlmFalso, texto, usar } from './ayudas'
 
-// `DIR` (~/.centro-proyectos) se calcula al importar: se apunta HOME a una carpeta temporal antes.
+// `DIR` (~/.odesk-agent) se calcula al importar: se apunta HOME a una carpeta temporal antes.
 const git = (cwd: string, ...args: string[]): string => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
 let repo: string
 let Nucleo: new () => TipoNucleo
@@ -24,8 +24,8 @@ beforeAll(async () => {
   await writeFile(join(repo, 'a.txt'), 'uno\n')
   git(repo, 'add', '-A')
   git(repo, 'commit', '-q', '-m', 'inicial')
-  await mkdir(join(home, '.centro-proyectos'))
-  await writeFile(join(home, '.centro-proyectos', 'proyectos.json'), JSON.stringify({ grupos: [], proyectos: [{ id: 'p1', nombre: 'P', ruta: repo }] }))
+  await mkdir(join(home, '.odesk-agent'))
+  await writeFile(join(home, '.odesk-agent', 'proyectos.json'), JSON.stringify({ grupos: [], proyectos: [{ id: 'p1', nombre: 'P', ruta: repo }] }))
   ;({ Nucleo } = await import('../src/main/core/index'))
 })
 
@@ -117,7 +117,7 @@ describe('Nucleo: flujo aislado en git worktree', () => {
     const vacio = await mkdtemp(join(tmpdir(), 'vacio-'))
     git(vacio, 'init', '-q')
     const home = process.env.HOME!
-    await writeFile(join(home, '.centro-proyectos', 'proyectos.json'), JSON.stringify({ grupos: [], proyectos: [{ id: 'p2', nombre: 'V', ruta: vacio }] }))
+    await writeFile(join(home, '.odesk-agent', 'proyectos.json'), JSON.stringify({ grupos: [], proyectos: [{ id: 'p2', nombre: 'V', ruta: vacio }] }))
     const nucleo = new Nucleo()
     await nucleo.preferencias.fijar('api')
     ;(nucleo as unknown as { llm: () => Promise<LlmFalso> }).llm = async () => new LlmFalso([])

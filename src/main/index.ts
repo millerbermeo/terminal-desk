@@ -12,7 +12,9 @@ import { GestorTerminales } from './terminales'
 import { eliminarProveedor, guardarProveedor, listarProveedores, obtenerProveedor } from './proveedores'
 import { verificarPassword } from './autenticacion'
 import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones } from './agentes'
-import { DIR, agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, sugerirRutas, validarRuta } from './proyectos'
+import { resolverPerfil } from './migracion'
+import { repararWorktrees } from './core/git/reparar'
+import { DIR, MIGRACION_DATOS, agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, sugerirRutas, validarRuta } from './proyectos'
 import { configurarMcpTareas } from './core/tareas/mcp-config'
 import { ejecutarOperacionGit } from './core/git/operaciones'
 import { writeFile } from 'node:fs/promises'
@@ -26,14 +28,14 @@ import { iniciarServidorTareas, type ServidorTareas } from './core/tareas/servid
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto')
 app.setName('Odesk Agent')
-// El nombre de la app cambió, pero los datos de Electron (localStorage del renderer) siguen en la carpeta de siempre.
-app.setPath('userData', join(app.getPath('appData'), 'ODESK AI'))
-// Linux: enlaza la ventana con odesk-ai.desktop (nombre e icono en el dock/menú de aplicaciones)
-app.setDesktopName('odesk-ai.desktop')
+// Perfil de Electron (localStorage del renderer): carpeta fija con el nombre actual; si solo existe la de un nombre anterior, se mueve.
+app.setPath('userData', resolverPerfil(app.getPath('appData'), 'Odesk Agent'))
+// Linux: enlaza la ventana con odesk-agent.desktop (nombre e icono en el dock/menú de aplicaciones)
+app.setDesktopName('odesk-agent.desktop')
 
 let principal: BrowserWindow | null = null
 
-// Cliente API: los datos (colecciones, entornos con tokens, historial) viven en ~/.centro-proyectos/api/ con permisos 0600.
+// Cliente API: los datos (colecciones, entornos con tokens, historial) viven en ~/.odesk-agent/api/ con permisos 0600.
 const servicioApi = new ServicioApi(new AlmacenJson(join(DIR, 'api'), 0o600), async (nombre, datos) => {
   const ventana = BrowserWindow.getFocusedWindow() ?? principal
   const opciones = { title: 'Guardar respuesta', defaultPath: join(homedir(), nombre) }
@@ -225,6 +227,8 @@ let servidorTareas: ServidorTareas | undefined
 
 app.whenReady().then(() => {
   configurarMcpTareas({ raizApp: app.getAppPath(), dirDatos: DIR })
+  // Se movieron los datos desde ~/.centro-proyectos: los worktrees de los agentes guardan rutas absolutas y hay que rehacerlas.
+  if (MIGRACION_DATOS.migrado) void leerProyectos().then((d) => repararWorktrees(DIR, d.proyectos)).catch(() => undefined)
   // Socket local para que la IA (servidor MCP, en otro proceso) use las tareas; solo este proceso las escribe.
   void iniciarServidorTareas(DIR, nucleo.tareas)
     .then((s) => (servidorTareas = s))
