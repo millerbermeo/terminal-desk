@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AccionRegla, ReglaPermiso } from '@shared/core/permisos'
+import { EstadoVacio } from './EstadoVacio'
+import { IconoEscudo } from './Iconos'
 
 const limpiar = (m: string): string => m.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
@@ -64,7 +66,7 @@ export function PermisosAgente({ proyectoId, visible = true }: Props) {
       </p>
       <section className="cfg-grupo">
         <div className="cfg-grupo-cab"><h3>{proyectoId ? 'Reglas de este proyecto' : 'Reglas globales'}</h3></div>
-        {propias.length === 0 && <p className="cfg-vacio">Sin reglas. Todo lo que no sea de solo lectura se pregunta.</p>}
+        {propias.length === 0 && <EstadoVacio variante="compacto" icono={<IconoEscudo />} titulo="Sin reglas propias" texto="Todo lo que no sea de solo lectura se pregunta antes de ejecutarse." />}
         <Lista reglas={propias} onEliminar={eliminar(proyectoId)} />
       </section>
       {proyectoId && globales.length > 0 && (

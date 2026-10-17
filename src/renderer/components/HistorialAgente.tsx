@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ResumenSesion } from '@shared/core/sesion'
+import { EstadoVacio } from './EstadoVacio'
+import { IconoReloj } from './Iconos'
 
 interface Props {
   proyectoId?: string // sin proyecto: conversaciones de todos
@@ -37,7 +39,7 @@ export function HistorialAgente({ proyectoId, activaId, deshabilitado, onAbrir, 
         <button className="icono" onClick={onCerrar} title="Cerrar (Esc)">✕</button>
       </div>
       {lista === null && <p className="cfg-vacio">Cargando…</p>}
-      {lista?.length === 0 && <p className="cfg-vacio">Aún no hay conversaciones guardadas. Se guardan solas al terminar cada respuesta.</p>}
+      {lista?.length === 0 && <EstadoVacio variante="compacto" icono={<IconoReloj />} titulo="Aún no hay conversaciones" texto="Se guardan solas al terminar cada respuesta." />}
       <ul>
         {lista?.map((s) => (
           <li key={s.id} className={s.id === activaId ? 'activa' : ''}>

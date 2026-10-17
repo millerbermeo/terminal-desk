@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { InfoWorktree } from '@shared/core/agente'
 import type { DatosProyectos } from '@shared/modelos'
+import { EstadoVacio } from './EstadoVacio'
+import { IconoRama } from './Iconos'
 
 const limpiar = (m: string): string => m.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
@@ -35,7 +37,7 @@ export function RamasAgente({ datos, visible }: { datos: DatosProyectos; visible
       </div>
       {mensaje && <div className={mensaje.ok ? 'cfg-ok' : 'cfg-error'}>{mensaje.texto}</div>}
       <section className="cfg-grupo">
-        {proyectoId && ramas.length === 0 && <p className="cfg-vacio">Este proyecto no tiene ramas de agente.</p>}
+        {proyectoId && ramas.length === 0 && <EstadoVacio variante="compacto" icono={<IconoRama />} titulo="Sin ramas de agente" texto="Los flujos aislados crean aquí su rama de trabajo para que la revises antes de publicar." />}
         {ramas.map((r) => (
           <div className="cfg-proyecto" key={r.id}>
             <strong title={r.rama}>{r.rama}</strong>

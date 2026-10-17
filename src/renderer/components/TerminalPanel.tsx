@@ -77,14 +77,14 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
       scrollback: 5000,
       allowProposedApi: true,
       theme: {
-        background: '#0f1115',
-        foreground: '#d7dae0',
-        cursor: '#7aa2f7',
-        selectionBackground: '#33467c',
-        black: '#1a1d23', red: '#f7768e', green: '#9ece6a', yellow: '#e0af68',
-        blue: '#7aa2f7', magenta: '#bb9af7', cyan: '#7dcfff', white: '#c0caf5',
-        brightBlack: '#414868', brightRed: '#ff899d', brightGreen: '#b9f27c', brightYellow: '#ffc777',
-        brightBlue: '#9ab8ff', brightMagenta: '#c9aaff', brightCyan: '#a4daff', brightWhite: '#e6ebff'
+        background: '#0b0c0f',
+        foreground: '#e4e4e9',
+        cursor: '#818cf8',
+        selectionBackground: 'rgba(129, 140, 248, 0.32)',
+        black: '#16181e', red: '#f87171', green: '#34d399', yellow: '#fbbf24',
+        blue: '#818cf8', magenta: '#c084fc', cyan: '#67e8f9', white: '#d4d4dc',
+        brightBlack: '#52525e', brightRed: '#fca5a5', brightGreen: '#6ee7b7', brightYellow: '#fde68a',
+        brightBlue: '#a5b4fc', brightMagenta: '#d8b4fe', brightCyan: '#a5f3fc', brightWhite: '#f4f4f8'
       }
     })
     const f = new FitAddon()

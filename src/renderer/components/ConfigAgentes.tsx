@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { BibliotecaAgentes, DatosProyectos, Recurso, TipoRecurso } from '@shared/modelos'
 import { activosDe } from '@shared/agentes'
+import { EstadoVacio } from './EstadoVacio'
 import { IconoAgente, IconoBasura, IconoCarpeta, IconoLapiz, IconoMas } from './Iconos'
 import { ModalConfirmar } from './ModalConfirmar'
 import { ModalRecurso } from './ModalRecurso'
@@ -44,7 +45,7 @@ export function ConfigAgentes({ datos, biblioteca, onBiblioteca }: Props) {
     </div>
   )
 
-  const seccion = (titulo: string, tipo: TipoRecurso, vacio: string) => {
+  const seccion = (titulo: string, tipo: TipoRecurso, vacio: { titulo: string; texto: string }) => {
     const lista = biblioteca.recursos.filter((r) => r.tipo === tipo)
     return (
       <section className="cfg-grupo">
@@ -56,7 +57,7 @@ export function ConfigAgentes({ datos, biblioteca, onBiblioteca }: Props) {
             <IconoMas /> {tipo === 'agente' ? 'Agente' : 'Skill'}
           </button>
         </div>
-        {lista.length === 0 ? <p className="cfg-vacio">{vacio}</p> : lista.map(fila)}
+        {lista.length === 0 ? <EstadoVacio variante="compacto" icono={<IconoAgente />} titulo={vacio.titulo} texto={vacio.texto} /> : lista.map(fila)}
       </section>
     )
   }
@@ -80,7 +81,7 @@ export function ConfigAgentes({ datos, biblioteca, onBiblioteca }: Props) {
   )
 
   const panelActivacion = () => {
-    if (!destino) return <p className="cfg-vacio">Agrega proyectos para poder activar agentes.</p>
+    if (!destino) return <EstadoVacio variante="compacto" icono={<IconoCarpeta />} titulo="Agrega proyectos" texto="Los agentes y skills se activan por grupo o por proyecto." />
     const proyecto = destino.tipo === 'proyecto' ? datos.proyectos.find((p) => p.id === destino.id) : undefined
     const grupo = datos.grupos.find((g) => g.id === (destino.tipo === 'grupo' ? destino.id : proyecto?.grupo))
     const compartidos = biblioteca.recursos.filter((r) => r.ambito === 'compartido')
@@ -100,7 +101,7 @@ export function ConfigAgentes({ datos, biblioteca, onBiblioteca }: Props) {
               {titulo} <small>{lista.length}</small>
             </h3>
           </div>
-          {lista.length === 0 && <p className="cfg-vacio">No hay {tipo === 'agente' ? 'agentes' : 'skills'} compartidos. Créalos en «Biblioteca».</p>}
+          {lista.length === 0 && <EstadoVacio variante="compacto" icono={<IconoAgente />} titulo={`No hay ${tipo === 'agente' ? 'agentes' : 'skills'} compartidos`} texto="Créalos en «Biblioteca»." />}
           {lista.map((r) =>
             destino.tipo === 'grupo'
               ? interruptor(r, enGrupo.has(r.id), false)
@@ -186,8 +187,8 @@ export function ConfigAgentes({ datos, biblioteca, onBiblioteca }: Props) {
 
       {pestana === 'biblioteca' ? (
         <>
-          {seccion('Subagentes', 'agente', 'Sin subagentes. Un subagente es un especialista (revisor, tester…) al que Claude delega tareas.')}
-          {seccion('Skills', 'skill', 'Sin skills. Una skill son instrucciones que Claude carga cuando la tarea las necesita.')}
+          {seccion('Subagentes', 'agente', { titulo: 'Sin subagentes', texto: 'Un subagente es un especialista (revisor, tester…) al que Claude delega tareas.' })}
+          {seccion('Skills', 'skill', { titulo: 'Sin skills', texto: 'Una skill son instrucciones que Claude carga cuando la tarea las necesita.' })}
         </>
       ) : (
         <div className="act-columnas">

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { dividirArgumentos, type ComandoUsuario } from '@shared/core/comandos'
+import { EstadoVacio } from './EstadoVacio'
+import { IconoRayo } from './Iconos'
 
 const limpiar = (m: string): string => m.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 const vacio = (): ComandoUsuario => ({ nombre: '', descripcion: '', tipo: 'ejecutable', comando: [], argumentos: false, permitido: false })
@@ -71,7 +73,7 @@ export function ComandosAgente({ proyectoId, visible = true }: Props) {
       </p>
       <section className="cfg-grupo">
         <div className="cfg-grupo-cab"><h3>{proyectoId ? 'Comandos de este proyecto' : 'Comandos globales'}</h3></div>
-        {propios.length === 0 && <p className="cfg-vacio">Aún no hay comandos.</p>}
+        {propios.length === 0 && <EstadoVacio variante="compacto" icono={<IconoRayo />} titulo="Aún no hay comandos" texto="Crea atajos que se escriben con / en el chat: una petición reutilizable o un programa fijo." />}
         {propios.map((x) => fila(x, proyectoId, true))}
       </section>
       {proyectoId && globales.length > 0 && (

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ResumenTraza, Span, Traza } from '@shared/core/traza'
+import { EstadoVacio } from './EstadoVacio'
+import { IconoActividad } from './Iconos'
 
 const fecha = (ms: number): string => new Date(ms).toLocaleString()
 const dur = (ms?: number): string => (ms === undefined ? '…' : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`)
@@ -76,7 +78,7 @@ export function TrazasAgente({ visible }: { visible: boolean }) {
           <strong>Ejecuciones</strong>
           <button className="icono" onClick={cargar} title="Actualizar">↻</button>
         </div>
-        {lista.length === 0 && <p className="cfg-vacio">Sin trazas todavía.</p>}
+        {lista.length === 0 && <EstadoVacio variante="compacto" icono={<IconoActividad />} titulo="Sin trazas todavía" texto="Cada ejecución del agente deja aquí su rastro." />}
         {lista.map((r) => (
           <button key={r.id} className={`tr-item${traza?.id === r.id ? ' sel' : ''}`} onClick={() => void window.api.core.trazaObtener(r.id).then((t) => setTraza(t ?? null))}>
             <span className="tr-item-prompt">{r.prompt || '(sin prompt)'}</span>
@@ -96,10 +98,7 @@ export function TrazasAgente({ visible }: { visible: boolean }) {
             <Cascada traza={traza} />
           </>
         ) : (
-          <div className="vacio">
-            <strong>Observabilidad</strong>
-            <span>Elige una ejecución para ver su árbol de agentes, llamadas al modelo y herramientas con tiempos y tokens. Las credenciales se redactan al guardar.</span>
-          </div>
+          <EstadoVacio icono={<IconoActividad />} titulo="Observabilidad" texto="Elige una ejecución para ver su árbol de agentes, llamadas al modelo y herramientas con tiempos y tokens. Las credenciales se redactan al guardar." />
         )}
       </div>
     </div>

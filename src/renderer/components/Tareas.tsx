@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DatosProyectos } from '@shared/modelos'
 import { PRIORIDADES, categoriaDe, dependenciasAbiertas, estaAbierta, fechaCorta, filtrarTareas, type Actividad, type Prioridad, type ResumenTareas, type Tarea } from '@shared/tareas'
 import { filtroDeAmbito, useTareas, mensajeDe, type Ambito } from '../tareas/useTareas'
 import { TareaDetalle } from './TareaDetalle'
 import { TareasEstados } from './TareasEstados'
-import { IconoMas } from './Iconos'
+import { EstadoVacio } from './EstadoVacio'
+import { IconoActividad, IconoBuscar, IconoMas, IconoTareas } from './Iconos'
 
 type Pestana = 'tablero' | 'lista' | 'resumen' | 'actividad'
 const PESTANAS: { id: Pestana; nombre: string }[] = [
@@ -39,6 +40,7 @@ export function Tareas({ datos, visible }: Props) {
   const [motivo, setMotivo] = useState<PeticionMotivo | null>(null)
   const [verEstados, setVerEstados] = useState(false)
   const [nueva, setNueva] = useState('')
+  const entradaRapida = useRef<HTMLInputElement>(null)
 
   const nombreProyecto = useMemo(() => new Map(datos.proyectos.map((p) => [p.id, p.nombre])), [datos.proyectos])
   const visibles = useMemo(
@@ -127,7 +129,7 @@ export function Tareas({ datos, visible }: Props) {
         }}
       >
         <IconoMas />
-        <input value={nueva} maxLength={200} placeholder={ambito.startsWith('p:') || ambito.startsWith('g:') ? 'Nueva tarea aquí… (Enter)' : 'Nueva tarea (sin proyecto: vincúlala después)… (Enter)'} onChange={(e) => setNueva(e.target.value)} aria-label="Nueva tarea" />
+        <input ref={entradaRapida} value={nueva} maxLength={200} placeholder={ambito.startsWith('p:') || ambito.startsWith('g:') ? 'Nueva tarea aquí… (Enter)' : 'Nueva tarea (sin proyecto: vincúlala después)… (Enter)'} onChange={(e) => setNueva(e.target.value)} aria-label="Nueva tarea" />
       </form>
       {error && (
         <div className="tareas-error" role="alert">
@@ -140,6 +142,18 @@ export function Tareas({ datos, visible }: Props) {
       <div className="tareas-cuerpo">
         {!cargado ? (
           <p className="tareas-vacio">Cargando…</p>
+        ) : tareas.length === 0 ? (
+          <EstadoVacio
+            icono={<IconoTareas />}
+            titulo="Aún no hay tareas"
+            texto="Organiza el trabajo por grupos y proyectos, con criterios de aceptación y dependencias. La IA lee y actualiza las mismas tareas: pídele un plan con /plan en el Asistente."
+            pistas={['/plan <funcionalidad>', '/tareas']}
+            accion={
+              <button className="primario" onClick={() => entradaRapida.current?.focus()}>
+                <IconoMas /> Crear la primera tarea
+              </button>
+            }
+          />
         ) : pestana === 'tablero' ? (
           <Tablero tareas={visibles} todas={tareas} estados={estados} nombreProyecto={nombreProyecto} onAbrir={setAbierta} onMover={cambiarEstado} />
         ) : pestana === 'lista' ? (
@@ -243,7 +257,7 @@ function Tablero({ tareas, todas, estados, nombreProyecto, onAbrir, onMover }: {
                   <Tarjeta t={t} todas={todas} estados={estados} nombreProyecto={nombreProyecto} onAbrir={onAbrir} arrastrable />
                 </div>
               ))}
-              {columna.length === 0 && <p className="tareas-vacio">Sin tareas</p>}
+              {columna.length === 0 && <EstadoVacio variante="minimo" icono={<IconoTareas />} titulo="Suelta una tarea aquí" />}
             </div>
           </section>
         )
@@ -253,7 +267,7 @@ function Tablero({ tareas, todas, estados, nombreProyecto, onAbrir, onMover }: {
 }
 
 function Lista({ tareas, todas, estados, nombreProyecto, onAbrir }: { tareas: Tarea[]; todas: Tarea[]; estados: ReturnType<typeof useTareas>['estados']; nombreProyecto: Map<string, string>; onAbrir: (id: string) => void }) {
-  if (tareas.length === 0) return <p className="tareas-vacio">No hay tareas con estos filtros.</p>
+  if (tareas.length === 0) return <EstadoVacio icono={<IconoBuscar />} titulo="Sin resultados" texto="Ninguna tarea coincide con los filtros. Prueba con otro ámbito, quita la búsqueda o muestra las terminadas." />
   return (
     <table className="tareas-tabla">
       <thead>
@@ -373,7 +387,7 @@ function ActividadTareas({ ambito, onAbrir, tareas }: { ambito: Ambito; onAbrir:
     }
   }, [proyectoId, tareas])
   if (!filas) return <p className="tareas-vacio">Cargando…</p>
-  if (filas.length === 0) return <p className="tareas-vacio">Aún no hay actividad.</p>
+  if (filas.length === 0) return <EstadoVacio icono={<IconoActividad />} titulo="Aún no hay actividad" texto="Aquí verás quién hizo cada cambio: tú o la IA." />
   return (
     <ul className="actividad">
       {filas.map((a) => (

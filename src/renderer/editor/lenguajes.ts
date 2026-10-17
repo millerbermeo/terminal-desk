@@ -52,36 +52,36 @@ export function insigniaDe(nombre: string): { txt: string; color: string } {
   switch (ext(nombre)) {
     case 'ts':
     case 'tsx':
-      return { txt: 'TS', color: '#7aa2f7' }
+      return { txt: 'TS', color: '#818cf8' }
     case 'js':
     case 'jsx':
     case 'mjs':
     case 'cjs':
-      return { txt: 'JS', color: '#e0af68' }
+      return { txt: 'JS', color: '#fbbf24' }
     case 'json':
     case 'jsonc':
-      return { txt: '{}', color: '#9ece6a' }
+      return { txt: '{}', color: '#34d399' }
     case 'css':
     case 'scss':
-      return { txt: '#', color: '#bb9af7' }
+      return { txt: '#', color: '#c084fc' }
     case 'html':
     case 'htm':
     case 'vue':
     case 'svelte':
-      return { txt: '<>', color: '#f7768e' }
+      return { txt: '<>', color: '#f87171' }
     case 'md':
     case 'markdown':
-      return { txt: 'M↓', color: '#7dcfff' }
+      return { txt: 'M↓', color: '#67e8f9' }
     case 'py':
-      return { txt: 'PY', color: '#e0af68' }
+      return { txt: 'PY', color: '#fbbf24' }
     case 'png':
     case 'jpg':
     case 'jpeg':
     case 'gif':
     case 'webp':
     case 'svg':
-      return { txt: '▣', color: '#73daca' }
+      return { txt: '▣', color: '#5eead4' }
     default:
-      return { txt: '·', color: '#8b92a3' }
+      return { txt: '·', color: '#a0a0ad' }
   }
 }

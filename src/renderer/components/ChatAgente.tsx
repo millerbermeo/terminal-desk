@@ -11,7 +11,9 @@ import { AdjuntosAgente } from './AdjuntosAgente'
 import { BarraCuenta } from './BarraCuenta'
 import { BarraUso } from './BarraUso'
 import { GestionProyecto } from './GestionProyecto'
+import { EstadoVacio } from './EstadoVacio'
 import { HistorialAgente } from './HistorialAgente'
+import { IconoChispa } from './Iconos'
 
 interface Props {
   agente: Agente
@@ -386,13 +388,12 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
       {gestion && <GestionProyecto {...(proyecto ? { proyectoId: proyecto.id, nombre: proyecto.nombre } : {})} inicial={gestion} onCerrar={() => setGestion(null)} />}
       <div className="ag-hilo">
         {agente.turnos.length === 0 && (
-          <div className="vacio">
-            <strong>Asistente de desarrollo</strong>
-            <span>
-              Elige un proyecto y pregunta. El router escoge el modelo según la complejidad; escribir archivos o ejecutar comandos siempre te pide
-              confirmación. «Flujo» planifica, te pide aprobar el plan, genera en una rama aislada, verifica y te pide aceptar el resultado.
-            </span>
-          </div>
+          <EstadoVacio
+            icono={<IconoChispa />}
+            titulo="Asistente de desarrollo"
+            texto="Elige un proyecto y pregunta. El router escoge el modelo según la complejidad; escribir archivos o ejecutar comandos siempre te pide confirmación. «Flujo» planifica, te pide aprobar el plan, genera en una rama aislada, verifica y te pide aceptar el resultado."
+            pistas={['/plan <funcionalidad>', '/tareas', '/flujo <petición>', '/ayuda']}
+          />
         )}
         {agente.turnos.map((t) => (
           <TurnoVista key={t.clave} t={t} onCancelar={() => agente.cancelar(t)} />

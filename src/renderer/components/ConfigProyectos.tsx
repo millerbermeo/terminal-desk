@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { DatosProyectos } from '@shared/modelos'
+import { EstadoVacio } from './EstadoVacio'
 import { IconoBasura, IconoCarpeta, IconoMas } from './Iconos'
 import { ModalAgregar } from './ModalAgregar'
 import { ModalEliminarGrupo } from './ModalEliminarGrupo'
@@ -26,7 +27,7 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
           </button>
         )}
       </div>
-      {proyectos.length === 0 && <p className="cfg-vacio">Sin proyectos</p>}
+      {proyectos.length === 0 && <EstadoVacio variante="compacto" icono={<IconoCarpeta />} titulo="Aún no hay proyectos" texto="Agrégalos con «Abrir carpeta» o «Agregar ruta» en la barra lateral." />}
       {proyectos.map((p) => (
         <div className="cfg-proyecto" key={p.id}>
           <IconoCarpeta />

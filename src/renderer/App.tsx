@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BibliotecaAgentes, DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
+import { EstadoVacio } from './components/EstadoVacio'
 import { IconoCerrar, IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, IconoTerminal, IconoVentana } from './components/Iconos'
 import { Sidebar, type Vista } from './components/Sidebar'
 import { Asistente } from './components/Asistente'
@@ -395,11 +396,16 @@ export function App() {
         )}
 
         {ventanas.length === 0 && (
-          <div className="vacio vacio-global">
-            <div className="vacio-icono"><IconoTerminal /></div>
-            <strong>Sin pestañas abiertas</strong>
-            <span>Abre un grupo con ▶ en la barra lateral (una pestaña por grupo), elige un proyecto o crea una pestaña nueva.</span>
-          </div>
+          <EstadoVacio
+            icono={<IconoTerminal />}
+            titulo="Sin pestañas abiertas"
+            texto="Abre un grupo con ▶ en la barra lateral (una pestaña por grupo), elige un proyecto o crea una pestaña nueva."
+            accion={
+              <button className="primario" onClick={nuevaPestana}>
+                <IconoMas /> Nueva terminal
+              </button>
+            }
+          />
         )}
 
         {ventanas.map((v) => (

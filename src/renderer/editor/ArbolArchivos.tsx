@@ -23,7 +23,7 @@ interface Props {
   onCancelarNombre: () => void
 }
 
-const COLOR_MARCA: Record<MarcaGit, string> = { M: '#e0af68', A: '#9ece6a', D: '#f7768e', R: '#7dcfff', U: '#9ece6a', C: '#f7768e' }
+const COLOR_MARCA: Record<MarcaGit, string> = { M: '#fbbf24', A: '#34d399', D: '#f87171', R: '#67e8f9', U: '#34d399', C: '#f87171' }
 const TITULO_MARCA: Record<MarcaGit, string> = { M: 'Modificado', A: 'Añadido', D: 'Borrado', R: 'Renombrado', U: 'Sin seguimiento', C: 'Conflicto' }
 
 function Nombre({ inicial, sangria, onNombre, onCancelar }: { inicial: string; sangria: number; onNombre: (t: string) => void; onCancelar: () => void }) {
@@ -80,7 +80,7 @@ export function ArbolArchivos(p: Props) {
                 {e.nombre}
               </span>
               {marca && <span className="ed-marca" style={{ color: COLOR_MARCA[marca] }} title={TITULO_MARCA[marca]}>{marca}</span>}
-              {!marca && e.tipo === 'carpeta' && p.conCambios.has(e.ruta) && <span className="ed-marca" style={{ color: '#e0af68' }} title="Contiene cambios">●</span>}
+              {!marca && e.tipo === 'carpeta' && p.conCambios.has(e.ruta) && <span className="ed-marca" style={{ color: '#fbbf24' }} title="Contiene cambios">●</span>}
             </div>
             {e.tipo === 'carpeta' && abierta && <ul role="group">{nivel(e.ruta, sangria + 1)}</ul>}
           </li>

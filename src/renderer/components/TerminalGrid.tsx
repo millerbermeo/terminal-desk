@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { EstadoVacio } from './EstadoVacio'
 import { IconoCarpeta, IconoCerrar, IconoChispa, IconoTerminal } from './Iconos'
 import { ChatAgente } from './ChatAgente'
 import { TerminalPanel } from './TerminalPanel'
@@ -176,11 +177,7 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPers
       )}
       <div ref={contenedor} className={`paneles ${modo}${arrastrando ? ` arrastrando arrastrando-${arrastrando}` : ''}`}>
         {terminales.length === 0 && (
-          <div className="vacio">
-            <div className="vacio-icono"><IconoTerminal /></div>
-            <strong>Sin terminales abiertas</strong>
-            <span>Elige un proyecto en la barra lateral o crea una terminal nueva.</span>
-          </div>
+          <EstadoVacio icono={<IconoTerminal />} titulo="Sin terminales abiertas" texto="Elige un proyecto en la barra lateral o crea una terminal nueva." />
         )}
         {terminales.map((t) => {
           const visible = rejilla || t.id === activa

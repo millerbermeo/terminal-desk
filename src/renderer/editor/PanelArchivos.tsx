@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CambioArchivo, EntradaArchivo, MarcaGit } from '@shared/archivos'
+import { EstadoVacio } from '../components/EstadoVacio'
+import { IconoArchivo } from '../components/Iconos'
 import { ArbolArchivos, type CreandoEn } from './ArbolArchivos'
 import { EditorCodigo, type ManejoEditor } from './EditorCodigo'
 import { lenguajeDe } from './lenguajes'
@@ -471,16 +473,10 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
 
         <div className="ed-cuerpo">
           {!actual && (
-            <div className="vacio">
-              <strong>Editor de {nombre}</strong>
-              <span>Elige un archivo del árbol. Los cambios se guardan solos. Clic derecho en el árbol para crear, renombrar o borrar.</span>
-            </div>
+            <EstadoVacio icono={<IconoArchivo />} titulo={`Editor de ${nombre}`} texto="Elige un archivo del árbol. Los cambios se guardan solos. Clic derecho en el árbol para crear, renombrar o borrar." />
           )}
           {actual?.noEditable && (
-            <div className="vacio">
-              <strong>{base(actual.ruta)}</strong>
-              <span>{actual.noEditable}</span>
-            </div>
+            <EstadoVacio icono={<IconoArchivo />} titulo={base(actual.ruta)} texto={actual.noEditable} />
           )}
           <EditorCodigo
             ref={editor}

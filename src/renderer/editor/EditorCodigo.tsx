@@ -12,9 +12,9 @@ const tema = EditorView.theme(
   {
     '&': { height: '100%', backgroundColor: 'var(--bg)', fontSize: '13px' },
     '.cm-scroller': { fontFamily: "'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', Menlo, Consolas, monospace", lineHeight: '1.55' },
-    '.cm-gutters': { backgroundColor: 'var(--bg)', borderRight: '1px solid var(--borde)', color: '#5b6275' },
-    '.cm-activeLine': { backgroundColor: 'rgba(122, 162, 247, 0.07)' },
-    '.cm-activeLineGutter': { backgroundColor: 'rgba(122, 162, 247, 0.12)' },
+    '.cm-gutters': { backgroundColor: 'var(--bg)', borderRight: '1px solid var(--borde)', color: '#6e6e7c' },
+    '.cm-activeLine': { backgroundColor: 'rgba(129, 140, 248, 0.07)' },
+    '.cm-activeLineGutter': { backgroundColor: 'rgba(129, 140, 248, 0.12)' },
     '&.cm-focused': { outline: 'none' }
   },
   { dark: true }

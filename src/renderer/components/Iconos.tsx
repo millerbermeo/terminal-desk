@@ -77,3 +77,34 @@ export const IconoVolver = () => (
 export const IconoAgente = () => (
   <Icono><rect x="4" y="8" width="16" height="12" rx="3" /><path d="M12 8V4M9 14h.01M15 14h.01M2 14h2M20 14h2" /><circle cx="12" cy="3" r="1" /></Icono>
 )
+
+export const IconoActividad = () => (
+  <Icono><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></Icono>
+)
+export const IconoCerebro = () => (
+  <Icono><path d="M9.5 3a3 3 0 0 0-3 3 3 3 0 0 0-2.5 4.6A3.5 3.5 0 0 0 6 17a3 3 0 0 0 3.5 3 2.5 2.5 0 0 0 2.5-2.5v-13A2.5 2.5 0 0 0 9.5 3zM14.5 3a3 3 0 0 1 3 3 3 3 0 0 1 2.5 4.6A3.5 3.5 0 0 1 18 17a3 3 0 0 1-3.5 3 2.5 2.5 0 0 1-2.5-2.5" /></Icono>
+)
+export const IconoRama = () => (
+  <Icono><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="8" r="2" /><path d="M6 7v10M18 10c0 4-6 3-12 7" /></Icono>
+)
+export const IconoRayo = () => (
+  <Icono><path d="M13 2 3 14h8l-1 8 10-12h-8z" /></Icono>
+)
+export const IconoEscudo = () => (
+  <Icono><path d="M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6z" /><path d="m9 12 2 2 4-4" /></Icono>
+)
+export const IconoArchivo = () => (
+  <Icono><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></Icono>
+)
+export const IconoReloj = () => (
+  <Icono><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Icono>
+)
+export const IconoServidor = () => (
+  <Icono><rect x="3" y="4" width="18" height="7" rx="2" /><rect x="3" y="13" width="18" height="7" rx="2" /><path d="M7 7.5h.01M7 16.5h.01" /></Icono>
+)
+export const IconoBuscar = () => (
+  <Icono><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></Icono>
+)
+export const IconoEvals = () => (
+  <Icono><path d="M9 11l3 3 8-8" /><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" /></Icono>
+)

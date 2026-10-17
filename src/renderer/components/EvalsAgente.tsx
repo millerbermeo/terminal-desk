@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { InfoSuite, InformeEval, ResultadoEvals } from '@shared/core/evals'
+import { EstadoVacio } from './EstadoVacio'
+import { IconoEvals } from './Iconos'
 
 const pct = (x: number): string => `${Math.round(x * 100)} %`
 
@@ -92,7 +94,7 @@ export function EvalsAgente({ visible }: { visible: boolean }) {
       )}
       {resultado && (<><h4>Resultado</h4><Informe i={resultado.informe} /></>)}
       <h4>Historial</h4>
-      {historial.length === 0 && <p className="cfg-vacio">Sin informes guardados.</p>}
+      {historial.length === 0 && <EstadoVacio variante="compacto" icono={<IconoEvals />} titulo="Sin informes guardados" texto="Ejecuta una suite de evals para medir al agente y comparar resultados." />}
       {historial.filter((i) => i.fecha !== resultado?.informe.fecha).map((i) => (
         <details key={i.fecha} className="ev-hist">
           <summary>{new Date(i.fecha).toLocaleString()} — {i.pasan}/{i.total} ({pct(i.tasa)})</summary>

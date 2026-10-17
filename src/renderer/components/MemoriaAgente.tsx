@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { EntradaMemoria, TipoMemoria } from '@shared/core/memoria'
 import type { DatosProyectos } from '@shared/modelos'
+import { EstadoVacio } from './EstadoVacio'
+import { IconoCerebro } from './Iconos'
 
 const TIPOS: { id: TipoMemoria; nombre: string; ayuda: string }[] = [
   { id: 'regla', nombre: 'Regla', ayuda: 'Se incluye siempre en el contexto del agente' },
@@ -50,7 +52,7 @@ export function MemoriaAgente({ datos, visible }: { datos: DatosProyectos; visib
         </select>
       </div>
       <section className="cfg-grupo">
-        {entradas.length === 0 && <p className="cfg-vacio">Sin memoria en este ámbito.</p>}
+        {entradas.length === 0 && <EstadoVacio variante="compacto" icono={<IconoCerebro />} titulo="Sin memoria en este ámbito" texto="Las reglas y decisiones que guardes aquí se recordarán en futuras conversaciones." />}
         {entradas.map((e) => (
           <div className="cfg-proyecto mem-fila" key={e.id}>
             <span className={`chip tipo-${e.tipo}`}>{e.tipo}</span>

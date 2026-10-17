@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ProveedorEstado } from '@shared/modelos'
-import { IconoBasura, IconoLapiz, IconoMas } from './Iconos'
+import { EstadoVacio } from './EstadoVacio'
+import { IconoBasura, IconoChispa, IconoLapiz, IconoMas } from './Iconos'
 import { ModalProveedor } from './ModalProveedor'
 
 interface Props {
@@ -25,7 +26,7 @@ export function ConfigProveedores({ proveedores, onProveedores }: Props) {
       </p>
 
       <section className="cfg-grupo">
-        {proveedores.length === 0 && <p className="cfg-vacio">Sin proveedores. Agrega uno para empezar.</p>}
+        {proveedores.length === 0 && <EstadoVacio variante="compacto" icono={<IconoChispa />} titulo="Sin proveedores" texto="Agrega uno para lanzar Claude Code, Codex, Gemini u otro CLI desde cada proyecto." />}
         {proveedores.map((p) => (
           <div className="cfg-proyecto" key={p.id}>
             <strong>{p.nombre}</strong>
