@@ -9,6 +9,7 @@ import { useCuenta } from '../agente/cuenta'
 import { useModelos } from '../agente/uso'
 import { AdjuntosAgente } from './AdjuntosAgente'
 import { BarraCuenta } from './BarraCuenta'
+import { BarraRama } from './BarraRama'
 import { BarraUso } from './BarraUso'
 import { GestionProyecto } from './GestionProyecto'
 import { EstadoVacio } from './EstadoVacio'
@@ -378,6 +379,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
       }}
     >
       <BarraCuenta autonomia={autonomia} />
+      {proyecto && <BarraRama proyectoId={proyecto.id} ocupadoAgente={agente.enCurso} />}
       {arrastrando && <div className="ag-soltar">Suelta para adjuntar (imágenes, PDF o texto)</div>}
       {verHistorial && (
         <HistorialAgente

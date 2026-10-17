@@ -1039,3 +1039,20 @@ button.enlace:hover:not(:disabled) { background: none; text-decoration: underlin
 .gh-ci button.chip { cursor: pointer; font-weight: 600; }
 .gh-ci button.chip:disabled { cursor: default; }
 .gh-checks { list-style: none; margin: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--borde); border-radius: var(--radio); background: var(--bg-popover); font-size: 12px; box-shadow: var(--sombra-2); position: relative; z-index: 2; }
+
+/* Rama actual en el asistente */
+.ag-rama { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 24px; border-bottom: 1px solid var(--borde); font-size: 12px; }
+.ag-rama-btn { display: inline-flex; align-items: center; gap: 6px; }
+.ag-rama-btn svg { width: 14px; height: 14px; }
+.ag-rama-nueva { display: flex; align-items: center; gap: 6px; }
+.ag-rama-nueva input { width: 180px; }
+.ag-rama-msg { color: var(--texto-suave); min-width: 0; }
+.ag-rama-msg.error { color: var(--error); }
+.ag-rama-msg.ok { color: var(--ok); }
+.ag-rama-lista { position: absolute; top: calc(100% - 2px); left: 24px; z-index: 30; min-width: 220px; max-width: calc(100% - 48px); max-height: 260px; overflow: auto; padding: 4px; background: var(--bg-popover); border: 1px solid var(--borde-fuerte); border-radius: var(--radio-lg); box-shadow: var(--sombra-2); display: flex; flex-direction: column; gap: 2px; }
+.ag-rama-lista button { display: flex; align-items: center; gap: 8px; justify-content: flex-start; text-align: left; border: 0; background: transparent; }
+.ag-rama-lista button svg { width: 14px; height: 14px; flex: none; }
+.ag-rama-lista button span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-rama-lista button.sel { color: var(--acento); }
+.ag-rama-lista small, .ag-rama-vacio { color: var(--texto-tenue); }
+.ag-rama-vacio { padding: 6px 10px; }
