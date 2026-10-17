@@ -115,3 +115,9 @@ export const IconoApi = () => (
 export const IconoGlobo = () => (
   <Icono><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18" /></Icono>
 )
+export const IconoAlerta = () => (
+  <Icono width={22} height={22}><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01" /></Icono>
+)
+export const IconoInfo = () => (
+  <Icono width={22} height={22}><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></Icono>
+)

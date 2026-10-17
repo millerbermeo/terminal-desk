@@ -10,6 +10,7 @@ import { useModelos } from '../agente/uso'
 import { AdjuntosAgente } from './AdjuntosAgente'
 import { BarraCuenta } from './BarraCuenta'
 import { BarraRama } from './BarraRama'
+import { confirmar } from '../confirmar'
 import { BarraUso } from './BarraUso'
 import { GestionProyecto } from './GestionProyecto'
 import { EstadoVacio } from './EstadoVacio'
@@ -208,8 +209,8 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
       return 'preguntar'
     }
   })
-  const cambiarAutonomia = (nuevo: ModoAutonomia): void => {
-    if (nuevo === 'autonomo' && !window.confirm('Modo autónomo: el agente escribirá archivos, ejecutará typecheck, lint y pruebas, y (en el Flujo) aprobará el plan sin preguntarte, con un límite de tokens.\n\nSeguirá pidiendo confirmación para lo destructivo (borrar, git push…), para comandos desconocidos y para aceptar el resultado del Flujo.\n\nLo más seguro es usarlo con el Flujo aislado en una rama. ¿Activarlo?')) return
+  const cambiarAutonomia = async (nuevo: ModoAutonomia): Promise<void> => {
+    if (nuevo === 'autonomo' && !(await confirmar({ titulo: 'Activar el modo autónomo', tono: 'aviso', etiqueta: 'Activar', texto: 'El agente escribirá archivos, ejecutará typecheck, lint y pruebas, y (en el Flujo) aprobará el plan sin preguntarte, con un límite de tokens.\n\nSeguirá pidiendo confirmación para lo destructivo (borrar, git push…), para comandos desconocidos y para aceptar el resultado del Flujo.\n\nLo más seguro es usarlo con el Flujo aislado en una rama.' }))) return
     setAutonomiaEstado(nuevo)
     try {
       localStorage.setItem(claveAutonomia, nuevo)
@@ -254,7 +255,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     setErrorAdjunto('')
     try {
       if (!localStorage.getItem('asistente:aviso-adjuntos')) {
-        if (!window.confirm('Los archivos que adjuntes se envían a la API de Anthropic junto con tu mensaje. No se puede detectar si una imagen o un PDF contienen credenciales: no adjuntes nada confidencial.\n\n¿Continuar?')) return
+        if (!(await confirmar({ titulo: 'Adjuntar archivos', tono: 'info', etiqueta: 'Entendido, continuar', texto: 'Los archivos que adjuntes se envían a la API de Anthropic junto con tu mensaje.\n\nNo se puede detectar si una imagen o un PDF contienen credenciales: no adjuntes nada confidencial.' }))) return
         localStorage.setItem('asistente:aviso-adjuntos', '1')
       }
     } catch {
@@ -324,7 +325,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
       case 'chat':
         return setModo('chat')
       case 'modo':
-        if (resto === 'preguntar' || resto === 'ediciones' || resto === 'autonomo') return cambiarAutonomia(resto)
+        if (resto === 'preguntar' || resto === 'ediciones' || resto === 'autonomo') return void cambiarAutonomia(resto)
         return aviso('Uso: /modo preguntar | ediciones | autonomo')
       case 'nueva':
         return agente.nuevaConversacion()
@@ -450,7 +451,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           <select
             className={`ag-autonomia ${autonomia}`}
             value={autonomia}
-            onChange={(e) => cambiarAutonomia(e.target.value as ModoAutonomia)}
+            onChange={(e) => void cambiarAutonomia(e.target.value as ModoAutonomia)}
             aria-label="Autonomía"
             title="Cuánto te pregunta el agente. Lo destructivo siempre pregunta."
           >

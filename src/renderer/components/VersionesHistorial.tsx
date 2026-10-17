@@ -215,7 +215,7 @@ export function VersionesHistorial({ c }: { c: ContextoGit }) {
         <ModalConfirmar
           titulo="Revertir commit"
           texto={`Se creará un commit nuevo que deshace los cambios de «${detalle.commit.asunto}». El historial no se reescribe.`}
-          etiqueta="Revertir"
+          etiqueta="Revertir" tono="aviso"
           onCerrar={() => setDialogo(null)}
           onConfirmar={() =>
             void run('Revirtiendo…', () => git('revertir', { proyectoId, hash: detalle.commit.hash })).then((r) => {

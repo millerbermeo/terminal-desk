@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ResumenSesion } from '@shared/core/sesion'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoReloj } from './Iconos'
+import { confirmar } from '../confirmar'
 
 interface Props {
   proyectoId?: string // sin proyecto: conversaciones de todos
@@ -54,11 +55,13 @@ export function HistorialAgente({ proyectoId, activaId, deshabilitado, onAbrir, 
               style={{ opacity: 1 }}
               title="Eliminar del historial"
               disabled={deshabilitado && s.id === activaId}
-              onClick={() => {
-                if (!window.confirm(`¿Eliminar la conversación «${s.titulo}»? No se puede deshacer.`)) return
-                onBorrar(s.id)
-                setLista((l) => l?.filter((x) => x.id !== s.id) ?? null)
-              }}
+              onClick={() =>
+                void confirmar({ titulo: 'Eliminar conversación', etiqueta: 'Eliminar', texto: `¿Eliminar la conversación «${s.titulo}»?\n\nNo se puede deshacer.` }).then((si) => {
+                  if (!si) return
+                  onBorrar(s.id)
+                  setLista((l) => l?.filter((x) => x.id !== s.id) ?? null)
+                })
+              }
             >
               ✕
             </button>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { CuentaSuscripcion } from '@shared/core/cuenta'
 import type { ModoAutonomia } from '@shared/core/permisos'
 import { useCuenta } from '../agente/cuenta'
+import { confirmar } from '../confirmar'
 
 /** Con qué se paga el modelo: suscripción de Claude (por defecto, con inicio de sesión) o clave de API. */
 const etiqueta = (c: CuentaSuscripcion): string =>
@@ -20,9 +21,9 @@ export function BarraCuenta({ autonomia }: { autonomia: ModoAutonomia }) {
     setNueva(null)
     void agregar(nombre)
   }
-  const quitarActiva = (): void => {
+  const quitarActiva = async (): Promise<void> => {
     if (!activa || activa.principal) return
-    if (window.confirm(`¿Quitar la cuenta «${activa.nombre}»? Se cierra su sesión y se borran sus datos locales (la conversación sigue en las demás cuentas si se copió).`)) void quitar(activa.id)
+    if (await confirmar({ titulo: `Quitar la cuenta «${activa.nombre}»`, etiqueta: 'Quitar cuenta', texto: 'Se cierra su sesión y se borran sus datos locales.\n\nLa conversación sigue en las demás cuentas si se copió.' })) void quitar(activa.id)
   }
   return (
     <div className={`ag-cuenta${sinSesion ? ' sin-sesion' : ''}`}>
@@ -54,7 +55,7 @@ export function BarraCuenta({ autonomia }: { autonomia: ModoAutonomia }) {
             ＋ Cuenta
           </button>
           {activa && !activa.principal && (
-            <button className="ag-cuenta-btn" disabled={ocupado !== ''} onClick={quitarActiva} title="Cierra la sesión de esta cuenta y la quita">
+            <button className="ag-cuenta-btn" disabled={ocupado !== ''} onClick={() => void quitarActiva()} title="Cierra la sesión de esta cuenta y la quita">
               Quitar
             </button>
           )}

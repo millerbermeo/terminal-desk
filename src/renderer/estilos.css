@@ -275,6 +275,18 @@ input[type='date'] { color-scheme: dark; }
 /* confirmación */
 .modal-chico { width: min(440px, 100%); }
 .modal-texto { margin: 0; color: var(--texto-suave); line-height: 1.6; }
+/* confirmaciones: icono con tono, texto en párrafos y acciones alineadas a la derecha */
+.confirmar { --tono: var(--error); --tono-fondo: rgba(248, 113, 113, 0.12); --tono-borde: rgba(248, 113, 113, 0.3); gap: 20px; padding: 24px; width: min(460px, 100%); }
+.confirmar.aviso { --tono: var(--aviso); --tono-fondo: rgba(251, 191, 36, 0.12); --tono-borde: rgba(251, 191, 36, 0.3); }
+.confirmar.info { --tono: var(--acento); --tono-fondo: var(--acento-suave); --tono-borde: rgba(129, 140, 248, 0.32); }
+.confirmar-cuerpo { display: flex; gap: 16px; align-items: flex-start; }
+.confirmar-icono { flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: var(--tono); background: var(--tono-fondo); border: 1px solid var(--tono-borde); }
+.confirmar-icono svg { width: 22px; height: 22px; }
+.confirmar-texto { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.confirmar-texto h3 { font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
+.confirmar-texto .modal-texto { font-size: 13px; overflow-wrap: anywhere; }
+.confirmar-acciones { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.confirmar-acciones button { min-width: 96px; }
 button.peligro-solido:hover:not(:disabled) { background: var(--error); border-color: var(--error); box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.2); }
 button.peligro-solido { background: linear-gradient(180deg, #ef5b5b, #dc3b3b); border-color: rgba(255, 255, 255, 0.18); color: #fff; font-weight: 550; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(220, 59, 59, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.22); }
 button.peligro-solido:hover:not(:disabled) { background: linear-gradient(180deg, #f27070, #e24848); border-color: rgba(255, 255, 255, 0.28); }

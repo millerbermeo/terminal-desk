@@ -162,7 +162,7 @@ export function VersionesRamas({ c }: { c: ContextoGit }) {
         <ModalConfirmar
           titulo="Fusionar rama"
           texto={`Se fusiona «${dialogo.rama.nombre}» en «${estado.rama ?? 'la rama actual'}». Si hay conflictos podrás resolverlos o abortar la fusión.`}
-          etiqueta="Fusionar"
+          etiqueta="Fusionar" tono="aviso"
           onCerrar={() => setDialogo(null)}
           onConfirmar={() =>
             void run('Fusionando…', () => git('fusionar', { proyectoId, rama: dialogo.rama.nombre })).then((r) => {

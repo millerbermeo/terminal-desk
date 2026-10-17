@@ -370,7 +370,7 @@ export function Api({ visible }: { visible: boolean }) {
         />
       )}
       {dialogo?.tipo === 'cerrar' && (
-        <ModalConfirmar titulo="Cerrar petición" texto={`«${tituloDe(dialogo.borrador)}» tiene cambios sin guardar. ¿Cerrarla igualmente?`} etiqueta="Cerrar sin guardar" onCerrar={() => setDialogo(null)} onConfirmar={() => cerrar(dialogo.borrador)} />
+        <ModalConfirmar titulo="Cerrar petición" texto={`«${tituloDe(dialogo.borrador)}» tiene cambios sin guardar. ¿Cerrarla igualmente?`} etiqueta="Cerrar sin guardar" tono="aviso" onCerrar={() => setDialogo(null)} onConfirmar={() => cerrar(dialogo.borrador)} />
       )}
     </main>
   )

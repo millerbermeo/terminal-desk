@@ -479,7 +479,7 @@ export function App() {
         <ModalConfirmar
           titulo={`Cerrar «${ventanaConfirmar.nombre}»`}
           texto={`Se cerrarán sus ${ventanaConfirmar.terminales.length} terminal${ventanaConfirmar.terminales.length === 1 ? '' : 'es'} y los procesos que estén ejecutando.`}
-          etiqueta="Cerrar pestaña"
+          etiqueta="Cerrar pestaña" tono="aviso"
           onConfirmar={() => cerrarVentana(ventanaConfirmar.id)}
           onCerrar={() => setPorCerrar(null)}
         />

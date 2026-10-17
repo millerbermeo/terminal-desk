@@ -5,6 +5,7 @@ import { IconoArchivo } from '../components/Iconos'
 import { ArbolArchivos, type CreandoEn } from './ArbolArchivos'
 import { EditorCodigo, type ManejoEditor } from './EditorCodigo'
 import { lenguajeDe } from './lenguajes'
+import { confirmar } from '../confirmar'
 
 interface Abierto {
   ruta: string
@@ -195,7 +196,7 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
       const a = buscar(ruta)
       if (a?.sucio) {
         if (refAuto.current) await guardarYa(ruta)
-        if (buscar(ruta)?.sucio && !window.confirm(`«${base(ruta)}» tiene cambios sin guardar. ¿Descartarlos?`)) return
+        if (buscar(ruta)?.sucio && !(await confirmar({ titulo: 'Cambios sin guardar', tono: 'aviso', etiqueta: 'Descartar cambios', cancelar: 'Seguir editando', texto: `«${base(ruta)}» tiene cambios sin guardar.\n\nSi lo cierras ahora se perderán.` }))) return
       }
       window.clearTimeout(temporizadores.current.get(ruta))
       editor.current?.olvidar(ruta)
@@ -365,7 +366,7 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
   }
   const borrar = async (e: EntradaArchivo): Promise<void> => {
     setMenu(null)
-    if (!window.confirm(`¿Mover «${e.nombre}» a la papelera?${e.tipo === 'carpeta' ? ' Se moverá todo su contenido.' : ''}`)) return
+    if (!(await confirmar({ titulo: `Mover «${e.nombre}» a la papelera`, etiqueta: 'Mover a la papelera', texto: e.tipo === 'carpeta' ? 'Se moverá la carpeta con todo su contenido.\n\nPodrás recuperarla desde la papelera del sistema.' : 'Podrás recuperarlo desde la papelera del sistema.' }))) return
     try {
       await api.borrar(proyectoId, e.ruta)
       for (const a of refAbiertos.current.filter((x) => x.ruta === e.ruta || x.ruta.startsWith(`${e.ruta}/`))) {

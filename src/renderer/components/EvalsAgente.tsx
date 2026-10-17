@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { InfoSuite, InformeEval, ResultadoEvals } from '@shared/core/evals'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoEvals } from './Iconos'
+import { confirmar } from '../confirmar'
 
 const pct = (x: number): string => `${Math.round(x * 100)} %`
 
@@ -55,8 +56,8 @@ export function EvalsAgente({ visible }: { visible: boolean }) {
   }, [suite])
   useEffect(cargar, [cargar])
 
-  const ejecutar = (): void => {
-    if (!window.confirm('Se ejecutarán los casos contra el modelo real (en proyectos temporales). Consume tokens de tu cuenta y puede tardar varios minutos. ¿Continuar?')) return
+  const ejecutar = async (): Promise<void> => {
+    if (!(await confirmar({ titulo: 'Ejecutar los evals', tono: 'aviso', etiqueta: 'Ejecutar', texto: 'Se ejecutarán los casos contra el modelo real (en proyectos temporales).\n\nConsume tokens de tu cuenta y puede tardar varios minutos.' }))) return
     setError('')
     setEjecutando(true)
     window.api.core
@@ -81,7 +82,7 @@ export function EvalsAgente({ visible }: { visible: boolean }) {
         <select value={suite} onChange={(e) => { setSuite(e.target.value); setResultado(null) }}>
           {suites.map((s) => <option key={s.id} value={s.id}>{s.id} ({s.casos} casos)</option>)}
         </select>
-        <button className="primario" onClick={ejecutar} disabled={!suite || ejecutando}>{ejecutando ? 'Ejecutando…' : 'Ejecutar suite'}</button>
+        <button className="primario" onClick={() => void ejecutar()} disabled={!suite || ejecutando}>{ejecutando ? 'Ejecutando…' : 'Ejecutar suite'}</button>
       </div>
       {info && <p className="cfg-nota">{info.descripcion}</p>}
       {error && <div className="cfg-error">{error}</div>}

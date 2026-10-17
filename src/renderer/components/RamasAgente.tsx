@@ -3,6 +3,7 @@ import type { InfoWorktree } from '@shared/core/agente'
 import type { DatosProyectos } from '@shared/modelos'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoRama } from './Iconos'
+import { confirmar } from '../confirmar'
 
 const limpiar = (m: string): string => m.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
@@ -54,10 +55,11 @@ export function RamasAgente({ datos, visible }: { datos: DatosProyectos; visible
             <button
               className="peligro"
               style={{ opacity: 1 }}
-              onClick={() => {
-                if (!window.confirm(`Se eliminará la rama «${r.rama}» y su carpeta. Lo que no hayas integrado se perderá. ¿Continuar?`)) return
-                void window.api.core.worktreeDescartar(r.proyectoId, r.id).then(setRamas).catch((e: Error) => setMensaje({ ok: false, texto: limpiar(e.message) }))
-              }}
+              onClick={() =>
+                void confirmar({ titulo: 'Descartar rama', etiqueta: 'Descartar', texto: `Se eliminará la rama «${r.rama}» y su carpeta.\n\nLo que no hayas integrado se perderá.` }).then((si) => {
+                  if (si) void window.api.core.worktreeDescartar(r.proyectoId, r.id).then(setRamas).catch((e: Error) => setMensaje({ ok: false, texto: limpiar(e.message) }))
+                })
+              }
             >
               Descartar
             </button>

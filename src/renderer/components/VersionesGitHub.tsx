@@ -347,7 +347,7 @@ export function VersionesGitHub({ c }: { c: ContextoGit }) {
         <ModalConfirmar
           titulo="Desconectar GitHub"
           texto="Se borra el token de este equipo. No se revoca en GitHub: hazlo en GitHub → Settings → Tokens si ya no lo vas a usar."
-          etiqueta="Desconectar"
+          etiqueta="Desconectar" tono="aviso"
           onCerrar={() => setDialogo(null)}
           onConfirmar={() => void run('Desconectando…', () => gh('desconectar', {})).then((r) => r && (setGha(r), avisar('Cuenta desconectada.')))}
         />
@@ -356,7 +356,7 @@ export function VersionesGitHub({ c }: { c: ContextoGit }) {
         <ModalConfirmar
           titulo={`Fusionar #${dialogo.pr.numero}`}
           texto={`Se fusiona «${dialogo.pr.titulo}» en ${dialogo.pr.base} con ${metodo === 'squash' ? 'squash (un solo commit)' : metodo === 'rebase' ? 'rebase' : 'un commit de merge'}. En GitHub no se puede deshacer del todo (solo revertir).`}
-          etiqueta="Fusionar"
+          etiqueta="Fusionar" tono="aviso"
           onCerrar={() => setDialogo(null)}
           onConfirmar={() => void run('Fusionando…', () => gh('fusionarPr', { proyectoId, numero: dialogo.pr.numero, metodo })).then((r) => r && (avisar(r.mensaje), actualizar()))}
         />
