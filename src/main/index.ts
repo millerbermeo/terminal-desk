@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, webContents } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, session, shell, webContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -15,6 +15,15 @@ import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, lee
 import { resolverPerfil } from './migracion'
 import { repararWorktrees } from './core/git/reparar'
 import { ejecutarOperacionGitHub } from './github/operaciones'
+import { importarProyectosLocales } from './servidor/importar'
+import { iniciarSesionGoogle } from './servidor/google'
+import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
+import { cifradorDelSistema } from './cifrador'
+import type { CredencialesSesion, EstadoSesion, NombreOperacionCuenta, ResultadoBoveda, ResultadoPaso, ResultadoSesion } from '@shared/sesion'
+import { cambiarPerfil } from './perfiles'
+import { Boveda } from './servidor/boveda'
+import { seccionesSecretas } from './servidor/secretos'
+import { FuenteArchivos, FuenteTareas, SincronizadorCuenta } from './servidor/sync-cuenta'
 import { DIR, MIGRACION_DATOS, agregarProyectos, carpetaDeProyecto, eliminarGrupo, eliminarProyecto, leerProyectos, sugerirRutas, validarRuta } from './proyectos'
 import { configurarMcpTareas } from './core/tareas/mcp-config'
 import { ejecutarOperacionGit } from './core/git/operaciones'
@@ -131,8 +140,151 @@ function crearVentana(opciones: { token?: string; x?: number; y?: number; titulo
   return win
 }
 
+// ---------------------------------------------------------------- datos de la cuenta en la nube
+
+/** Memoria, permisos, comandos, preferencias, proveedores y MCP (sin claves), tareas sin proyecto y columnas del tablero. */
+const syncCuenta = new SincronizadorCuenta(servidor, join(DIR, 'sync-cuenta.json'), [
+  new FuenteArchivos(DIR, (id) => {
+    if (id === 'preferencias.json') nucleo.preferencias.olvidarCache()
+  }),
+  new FuenteTareas(nucleo.tareas)
+])
+/** Claves (proveedores, MCP, cliente API, GitHub), cifradas en este equipo. */
+const boveda = new Boveda(servidor, join(DIR, 'boveda-clave.json'), join(DIR, 'boveda-estado.json'), cifradorDelSistema(), seccionesSecretas(DIR, nucleo.tokenGitHub))
+
+let bucleCuenta: NodeJS.Timeout | undefined
+const CADA_MS = 30_000
+
+/** Una pasada: datos de la cuenta (crean proveedores y servidores MCP), sus claves, y los cambios de los proyectos. Nunca lanza. */
+async function sincronizarCuenta(): Promise<{ ok: boolean; mensaje: string }> {
+  try {
+    const r = await syncCuenta.sincronizar()
+    const b = await boveda.sincronizar()
+    await nucleo.sync.vaciar() // lo que esperaba para subirse (tareas, conversaciones…)
+    const p = await nucleo.hidratarTodos(true) // y lo que cambió en los proyectos desde otros equipos
+    const bajados = r.bajados + b.bajadas + p.tareas + p.chats + p.trazas
+    return { ok: true, mensaje: `Sincronizado: ${r.subidos + b.subidas} subido(s), ${bajados} bajado(s), ${r.borrados + p.borrados} borrado(s).` }
+  } catch (err) {
+    if (!(err instanceof ErrorSesion)) console.warn('No se pudo sincronizar la cuenta:', (err as Error).message)
+    return { ok: false, mensaje: err instanceof ErrorServidor ? err.message : 'No se pudo sincronizar.' }
+  }
+}
+
+let pendienteCuenta: NodeJS.Timeout | undefined
+
+/** Sube pronto un cambio de datos de la cuenta (p. ej. un comando `/` creado o editado), agrupando ráfagas. */
+function sincronizarPronto(): void {
+  if (!bucleCuenta) return // sin sesión no hay nada que subir
+  if (pendienteCuenta) clearTimeout(pendienteCuenta)
+  pendienteCuenta = setTimeout(() => void sincronizarCuenta(), 1500)
+  pendienteCuenta.unref()
+}
+
+function iniciarBucleCuenta(): void {
+  detenerBucleCuenta()
+  void sincronizarCuenta()
+  bucleCuenta = setInterval(() => void sincronizarCuenta(), CADA_MS)
+  bucleCuenta.unref()
+}
+
+function detenerBucleCuenta(): void {
+  if (bucleCuenta) clearInterval(bucleCuenta)
+  bucleCuenta = undefined
+}
+
+async function conBoveda(fn: () => Promise<unknown>): Promise<ResultadoBoveda> {
+  try {
+    await fn()
+    return { ok: true, estado: await boveda.estado() }
+  } catch (err) {
+    if (err instanceof ErrorServidor) return { ok: false, mensaje: err.message }
+    throw err
+  }
+}
+
+/** Error del servidor -> resultado para la interfaz (con la marca de «cuenta sin activar»). Lo demás se propaga. */
+function falloSesion(err: unknown): { ok: false; mensaje: string; verificacionPendiente?: boolean } {
+  if (err instanceof ErrorServidor) return { ok: false, mensaje: err.message, ...(err.codigo === 'VERIFICACION_PENDIENTE' ? { verificacionPendiente: true } : {}) }
+  throw err
+}
+
+/**
+ * Tras abrir sesión: deja en `~/.odesk-agent` los datos locales de ESA cuenta (si eran de otra, se apartan y la app se reinicia para
+ * no usar nada cacheado), importa los proyectos del formato antiguo y baja el contexto de los proyectos de este equipo.
+ */
+async function conSesion(entrar: () => Promise<EstadoSesion>): Promise<ResultadoSesion> {
+  let estado: EstadoSesion
+  try {
+    estado = await entrar()
+  } catch (err) {
+    return falloSesion(err)
+  }
+  if (estado.usuarioId && (await cambiarPerfil(DIR, estado.usuarioId)) === 'cambiado') {
+    // Lo del navegador integrado (cookies, historial) y lo guardado por la interfaz también era de la otra cuenta.
+    await session.fromPartition('persist:navegador').clearStorageData().catch(() => undefined)
+    await session.defaultSession.clearStorageData({ storages: ['localstorage', 'indexdb'] }).catch(() => undefined)
+    terminales.cerrarTodas()
+    setTimeout(() => {
+      app.relaunch()
+      app.exit(0)
+    }, 200)
+    return { ok: true, estado }
+  }
+  await importarProyectosLocales().catch((err) => console.error('No se pudieron importar los proyectos locales:', err))
+  void nucleo.hidratarTodos()
+  iniciarBucleCuenta()
+  return { ok: true, estado }
+}
+
+async function paso(fn: () => Promise<{ mensaje?: string } | void>, exito: string): Promise<ResultadoPaso> {
+  try {
+    const r = await fn()
+    return { ok: true, mensaje: (r && r.mensaje) || exito }
+  } catch (err) {
+    return falloSesion(err)
+  }
+}
+
+/** Operaciones de cuenta (canal `sesion:cuenta`). */
+function operarCuenta(op: NombreOperacionCuenta, e: Record<string, unknown>): Promise<unknown> {
+  const t = (k: string): string => String(e[k] ?? '')
+  switch (op) {
+    case 'registrar':
+      return paso(() => servidor.registrar(t('email'), t('password')), 'Te enviamos un código a tu correo.')
+    case 'verificar':
+      return conSesion(() => servidor.verificar(t('email'), t('code')))
+    case 'reenviar':
+      return paso(() => servidor.reenviarVerificacion(t('email')), 'Te enviamos un código nuevo.')
+    case 'olvido':
+      return paso(() => servidor.olvidePassword(t('email')), 'Si hay una cuenta con ese correo, te enviamos un código.')
+    case 'restablecer':
+      return conSesion(() => servidor.restablecer(t('email'), t('code'), t('password')))
+    case 'cambiarPassword':
+      return paso(() => servidor.cambiarPassword(t('actual'), t('nueva')), 'Contraseña cambiada. Se cerró la sesión en tus otros equipos.')
+    case 'cerrarTodas':
+      detenerBucleCuenta()
+      return servidor.cerrarTodas()
+    case 'sincronizar':
+      return sincronizarCuenta()
+    case 'bovedaEstado':
+      return conBoveda(async () => undefined)
+    case 'bovedaCrear':
+      return conBoveda(() => boveda.crear(t('frase')))
+    case 'bovedaDesbloquear':
+      return conBoveda(() => boveda.desbloquear(t('frase')))
+    case 'bovedaCambiarFrase':
+      return conBoveda(() => boveda.cambiarFrase(t('actual'), t('nueva')))
+    case 'bovedaBloquear':
+      return conBoveda(() => boveda.bloquear())
+    case 'bovedaReiniciar':
+      return conBoveda(() => boveda.reiniciar())
+    default:
+      throw new Error(`Operación de cuenta desconocida: ${String(op)}`)
+  }
+}
+
 function registrarIpc(): void {
-  registrarIpcCore(nucleo)
+  registrarIpcCore(nucleo, sincronizarPronto)
   registrarIpcArchivos()
   ipcMain.handle(Canales.gitOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGit(carpetaDeProyecto, op, entrada, nucleo.github.credencialesPara))
   ipcMain.handle(Canales.githubOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGitHub(nucleo.github, op, entrada))
@@ -142,9 +294,32 @@ function registrarIpc(): void {
   ipcMain.handle(Canales.navegadorObtener, (e, id: number) => navegador.obtener(Number(id), e.sender))
   ipcMain.handle(Canales.navegadorPuertos, () => servidoresLocales())
   ipcMain.handle(Canales.navegadorExterno, (_e, url: string) => abrirEnNavegadorDelSistema(String(url)))
+  ipcMain.handle(Canales.sesionEstado, () => servidor.estado())
+  ipcMain.handle(Canales.sesionIniciar, (_e, c: CredencialesSesion) =>
+    conSesion(() => servidor.iniciar(String(c?.email ?? ''), String(c?.password ?? '')))
+  )
+  ipcMain.handle(Canales.sesionGoogle, () => conSesion(() => iniciarSesionGoogle(servidor, (url) => shell.openExternal(url))))
+  ipcMain.handle(Canales.sesionCuenta, (_e, op: NombreOperacionCuenta, entrada: Record<string, unknown>) => operarCuenta(op, entrada ?? {}))
+  ipcMain.handle(Canales.sesionServidor, async (_e, url: string): Promise<ResultadoSesion> => {
+    try {
+      return { ok: true, estado: await servidor.fijarUrl(String(url ?? '')) }
+    } catch (err) {
+      if (err instanceof ErrorServidor) return { ok: false, mensaje: err.message }
+      throw err
+    }
+  })
+  ipcMain.handle(Canales.sesionCerrar, () => {
+    detenerBucleCuenta()
+    return servidor.cerrar()
+  })
   ipcMain.handle(Canales.proyectosListar, () => leerProyectos())
   ipcMain.handle(Canales.proyectosValidarRuta, (_e, ruta: string) => validarRuta(ruta))
-  ipcMain.handle(Canales.proyectosAgregar, (_e, sol: SolicitudAgregar) => agregarProyectos(sol))
+  ipcMain.handle(Canales.proyectosAgregar, async (_e, sol: SolicitudAgregar) => {
+    const r = await agregarProyectos(sol)
+    // Carpetas que ya eran un proyecto de la cuenta (otra computadora): se baja su tablero y conversaciones en segundo plano.
+    for (const id of r.reanudados ?? []) void nucleo.hidratar(id).catch((err) => console.warn('No se pudo bajar el contexto del proyecto:', (err as Error).message))
+    return r
+  })
   ipcMain.handle(Canales.proyectosElegirCarpetas, async (e) => {
     const ventana = BrowserWindow.fromWebContents(e.sender)
     const opciones = { title: 'Abrir carpeta', defaultPath: homedir(), properties: ['openDirectory', 'multiSelections', 'createDirectory'] as ('openDirectory' | 'multiSelections' | 'createDirectory')[] }
@@ -222,6 +397,19 @@ function registrarIpc(): void {
 let servidorTareas: ServidorTareas | undefined
 
 app.whenReady().then(() => {
+  servidor.configurar(join(DIR, 'sesion.json'), cifradorDelSistema(), join(DIR, 'servidor.json'))
+  servidor.alPerderSesion = () => {
+    for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(Canales.sesionPerdida)
+  }
+  // Con sesión ya iniciada, se baja el contexto (tablero, conversaciones) de los proyectos de este equipo.
+  void servidor
+    .estado()
+    .then((e) => {
+      if (!e.activa) return
+      void nucleo.hidratarTodos()
+      iniciarBucleCuenta()
+    })
+    .catch(() => undefined)
   configurarMcpTareas({ raizApp: app.getAppPath(), dirDatos: DIR })
   // Se movieron los datos desde ~/.centro-proyectos: los worktrees de los agentes guardan rutas absolutas y hay que rehacerlas.
   if (MIGRACION_DATOS.migrado) void leerProyectos().then((d) => repararWorktrees(DIR, d.proyectos)).catch(() => undefined)
@@ -244,8 +432,19 @@ app.on('window-all-closed', () => {
   app.quit()
 })
 
-app.on('before-quit', () => {
+// Antes de salir se envía lo que aún esté esperando para subirse al servidor (máximo 3 s: sin red no se retiene el cierre).
+let sincronizadoAlSalir = false
+app.on('before-quit', (e) => {
   terminales.cerrarTodas()
+  if (!sincronizadoAlSalir) {
+    e.preventDefault()
+    sincronizadoAlSalir = true
+    detenerBucleCuenta()
+    void Promise.race([Promise.all([nucleo.sync.vaciar(), sincronizarCuenta()]), new Promise((r) => setTimeout(r, 3000))])
+      .catch(() => undefined)
+      .finally(() => app.quit())
+    return
+  }
   void servidorTareas?.cerrar()
   void nucleo.detener()
 })

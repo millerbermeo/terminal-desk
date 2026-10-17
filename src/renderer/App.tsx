@@ -8,6 +8,7 @@ import { Tareas } from './components/Tareas'
 import { Versiones } from './components/Versiones'
 import { Api } from './components/Api'
 import { Navegador } from './components/Navegador'
+import { Documentacion } from './components/Documentacion'
 import { ModalSolicitudGlobal } from './components/ModalSolicitud'
 import { escucharSolicitudes, useSolicitudes } from './agente/solicitudes'
 import { ConfigAgentes } from './components/ConfigAgentes'
@@ -67,7 +68,15 @@ function tituloUnico(base: string, existentes: TerminalInfo[]): string {
   for (let n = 2; ; n++) if (!usados.has(`${base} · ${n}`)) return `${base} · ${n}`
 }
 
-export function App() {
+interface PropsApp {
+  email?: string
+  /** Abre el panel de la cuenta (contraseña, cerrar sesión). */
+  onCuenta: () => void
+  /** El servidor rechazó el token: hay que volver a la pantalla de acceso. */
+  onSesionPerdida: () => void
+}
+
+export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   const [datos, setDatos] = useState<DatosProyectos>({ grupos: [], proyectos: [] })
   const [modalAgregar, setModalAgregar] = useState<{ rutas: string[] } | null>(null)
 
@@ -89,10 +98,10 @@ export function App() {
   const [menuNueva, setMenuNueva] = useState<string | null>(null) // id de la pestaña con el menú «+ Terminal» abierto
 
   useEffect(() => {
-    void window.api.proyectos.listar().then(setDatos)
+    void window.api.proyectos.listar().then(setDatos).catch(onSesionPerdida)
     void window.api.proveedores.listar().then(setProveedores).catch(() => undefined)
     void window.api.agentes.listar().then(setBiblioteca).catch(() => undefined)
-  }, [])
+  }, [onSesionPerdida])
 
   const cambiar = useCallback((id: string, f: (v: Ventana) => Ventana): void => {
     setVentanas((vs) => vs.map((v) => (v.id === id ? f(v) : v)))
@@ -318,6 +327,8 @@ export function App() {
         onVista={setVista}
         pendientesAsistente={solicitudes.length}
         onAbrirAsistente={abrirAsistente}
+        email={email}
+        onCuenta={onCuenta}
       />
       {modalAgregar && (
         <ModalAgregar
@@ -338,6 +349,7 @@ export function App() {
       <Versiones datos={datos} visible={vista === 'versiones'} onDatos={setDatos} />
       <Api visible={vista === 'api'} />
       <Navegador visible={vista === 'navegador'} />
+      <Documentacion visible={vista === 'guia'} />
       {/* siempre montado (oculto en las pantallas de configuración) para no matar los procesos de las terminales */}
       <main className="principal" style={{ display: vista !== 'terminales' ? 'none' : 'flex' }}>
         <div className="ventanas" role="tablist" ref={barraPestanas}>

@@ -1,54 +1,68 @@
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
-import { randomUUID } from 'node:crypto'
-import { access, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { access, readdir, readFile, stat } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import type { DatosProyectos } from '@shared/modelos'
 import type { ErrorProyecto, ResultadoAgregar, SolicitudAgregar, ValidacionRuta } from '@shared/ipc'
 import { resolverDirDatos } from './migracion'
+import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
+import { RutasLocales } from './servidor/rutas'
+import { avisoDeGit, leerVinculo, repoDe, vincularProyectoLocal } from './servidor/vinculo'
 
 // Los datos del usuario viven en ~/.odesk-agent. Si existe la carpeta del nombre anterior (~/.centro-proyectos), se mueve aquí al
 // arrancar, antes de que nada lea ni escriba (este módulo se evalúa antes que los que usan `DIR`).
 export const MIGRACION_DATOS = resolverDirDatos()
 if (MIGRACION_DATOS.aviso) console.warn(MIGRACION_DATOS.aviso)
 export const DIR = MIGRACION_DATOS.dir
-const ARCHIVO = join(DIR, 'proyectos.json')
 
-function ejemplo(): DatosProyectos {
-  const home = homedir()
-  return {
-    grupos: [
-      { id: 'personal', nombre: 'Personal' },
-      { id: 'trabajo', nombre: 'Trabajo' }
-    ],
-    proyectos: [
-      { id: 'home', nombre: 'Inicio', ruta: home, grupo: 'personal' },
-      { id: 'documentos', nombre: 'Documentos', ruta: join(home, 'Documents'), grupo: 'personal' },
-      { id: 'dev', nombre: 'Dev', ruta: join(home, 'dev'), grupo: 'trabajo' },
-      { id: 'sin-grupo', nombre: 'Sin grupo', ruta: home }
-    ]
-  }
+/** Carpeta de cada proyecto en ESTE equipo: el servidor no guarda rutas. */
+export const rutasLocales = new RutasLocales(join(DIR, 'rutas.json'))
+
+interface GrupoApi {
+  id: string
+  name: string
+}
+interface ProyectoApi {
+  id: string
+  name: string
+  repo: string | null
+  groupId: string | null
 }
 
+// Las lecturas se repiten mucho (cada operación de git o archivos resuelve la carpeta del proyecto): se guardan un instante.
+const VIGENCIA_MS = 2000
+let memoria: { datos: DatosProyectos; hasta: number } | undefined
+
+/** Olvida lo leído: hay que llamarlo tras cualquier cambio en el servidor. */
+export function olvidarProyectos(): void {
+  memoria = undefined
+}
+
+/**
+ * Grupos y proyectos de la cuenta (servidor) que están en este equipo: el servidor aporta nombre, grupo y repositorio; la carpeta
+ * sale de `rutas.json`. Un proyecto de la cuenta sin carpeta aquí no aparece hasta abrir su carpeta (por su `.odesk/project.json`).
+ * Lanza `ErrorSesion` si no hay sesión.
+ */
 export async function leerProyectos(): Promise<DatosProyectos> {
-  try {
-    const crudo = JSON.parse(await readFile(ARCHIVO, 'utf8')) as Partial<DatosProyectos>
-    return { grupos: crudo.grupos ?? [], proyectos: crudo.proyectos ?? [] }
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.error('proyectos.json inválido:', err)
-      return { grupos: [], proyectos: [] }
-    }
-    const datos = ejemplo()
-    await mkdir(DIR, { recursive: true })
-    await writeFile(ARCHIVO, JSON.stringify(datos, null, 2) + '\n', 'utf8')
-    return datos
+  if (memoria && memoria.hasta > Date.now()) return structuredClone(memoria.datos)
+  const r = await servidor.get<{ groups: GrupoApi[]; projects: ProyectoApi[] }>('/projects')
+  const locales = await rutasLocales.todas()
+  const datos: DatosProyectos = {
+    grupos: r.groups.map((g) => ({ id: g.id, nombre: g.name })),
+    proyectos: r.projects.flatMap((p) => (locales[p.id] ? [{ id: p.id, nombre: p.name, ruta: locales[p.id], ...(p.groupId ? { grupo: p.groupId } : {}) }] : []))
   }
+  memoria = { datos, hasta: Date.now() + VIGENCIA_MS }
+  return structuredClone(datos)
 }
 
-async function guardar(datos: DatosProyectos): Promise<void> {
-  await mkdir(DIR, { recursive: true })
-  await writeFile(ARCHIVO, JSON.stringify(datos, null, 2) + '\n', 'utf8')
+/** Proyectos del archivo local de antes de existir el servidor (`proyectos.json`); vacío si no hay. */
+export async function leerProyectosLocales(): Promise<DatosProyectos> {
+  try {
+    const crudo = JSON.parse(await readFile(join(DIR, 'proyectos.json'), 'utf8')) as Partial<DatosProyectos>
+    return { grupos: crudo.grupos ?? [], proyectos: crudo.proyectos ?? [] }
+  } catch {
+    return { grupos: [], proyectos: [] }
+  }
 }
 
 /** Absoluta tal cual; `~` y relativas se resuelven contra el home. */
@@ -96,89 +110,93 @@ export async function sugerirRutas(prefijo: string): Promise<string[]> {
   }
 }
 
-function idUnico(base: string, usados: Set<string>): string {
-  const slug =
-    base
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '') || 'item'
-  let id = slug
-  while (usados.has(id)) id = `${slug}-${randomUUID().slice(0, 4)}`
-  return id
-}
+export async function agregarProyectos(sol: SolicitudAgregar): Promise<ResultadoAgregar> {
+  const datos = await leerProyectos()
+  const errores: ErrorProyecto[] = []
+  const rutas: string[] = []
 
-// Serializa lecturas-modificaciones-escrituras para no pisar el archivo.
-let cola: Promise<unknown> = Promise.resolve()
-function enCola<T>(fn: () => Promise<T>): Promise<T> {
-  const p = cola.then(fn, fn)
-  cola = p.catch(() => undefined)
-  return p
-}
+  for (const [indice, p] of sol.proyectos.entries()) {
+    const v = await validarRuta(p.ruta)
+    rutas.push(v.ruta)
+    if (!p.nombre.trim()) errores.push({ indice, mensaje: 'Falta el nombre' })
+    else if (!v.ok) errores.push({ indice, mensaje: `${v.mensaje}: ${v.ruta || p.ruta}` })
+    else if (rutas.indexOf(v.ruta) !== indice) errores.push({ indice, mensaje: 'Ruta repetida en el formulario' })
+  }
+  if (sol.grupoId && !datos.grupos.some((g) => g.id === sol.grupoId)) {
+    errores.push({ indice: -1, mensaje: 'El grupo no existe' })
+  }
+  if (errores.length > 0) return { datos, errores }
 
-export function agregarProyectos(sol: SolicitudAgregar): Promise<ResultadoAgregar> {
-  return enCola(async () => {
-    const datos = await leerProyectos()
-    const errores: ErrorProyecto[] = []
-    const rutas: string[] = []
-
-    for (const [indice, p] of sol.proyectos.entries()) {
-      const v = await validarRuta(p.ruta)
-      rutas.push(v.ruta)
-      if (!p.nombre.trim()) errores.push({ indice, mensaje: 'Falta el nombre' })
-      else if (!v.ok) errores.push({ indice, mensaje: `${v.mensaje}: ${v.ruta || p.ruta}` })
-      else if (rutas.indexOf(v.ruta) !== indice) errores.push({ indice, mensaje: 'Ruta repetida en el formulario' })
-    }
-    if (sol.grupoId && !datos.grupos.some((g) => g.id === sol.grupoId)) {
-      errores.push({ indice: -1, mensaje: 'El grupo no existe' })
-    }
-    if (errores.length > 0) return { datos, errores }
-
-    let grupo = sol.grupoId
-    const nombreGrupo = sol.grupoNuevo?.trim()
-    if (!grupo && nombreGrupo) {
-      const existente = datos.grupos.find((g) => g.nombre.toLowerCase() === nombreGrupo.toLowerCase())
-      if (existente) grupo = existente.id
-      else {
-        grupo = idUnico(nombreGrupo, new Set(datos.grupos.map((g) => g.id)))
-        datos.grupos.push({ id: grupo, nombre: nombreGrupo })
+  // El servidor crea (o reutiliza por nombre) el grupo nuevo con el primer proyecto; los demás ya lo encuentran.
+  const nombreGrupo = sol.grupoNuevo?.trim()
+  const destino = sol.grupoId ? { groupId: sol.grupoId } : nombreGrupo ? { groupName: nombreGrupo } : {}
+  const reanudados: string[] = []
+  const avisos: string[] = []
+  try {
+    for (const [i, p] of sol.proyectos.entries()) {
+      try {
+        const id = await resolverProyecto(p.nombre.trim(), rutas[i], destino)
+        if (id.existente) reanudados.push(id.id)
+        else {
+          const aviso = await avisoDeGit(rutas[i])
+          if (aviso) avisos.push(`${p.nombre.trim()}: ${aviso}`)
+        }
+        await rutasLocales.fijar(id.id, rutas[i])
+      } catch (err) {
+        if (err instanceof ErrorSesion || (err instanceof ErrorServidor && err.estado === undefined) || !(err instanceof Error)) throw err // sin sesión o sin conexión: se corta todo
+        errores.push({ indice: i, mensaje: err.message })
       }
     }
-
-    const usados = new Set(datos.proyectos.map((p) => p.id))
-    sol.proyectos.forEach((p, i) => {
-      const id = idUnico(p.nombre, usados)
-      usados.add(id)
-      datos.proyectos.push({ id, nombre: p.nombre.trim(), ruta: rutas[i], ...(grupo ? { grupo } : {}) })
-    })
-    await guardar(datos)
-    return { datos, errores: [] }
-  })
+  } finally {
+    olvidarProyectos()
+  }
+  return { datos: await leerProyectos(), errores, ...(reanudados.length ? { reanudados } : {}), ...(avisos.length ? { avisos } : {}) }
 }
 
-export function eliminarProyecto(id: string): Promise<DatosProyectos> {
-  return enCola(async () => {
-    const datos = await leerProyectos()
-    datos.proyectos = datos.proyectos.filter((p) => p.id !== id)
-    await guardar(datos)
-    return datos
-  })
+/**
+ * Enlace local de una carpeta: si ya trae `.odesk/project.json` y el proyecto es de esta cuenta, se reanuda (mismo id, así se
+ * recupera su contexto); si no, se registra uno nuevo en el servidor y se escribe el archivo.
+ */
+async function resolverProyecto(nombre: string, ruta: string, destino: object): Promise<{ id: string; existente: boolean }> {
+  const previo = await leerVinculo(ruta)
+  if (previo) {
+    try {
+      await servidor.get(`/projects/${previo}`)
+      return { id: previo, existente: true }
+    } catch (err) {
+      if (!(err instanceof ErrorServidor) || err.estado !== 404) throw err
+      // el id del archivo no es de esta cuenta (o ya no existe): se registra uno nuevo y se reescribe
+    }
+  }
+  const repo = await repoDe(ruta)
+  const creado = await servidor.post<{ id: string }>('/projects', { name: nombre, ...(repo ? { repo } : {}), ...destino })
+  try {
+    await vincularProyectoLocal(ruta, creado.id)
+  } catch (err) {
+    await servidor.delete(`/projects/${creado.id}`).catch(() => undefined) // sin el archivo el proyecto quedaría huérfano
+    throw new Error(`No se pudo escribir .odesk/project.json en la carpeta: ${(err as Error).message}`, { cause: err })
+  }
+  return { id: creado.id, existente: false }
+}
+
+/**
+ * «Quitar» un proyecto lo suelta de este equipo; en el servidor se conserva (tareas, conversaciones…) y en otros equipos sigue
+ * igual. Su `.odesk/project.json` queda en la carpeta: al volver a abrirla se retoma el mismo proyecto.
+ */
+export async function eliminarProyecto(id: string): Promise<DatosProyectos> {
+  await rutasLocales.quitar(id)
+  olvidarProyectos()
+  return leerProyectos()
 }
 
 /** Borra el grupo; sus proyectos pasan a "sin grupo". */
-export function eliminarGrupo(id: string): Promise<DatosProyectos> {
-  return enCola(async () => {
-    const datos = await leerProyectos()
-    datos.grupos = datos.grupos.filter((g) => g.id !== id)
-    datos.proyectos = datos.proyectos.map((p) => {
-      if (p.grupo !== id) return p
-      const { grupo: _omitido, ...resto } = p
-      return resto
-    })
-    await guardar(datos)
-    return datos
-  })
+export async function eliminarGrupo(id: string): Promise<DatosProyectos> {
+  try {
+    await servidor.delete(`/groups/${encodeURIComponent(id)}`)
+  } finally {
+    olvidarProyectos()
+  }
+  return leerProyectos()
 }
 
 /** Carpeta de un proyecto registrado (falla si ya no existe). */

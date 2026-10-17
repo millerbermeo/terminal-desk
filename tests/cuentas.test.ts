@@ -6,6 +6,7 @@ import type { EventoAgente } from '@shared/core/agente'
 import type { Nucleo as TipoNucleo } from '../src/main/core/index'
 import { Cuentas, llevarSesion } from '../src/main/core/cuentas'
 import { ejecutarSuscripcion, esErrorDeLimite } from '../src/main/core/suscripcion'
+import { ServidorFalso } from './servidor-falso'
 
 // `claude` falso por carpeta de configuración: hay sesión si existe `<config>/sesion`; está en el límite si existe `<config>/limite`;
 // `--resume <id>` solo funciona si existe `<config>/projects/*/<id>.jsonl`. Cada ejecución se anota en FALSO_VOLCADO.
@@ -71,8 +72,10 @@ beforeAll(async () => {
   const proyecto = join(home, 'proyecto')
   await mkdir(proyecto)
   await mkdir(join(home, '.odesk-agent'))
-  await writeFile(join(home, '.odesk-agent', 'proyectos.json'), JSON.stringify({ grupos: [], proyectos: [{ id: 'p1', nombre: 'P', ruta: proyecto }] }))
+  const srv = await new ServidorFalso([{ id: 'p1', nombre: 'P', ruta: proyecto }]).iniciar()
+  srv.apuntar()
   ;({ Nucleo } = await import('../src/main/core/index'))
+  await srv.entrar()
 })
 
 describe('almacén de cuentas', () => {

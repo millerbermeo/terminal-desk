@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
 import logo from '../assets/logo.png'
-import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoGlobo, IconoMas, IconoRama, IconoTareas } from './Iconos'
+import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoGlobo, IconoLibro, IconoMas, IconoRama, IconoTareas } from './Iconos'
 
 interface Props {
   datos: DatosProyectos
@@ -23,9 +23,12 @@ interface Props {
   pendientesAsistente: number
   /** Abre una celda del proyecto con el asistente integrado. */
   onAbrirAsistente: (p: Proyecto) => void
+  /** Cuenta con la que se entró al servidor; abre su panel (contraseña, cerrar sesión). */
+  email?: string
+  onCuenta: () => void
 }
 
-export type Vista = 'terminales' | 'config' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones' | 'api' | 'navegador'
+export type Vista = 'terminales' | 'config' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones' | 'api' | 'navegador' | 'guia'
 
 interface MenuIA {
   proyecto: Proyecto
@@ -33,7 +36,7 @@ interface MenuIA {
   left: number
 }
 
-export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, onAbrirCarpeta, onAgregarRuta, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente, onAbrirAsistente }: Props) {
+export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, onAbrirCarpeta, onAgregarRuta, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente, onAbrirAsistente, email, onCuenta }: Props) {
   const [cerrados, setCerrados] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<MenuIA | null>(null)
 
@@ -177,6 +180,13 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
         <button className={`item item-config${vista === 'config' ? ' activo' : ''}`} onClick={() => onVista(vista === 'config' ? 'terminales' : 'config')}>
           <IconoEngranaje />
           <span>Configurar proyectos</span>
+        </button>
+        <button className={`item item-config${vista === 'guia' ? ' activo' : ''}`} onClick={() => onVista(vista === 'guia' ? 'terminales' : 'guia')} title="Qué trae la app, para qué sirve cada herramienta y cómo se usa">
+          <IconoLibro />
+          <span>Guía de la app</span>
+        </button>
+        <button className="item item-config" onClick={onCuenta} title="Cambiar contraseña o cerrar sesión">
+          <span>Cuenta{email ? ` · ${email}` : ''}</span>
         </button>
       </footer>
       {menu && (

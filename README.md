@@ -8,9 +8,11 @@
 
 Electron · Vite · React · TypeScript · xterm.js · node-pty
 
-[Instalación](#instalación) · [Actualizar](#actualizar) · [Características](#características) · [Desarrollo](#desarrollo) · [Documentación](#documentación)
+[⚠️ Obligatorio](OBLIGATORIO.md) · [Instalación](#instalación) · [Actualizar](#actualizar) · [Características](#características) · [Desarrollo](#desarrollo) · [Documentación](#documentación)
 
 </div>
+
+> **⚠️ Antes de usarlo en varias computadoras lee [OBLIGATORIO.md](OBLIGATORIO.md)** — sobre todo: sube `.odesk/project.json` a git en cada proyecto.
 
 ---
 

@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
-import { BrowserWindow, ipcMain, safeStorage } from 'electron'
+import { basename, isAbsolute, join, relative } from 'node:path'
+import { BrowserWindow, ipcMain } from 'electron'
 import type { InfoSuite, ResultadoEvals } from '@shared/core/evals'
 import type { TurnoGuardado } from '@shared/core/sesion'
 import { LIMITES_ADJUNTOS } from '@shared/core/adjuntos'
@@ -49,14 +49,18 @@ import { leerConfigMcp } from './mcp/config'
 import { validarId } from './memory/almacen'
 import { herramientasMemoria } from './memory/herramientas'
 import { MemoriaLargoPlazo } from './memory/largo-plazo'
-import { MemoriaCortoPlazo } from './memory/sesion'
+import { MemoriaCortoPlazo, type Sesion } from './memory/sesion'
+import type { Tarea } from '@shared/tareas'
 import { OrquestadorMcp } from './mcp/orquestador'
 import { Cuentas, llevarSesion } from './cuentas'
 import { Repositorio } from './git/repositorio'
 import { AlmacenJson } from './memory/almacen'
 import { ServicioTareas, type Documento as DocumentoTareas } from './tareas/servicio'
 import { crearEjecutorOdesk, herramientasOdesk, type EjecutorOdesk } from './herramientas-odesk'
-import { AlmacenToken, type Cifrador } from '../github/token'
+import { AlmacenToken } from '../github/token'
+import { cifradorDelSistema } from '../cifrador'
+import { servidor } from '../servidor/cliente'
+import { Sincronizador } from '../servidor/sincronizador'
 import { ServicioGitHub } from '../github/servicio'
 import { ejecutarOperacionTareas } from './tareas/operaciones'
 import { archivoMcpTareas } from './tareas/mcp-config'
@@ -100,34 +104,23 @@ interface Corrida {
   alEvento: (e: EventoAgente) => void
 }
 
-/** Cifrado del token de GitHub con el llavero del sistema; sin un llavero seguro (Linux sin gestor de claves) no hay cifrado y el token no se guarda. */
-function cifradorDelSistema(): Cifrador {
-  const disponible = (): boolean => {
-    try {
-      if (!safeStorage?.isEncryptionAvailable()) return false
-      // En Linux sin gestor de claves Electron usa un cifrado con clave fija («basic_text»): equivale a no cifrar.
-      const motor = (safeStorage as { getSelectedStorageBackend?: () => string }).getSelectedStorageBackend?.()
-      return !(process.platform === 'linux' && (motor === 'basic_text' || motor === 'unknown'))
-    } catch {
-      return false
-    }
-  }
-  return {
-    disponible,
-    cifrar: (t) => safeStorage.encryptString(t).toString('base64'),
-    descifrar: (c) => safeStorage.decryptString(Buffer.from(c, 'base64'))
-  }
-}
+const HERRAMIENTAS_ESCRITURA = new Set(['escribir_archivo', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
 
 export class Nucleo {
   readonly registro = new RegistroHerramientas()
-  readonly sesiones = new MemoriaCortoPlazo(join(DIR, 'conversaciones'))
+  /** Sube al servidor lo que cambia aquí (tareas, conversaciones, trazas, archivos tocados) y baja el contexto de cada proyecto. */
+  readonly sync = new Sincronizador(servidor)
+  readonly sesiones = new MemoriaCortoPlazo(join(DIR, 'conversaciones'), (id, nuevo) => {
+    if (nuevo) this.sync.encolar(nuevo.proyectoId, 'chat', id, nuevo as unknown as Record<string, unknown>, Date.parse(nuevo.actualizada) || Date.now())
+  })
   readonly memoria = new MemoriaLargoPlazo(join(DIR, 'memoria'))
   private readonly monitor = new MonitorContexto()
   private readonly router = new Router()
   private readonly puerta = new PuertaHumana()
   private readonly guardrails = new MotorGuardrails()
-  readonly trazas = new AlmacenTrazas(join(DIR, 'trazas'))
+  readonly trazas = new AlmacenTrazas(join(DIR, 'trazas'), (id, nuevo) => {
+    if (nuevo && nuevo.estado !== 'en_curso') this.sync.encolar(nuevo.proyectoId, 'trace', id, nuevo as unknown as Record<string, unknown>, nuevo.fin ?? nuevo.inicio)
+  })
   readonly trazador = new Trazador(this.trazas)
   private readonly informes = new AlmacenInformes(join(DIR, 'evals'))
   readonly permisos = new PermisosStore(join(DIR, 'permisos'))
@@ -137,9 +130,11 @@ export class Nucleo {
   readonly preferencias = new Preferencias(join(DIR, 'preferencias.json'))
   private readonly sesionesCli = new SesionesCli(join(DIR, 'sesiones-cli.json'))
   readonly github: ServicioGitHub
+  /** Token de GitHub (cifrado con el llavero del sistema). La bóveda de claves lo lleva a otros equipos. */
+  readonly tokenGitHub = new AlmacenToken(join(DIR, 'github.json'), cifradorDelSistema())
   readonly ejecutarHerramienta: EjecutorOdesk
   readonly cuentas = new Cuentas(join(DIR, 'cuentas.json'), join(DIR, 'cuentas'))
-  readonly tareas = new ServicioTareas(new AlmacenJson<DocumentoTareas>(join(DIR, 'tareas'), 0o600), {
+  readonly tareas = new ServicioTareas(new AlmacenJson<DocumentoTareas>(join(DIR, 'tareas'), 0o600, (_id, nuevo, previo) => this.sync.tareasCambiadas(nuevo, previo)), {
     proyectos: () => leerProyectos(),
     alCambiar: () => {
       try {
@@ -165,7 +160,7 @@ export class Nucleo {
     registrarIntegradas(this.registro)
     for (const h of herramientasMemoria(this.memoria)) this.registro.registrar(h)
     this.github = new ServicioGitHub({
-      token: new AlmacenToken(join(DIR, 'github.json'), cifradorDelSistema()),
+      token: this.tokenGitHub,
       carpetaDe: carpetaDeProyecto,
       agregarProyecto: registrarProyecto,
       dirDatos: DIR
@@ -733,8 +728,18 @@ export class Nucleo {
     return this.trazas.obtener(validarId(id))
   }
 
-  eliminarTraza(id: string): Promise<void> {
-    return this.trazas.eliminar(validarId(id))
+  /** Borra una traza aquí y en los demás equipos (la poda automática de las viejas, en cambio, es solo local). */
+  async eliminarTraza(id: string): Promise<void> {
+    const t = await this.trazas.obtener(validarId(id))
+    await this.trazas.eliminar(validarId(id))
+    this.sync.borrar(t?.proyectoId, 'trace', id)
+  }
+
+  /** Borra una conversación aquí y en los demás equipos (la poda automática de las viejas es solo local). */
+  async borrarSesion(id: string): Promise<void> {
+    const s = await this.sesiones.obtener(validarId(id))
+    await this.sesiones.borrar(id)
+    this.sync.borrar(s?.proyectoId, 'chat', id)
   }
 
   evalsSuites(): InfoSuite[] {
@@ -760,17 +765,111 @@ export class Nucleo {
     this.activas.get(id)?.abort()
   }
 
+  /**
+   * Baja del servidor el contexto de un proyecto (tablero, conversaciones, trazas) y lo mezcla con lo local: gana lo más reciente.
+   * Lo local que el servidor no tiene, o tiene más viejo, se sube.
+   */
+  async hidratar(proyectoId: string, incremental = false): Promise<{ tareas: number; chats: number; trazas: number; borrados: number }> {
+    const previo = incremental ? this.cursores.get(proyectoId) : undefined
+    const ctx = await this.sync.contexto(proyectoId, previo !== undefined ? Math.max(0, previo - 10_000) : undefined)
+    const hecho = { tareas: 0, chats: 0, trazas: 0, borrados: 0 }
+    for (const d of ctx.tasks) this.sync.recordar(proyectoId, 'task', d.id, d.data)
+    for (const d of ctx.chats) this.sync.recordar(proyectoId, 'chat', d.id, d.data)
+    for (const d of ctx.traces) this.sync.recordar(proyectoId, 'trace', d.id, d.data)
+    hecho.tareas = await this.tareas.fusionar(ctx.tasks.map((d) => d.data as Tarea))
+    for (const d of ctx.chats) if (await this.sesiones.fusionar(d.data as Sesion).catch(() => false)) hecho.chats++
+    for (const d of ctx.traces) if (await this.trazas.fusionar(d.data as Traza).catch(() => false)) hecho.trazas++
+    // Lo que se borró en otro equipo se borra aquí (si aquí no cambió después) y no se vuelve a subir.
+    const borrado = new Map((ctx.deleted ?? []).map((b) => [`${b.kind}/${b.id}`, b.updatedAt]))
+    hecho.borrados += await this.tareas.quitarRemotas((ctx.deleted ?? []).filter((b) => b.kind === 'task').map((b) => ({ id: b.id, hasta: b.updatedAt })))
+    for (const b of ctx.deleted ?? []) {
+      try {
+        if (b.kind === 'chat') {
+          const s = await this.sesiones.obtener(validarId(b.id))
+          if (s && (Date.parse(s.actualizada) || 0) <= b.updatedAt) {
+            await this.sesiones.borrar(b.id)
+            hecho.borrados++
+          }
+        } else if (b.kind === 'trace') {
+          const t = await this.trazas.obtener(validarId(b.id))
+          if (t && (t.fin ?? t.inicio) <= b.updatedAt) {
+            await this.trazas.eliminar(b.id)
+            hecho.borrados++
+          }
+        }
+      } catch {
+        // id raro en el servidor: se ignora
+      }
+    }
+    if (ctx.cursor !== undefined) this.cursores.set(proyectoId, ctx.cursor)
+    // Consulta incremental: solo trae cambios, así que no sirve para saber qué falta en el servidor (eso ya lo sube cada cambio local).
+    if (previo !== undefined) return hecho
+    // Completa: lo que aquí es nuevo o más reciente que el servidor (y no se borró después en otro equipo) se sube.
+    const remotas = new Map(ctx.tasks.map((d) => [d.id, d.updatedAt]))
+    for (const t of (await this.tareas.leer()).tareas) {
+      if (t.proyectoId !== proyectoId) continue
+      const limite = Math.max(remotas.get(t.id) ?? 0, borrado.get(`task/${t.id}`) ?? 0)
+      if (limite < t.actualizada) this.sync.encolar(proyectoId, 'task', t.id, t as unknown as Record<string, unknown>, t.actualizada)
+    }
+    const chatsRemotos = new Map(ctx.chats.map((d) => [d.id, d.updatedAt]))
+    for (const r of await this.sesiones.listar(proyectoId)) {
+      const s = await this.sesiones.obtener(r.id)
+      if (!s) continue
+      const cuando = Date.parse(s.actualizada) || 0
+      if (Math.max(chatsRemotos.get(s.id) ?? 0, borrado.get(`chat/${s.id}`) ?? 0) < cuando) this.sync.encolar(proyectoId, 'chat', s.id, s as unknown as Record<string, unknown>, cuando)
+    }
+    return hecho
+  }
+
+  /** Cursor del servidor por proyecto (en memoria): la primera vez se baja todo, después solo lo que cambió. */
+  private readonly cursores = new Map<string, number>()
+
+  /**
+   * `hidratar` de todos los proyectos de este equipo, uno tras otro; un fallo no detiene a los demás. `incremental`: solo lo que
+   * cambió desde la última vez (lo usa el bucle periódico).
+   */
+  async hidratarTodos(incremental = false): Promise<{ tareas: number; chats: number; trazas: number; borrados: number }> {
+    const total = { tareas: 0, chats: 0, trazas: 0, borrados: 0 }
+    for (const p of (await leerProyectos()).proyectos) {
+      try {
+        const h = await this.hidratar(p.id, incremental)
+        for (const k of Object.keys(total) as (keyof typeof total)[]) total[k] += h[k]
+      } catch (err) {
+        console.warn(`No se pudo bajar el contexto de «${p.nombre}»:`, (err as Error).message)
+      }
+    }
+    return total
+  }
+
+  /** Anota en el servidor qué archivos modificó la IA (herramientas propias y las de Claude Code). */
+  registrarArchivoTocado(proyectoId: string | undefined, ev: EventoAgente): void {
+    if (ev.tipo !== 'herramienta_fin' || ev.resultado.error || !HERRAMIENTAS_ESCRITURA.has(ev.llamada.nombre)) return
+    const e = ev.llamada.entrada
+    const cruda = [e.ruta, e.file_path, e.path, e.notebook_path].find((v): v is string => typeof v === 'string' && v !== '')
+    if (!cruda || !proyectoId) return
+    void leerProyectos()
+      .then((d) => {
+        const raiz = d.proyectos.find((p) => p.id === proyectoId)?.ruta
+        const rel = raiz && isAbsolute(cruda) ? relative(raiz, cruda) : cruda
+        this.sync.evento(proyectoId, 'archivo_modificado', { ruta: rel.startsWith('..') ? basename(cruda) : rel, herramienta: ev.llamada.nombre, ...(ev.ejecucionId ? { ejecucionId: ev.ejecucionId } : {}) })
+      })
+      .catch(() => undefined)
+  }
+
   async detener(): Promise<void> {
+    await this.sync.vaciar().catch(() => undefined)
     for (const c of this.activas.values()) c.abort()
     await this.mcp.detener()
   }
 }
 
-export function registrarIpcCore(nucleo: Nucleo): void {
+/** `alCambiarCuenta`: se llama tras cambiar datos de la cuenta (p. ej. comandos) para subirlos pronto a la nube. */
+export function registrarIpcCore(nucleo: Nucleo, alCambiarCuenta?: () => void): void {
   ipcMain.handle(Canales.coreEjecutar, async (e, sol: SolicitudAgente) => {
     if (typeof sol?.prompt !== 'string' || !sol.prompt.trim()) throw new Error('prompt vacío')
     const emisor = e.sender
     return nucleo.ejecutar(sol, (ev) => {
+      nucleo.registrarArchivoTocado(sol.proyectoId, ev)
       if (!emisor.isDestroyed()) emisor.send(Canales.coreEvento, ev)
     })
   })
@@ -815,8 +914,16 @@ export function registrarIpcCore(nucleo: Nucleo): void {
   ipcMain.handle(Canales.coreAdjuntoEliminar, (_e, id: string) => nucleo.adjuntos.eliminar(String(id)))
   ipcMain.handle(Canales.coreComandosListar, (_e, ambito?: string) => nucleo.comandos.listar(ambito || undefined))
   ipcMain.handle(Canales.coreComandosEfectivos, (_e, proyectoId?: string) => nucleo.comandos.efectivos(proyectoId || undefined))
-  ipcMain.handle(Canales.coreComandosGuardar, (_e, comando: ComandoUsuario, ambito?: string) => nucleo.comandos.guardar(comando, ambito || undefined))
-  ipcMain.handle(Canales.coreComandosEliminar, (_e, nombre: string, ambito?: string) => nucleo.comandos.eliminar(String(nombre), ambito || undefined))
+  ipcMain.handle(Canales.coreComandosGuardar, async (_e, comando: ComandoUsuario, ambito?: string) => {
+    const r = await nucleo.comandos.guardar(comando, ambito || undefined)
+    alCambiarCuenta?.()
+    return r
+  })
+  ipcMain.handle(Canales.coreComandosEliminar, async (_e, nombre: string, ambito?: string) => {
+    const r = await nucleo.comandos.eliminar(String(nombre), ambito || undefined)
+    alCambiarCuenta?.()
+    return r
+  })
   ipcMain.handle(Canales.coreComandoEjecutar, (e, proyectoId: string, nombre: string, argumentos: string) =>
     nucleo.ejecutarComando(String(proyectoId), String(nombre), String(argumentos ?? ''), (ev) => {
       if (!e.sender.isDestroyed()) e.sender.send(Canales.coreEvento, ev)
@@ -830,7 +937,7 @@ export function registrarIpcCore(nucleo: Nucleo): void {
   ipcMain.handle(Canales.coreSesionTranscripcion, (_e, id: string, turnos: TurnoGuardado[], proyectoId?: string) =>
     nucleo.sesiones.guardarTranscripcion(validarId(String(id)), Array.isArray(turnos) ? turnos : [], proyectoId ? validarId(String(proyectoId)) : undefined)
   )
-  ipcMain.handle(Canales.coreSesionBorrar, (_e, id: string) => nucleo.sesiones.borrar(String(id)))
+  ipcMain.handle(Canales.coreSesionBorrar, (_e, id: string) => nucleo.borrarSesion(String(id)))
   ipcMain.handle(Canales.coreMemoriaListar, (_e, proyectoId?: string) => nucleo.memoria.listar(proyectoId || undefined))
   ipcMain.handle(Canales.coreMemoriaGuardar, (_e, entrada: NuevaEntradaMemoria, proyectoId?: string) =>
     nucleo.memoria.guardar(entrada, proyectoId || undefined)

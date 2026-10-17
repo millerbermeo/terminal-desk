@@ -166,7 +166,7 @@ describe('DIR de la aplicación', () => {
     const m = await import('../src/main/proyectos')
     expect(m.DIR).toBe(join(casa, CARPETA_DATOS))
     expect(m.MIGRACION_DATOS.migrado).toBe(true)
-    expect((await m.leerProyectos()).proyectos.map((p) => p.nombre)).toEqual(['Heredado'])
+    expect((await m.leerProyectosLocales()).proyectos.map((p) => p.nombre)).toEqual(['Heredado'])
     vi.unstubAllEnvs()
   })
 })

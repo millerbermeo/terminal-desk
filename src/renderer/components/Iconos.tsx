@@ -121,3 +121,6 @@ export const IconoAlerta = () => (
 export const IconoInfo = () => (
   <Icono width={22} height={22}><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></Icono>
 )
+export const IconoLibro = () => (
+  <Icono><path d="M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 1-2-2zM11 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7" /></Icono>
+)

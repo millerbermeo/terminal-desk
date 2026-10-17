@@ -15,8 +15,16 @@ import type { AccionNavegador, EstadoNavegador, ServidorLocal } from './navegado
 import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion'
 import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
 import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso } from './modelos'
+import type { CredencialesSesion, EstadoSesion, NombreOperacionCuenta, OperacionesCuenta, ResultadoSesion } from './sesion'
 
 export const Canales = {
+  sesionEstado: 'sesion:estado',
+  sesionIniciar: 'sesion:iniciar',
+  sesionCerrar: 'sesion:cerrar',
+  sesionGoogle: 'sesion:google',
+  sesionServidor: 'sesion:servidor',
+  sesionCuenta: 'sesion:cuenta',
+  sesionPerdida: 'sesion:perdida',
   agentesListar: 'agentes:listar',
   agentesGuardar: 'agentes:guardar',
   agentesEliminar: 'agentes:eliminar',
@@ -183,6 +191,10 @@ export interface DestinoActivacion {
 export interface ResultadoAgregar {
   datos: DatosProyectos
   errores: ErrorProyecto[]
+  /** Ids de carpetas que ya eran un proyecto de la cuenta (traían `.odesk/project.json`): se retomaron en vez de crearse. */
+  reanudados?: string[]
+  /** Cosas que el usuario debe saber o hacer (p. ej. subir `.odesk/project.json` a git). */
+  avisos?: string[]
 }
 
 /** API expuesta en window.api por el preload. */
@@ -302,6 +314,20 @@ export interface ApiCentro {
     puertos(): Promise<ServidorLocal[]>
     /** Abre la dirección en el navegador del sistema. */
     externo(url: string): Promise<void>
+  }
+  sesion: {
+    estado(): Promise<EstadoSesion>
+    /** Entra con correo y contraseña; el token se guarda en el proceso principal. */
+    iniciar(credenciales: CredencialesSesion): Promise<ResultadoSesion>
+    /** Registro, verificación, recuperación y cambio de contraseña, cerrar en todos los equipos. */
+    cuenta<K extends NombreOperacionCuenta>(op: K, entrada: OperacionesCuenta[K]['entrada']): Promise<OperacionesCuenta[K]['salida']>
+    /** Abre el navegador del sistema con el login de Google y espera el resultado (hasta 3 min). */
+    iniciarConGoogle(): Promise<ResultadoSesion>
+    /** Cambia la dirección del servidor (se guarda en `servidor.json`) y cierra la sesión actual, que era de otro servidor. */
+    fijarServidor(url: string): Promise<ResultadoSesion>
+    /** El servidor rechazó el token (venció o se revocó): hay que volver al acceso. */
+    onPerdida(cb: () => void): () => void
+    cerrar(): Promise<EstadoSesion>
   }
   agentes: {
     listar(): Promise<BibliotecaAgentes>

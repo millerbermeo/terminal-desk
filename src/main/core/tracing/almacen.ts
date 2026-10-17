@@ -25,8 +25,19 @@ export function resumir(t: Traza): ResumenTraza {
 export class AlmacenTrazas {
   private readonly almacen: AlmacenJson<Traza>
 
-  constructor(private readonly dir: string) {
-    this.almacen = new AlmacenJson<Traza>(dir, 0o600)
+  constructor(private readonly dir: string, alGuardar?: (id: string, nuevo: Traza | undefined, previo: Traza | undefined) => void) {
+    this.almacen = new AlmacenJson<Traza>(dir, 0o600, alGuardar)
+  }
+
+  /** Incorpora una traza de otra computadora si aún no está aquí (las trazas no cambian una vez terminadas). */
+  async fusionar(remota: Traza): Promise<boolean> {
+    let cambio = false
+    await this.almacen.actualizar(remota.id, (local) => {
+      if (local) return local
+      cambio = true
+      return remota
+    })
+    return cambio
   }
 
   async guardar(t: Traza): Promise<void> {

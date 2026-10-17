@@ -517,6 +517,77 @@ export class ServicioTareas {
     })
   }
 
+  /**
+   * Incorpora tareas de otra computadora (mismo proyecto): las nuevas se añaden y las que ya existen se reemplazan solo si la remota
+   * es más reciente. Si el número corto (#n) de una nueva ya lo usa otra tarea, recibe uno libre; un estado desconocido pasa a «pendiente».
+   * Devuelve cuántas tareas cambiaron. No pasa por las reglas de transición: es el estado que ya validó el otro equipo.
+   */
+  async fusionar(remotas: Tarea[]): Promise<number> {
+    let cambios = 0
+    await this.almacen.actualizar(ID, (actual) => {
+      const d = normalizar(actual)
+      const estados = new Set(d.estados.map((e) => e.id))
+      for (const r of remotas) {
+        if (!r || typeof r.id !== 'string' || typeof r.titulo !== 'string') continue
+        const i = d.tareas.findIndex((t) => t.id === r.id)
+        if (i >= 0 && d.tareas[i].actualizada >= r.actualizada) continue
+        const tarea: Tarea = { ...r, estado: estados.has(r.estado) ? r.estado : 'pendiente' }
+        if (i >= 0) {
+          tarea.numero = d.tareas[i].numero
+          d.tareas[i] = tarea
+        } else {
+          if (d.tareas.some((t) => t.numero === tarea.numero)) tarea.numero = d.siguiente
+          d.siguiente = Math.max(d.siguiente, tarea.numero + 1)
+          d.tareas.push(tarea)
+        }
+        cambios++
+      }
+      return cambios ? d : actual
+    })
+    if (cambios) this.ctx.alCambiar?.()
+    return cambios
+  }
+
+  /**
+   * Quita tareas que se borraron en otra computadora. `soloSinProyecto`: solo si aquí tampoco tienen proyecto (un borrado de la lista de
+   * tareas sueltas no debe llevarse una tarea que mientras tanto pasó a un proyecto). Devuelve cuántas quitó.
+   */
+  async quitarRemotas(borradas: { id: string; hasta: number }[], soloSinProyecto = false): Promise<number> {
+    let n = 0
+    await this.almacen.actualizar(ID, (actual) => {
+      const d = normalizar(actual)
+      const antes = d.tareas.length
+      const porId = new Map(borradas.map((b) => [b.id, b.hasta]))
+      d.tareas = d.tareas.filter((t) => {
+        const hasta = porId.get(t.id)
+        if (hasta === undefined || t.actualizada > hasta || (soloSinProyecto && t.proyectoId)) return true
+        return false
+      })
+      for (const t of d.tareas) t.dependeDe = t.dependeDe.filter((id) => !porId.has(id) || d.tareas.some((x) => x.id === id))
+      n = antes - d.tareas.length
+      return n ? d : actual
+    })
+    if (n) this.ctx.alCambiar?.()
+    return n
+  }
+
+  /** Columnas del tablero que llegan de otra computadora. Las inválidas se ignoran; las tareas en un estado que ya no existe pasan al primero. */
+  async fijarEstados(estados: EstadoTarea[]): Promise<boolean> {
+    if (!Array.isArray(estados) || validarEstados(estados) !== null) return false
+    let cambio = false
+    await this.almacen.actualizar(ID, (actual) => {
+      const d = normalizar(actual)
+      if (JSON.stringify(d.estados) === JSON.stringify(estados)) return actual
+      d.estados = estados.map((e) => ({ ...e }))
+      const ids = new Set(estados.map((e) => e.id))
+      for (const t of d.tareas) if (!ids.has(t.estado)) t.estado = estados[0]!.id
+      cambio = true
+      return d
+    })
+    if (cambio) this.ctx.alCambiar?.()
+    return cambio
+  }
+
   /** Cuando se elimina un proyecto o un grupo, sus tareas quedan sueltas (no se pierden). */
   async desvincular(f: { proyectoId?: string; grupoId?: string }): Promise<void> {
     await this.mutar('usuario', (d, reg) => {

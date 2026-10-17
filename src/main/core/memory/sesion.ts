@@ -59,8 +59,19 @@ const sinUso = (): Uso => ({ tokensEntrada: 0, tokensSalida: 0 })
 export class MemoriaCortoPlazo {
   private readonly almacen: AlmacenJson<Sesion>
 
-  constructor(dir: string) {
-    this.almacen = new AlmacenJson<Sesion>(dir, 0o600) // contiene código y salidas del proyecto
+  constructor(dir: string, alGuardar?: (id: string, nuevo: Sesion | undefined, previo: Sesion | undefined) => void) {
+    this.almacen = new AlmacenJson<Sesion>(dir, 0o600, alGuardar) // contiene código y salidas del proyecto
+  }
+
+  /** Incorpora una sesión de otra computadora si es más nueva que la local (o no existe). Devuelve si cambió algo. */
+  async fusionar(remota: Sesion): Promise<boolean> {
+    let cambio = false
+    await this.almacen.actualizar(remota.id, (local) => {
+      if (local && local.actualizada >= remota.actualizada) return local
+      cambio = true
+      return remota
+    })
+    return cambio
   }
 
   obtener(id: string): Promise<Sesion | undefined> {

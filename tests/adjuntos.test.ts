@@ -12,6 +12,7 @@ import { CompresorContexto } from '../src/main/core/context/compresion'
 import { tokensMensaje } from '../src/main/core/context/tokens'
 import type { Nucleo as TipoNucleo } from '../src/main/core/index'
 import { LlmFalso, texto } from './ayudas'
+import { ServidorFalso } from './servidor-falso'
 
 const secreto = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
@@ -141,7 +142,10 @@ describe('Nucleo con adjuntos', () => {
     const home = await mkdtemp(join(tmpdir(), 'home-'))
     vi.stubEnv('HOME', home)
     await mkdir(join(home, '.odesk-agent'))
+    const srv = await new ServidorFalso().iniciar()
+    srv.apuntar()
     ;({ Nucleo } = await import('../src/main/core/index'))
+    await srv.entrar()
   })
 
   it('inyecta imagen, PDF y texto en el mensaje, avisa de que son datos y no baja de modelo', async () => {

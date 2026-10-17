@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { confirmar } from '../confirmar'
 import { IconoCarpeta, IconoCerrar, IconoCheck, IconoMas } from './Iconos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { ErrorProyecto, ValidacionRuta } from '@shared/ipc'
@@ -138,10 +139,18 @@ export function ModalAgregar({ datos, onGuardado, onCerrar, rutasIniciales }: Pr
   const enviar = async (): Promise<void> => {
     const proyectos = usadas.map((i) => ({ nombre: filas[i].nombre.trim() || nombreDeRuta(filas[i].ruta), ruta: filas[i].ruta }))
     setGuardando(true)
-    const res = await window.api.proyectos.agregar({
-      ...(grupo === NUEVO ? { grupoNuevo } : grupo ? { grupoId: grupo } : {}),
-      proyectos
-    })
+    let res: Awaited<ReturnType<typeof window.api.proyectos.agregar>>
+    try {
+      res = await window.api.proyectos.agregar({
+        ...(grupo === NUEVO ? { grupoNuevo } : grupo ? { grupoId: grupo } : {}),
+        proyectos
+      })
+    } catch (err) {
+      // Sin sesión, sin conexión con el servidor…: se muestra el motivo en vez de dejar el botón bloqueado.
+      setGuardando(false)
+      setErrores([{ indice: -1, mensaje: String((err as Error).message ?? err).replace(/^Error invoking remote method '[^']*': (Error: )?/, '') }])
+      return
+    }
     setGuardando(false)
     if (res.errores.length > 0) {
       setErrores(res.errores.map((e) => ({ ...e, indice: e.indice >= 0 ? usadas[e.indice] : -1 })))
@@ -149,6 +158,9 @@ export function ModalAgregar({ datos, onGuardado, onCerrar, rutasIniciales }: Pr
     }
     onGuardado(res.datos)
     salir()
+    if (res.avisos?.length) {
+      void confirmar({ titulo: 'Un paso más: sube .odesk a git', texto: res.avisos.join('\n\n'), etiqueta: 'Entendido', tono: 'aviso', cancelar: 'Cerrar' })
+    }
   }
 
   const estado = (f: Fila, i: number) => {

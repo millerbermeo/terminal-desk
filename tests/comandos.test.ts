@@ -6,6 +6,7 @@ import type { ComandoUsuario } from '@shared/core/comandos'
 import type { EventoAgente } from '@shared/core/agente'
 import { ComandosStore, dividirArgumentos, expandirPlantilla, validarComando } from '../src/main/core/comandos/store'
 import type { Nucleo as TipoNucleo } from '../src/main/core/index'
+import { ServidorFalso } from './servidor-falso'
 
 const ejecutable = (nombre: string, comando: string[], extra: Partial<ComandoUsuario> = {}): ComandoUsuario => ({ nombre, descripcion: 'd', tipo: 'ejecutable', comando, ...extra })
 const prompt = (nombre: string, plantilla: string): ComandoUsuario => ({ nombre, descripcion: 'd', tipo: 'prompt', plantilla })
@@ -59,8 +60,10 @@ describe('Nucleo.ejecutarComando', () => {
     await mkdir(ruta)
     await writeFile(join(ruta, '.env'), 'X=1')
     await mkdir(join(home, '.odesk-agent'))
-    await writeFile(join(home, '.odesk-agent', 'proyectos.json'), JSON.stringify({ grupos: [], proyectos: [{ id: 'p1', nombre: 'P', ruta }] }))
+    const srv = await new ServidorFalso([{ id: 'p1', nombre: 'P', ruta }]).iniciar()
+    srv.apuntar()
     ;({ Nucleo } = await import('../src/main/core/index'))
+    await srv.entrar()
   })
 
   async function correr(n: TipoNucleo, nombre: string, argumentos = '', decidir?: (e: Extract<EventoAgente, { tipo: 'solicitud_humana' }>) => { aprobado: boolean }) {

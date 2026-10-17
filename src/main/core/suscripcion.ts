@@ -127,6 +127,11 @@ export class Preferencias {
     return this.cache
   }
 
+  /** El archivo cambió por fuera (llegó de otra computadora): la próxima lectura lo vuelve a leer. */
+  olvidarCache(): void {
+    this.cache = undefined
+  }
+
   async fijar(p: ProveedorModelo): Promise<void> {
     this.cache = p
     await mkdir(join(this.archivo, '..'), { recursive: true })

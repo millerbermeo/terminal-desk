@@ -7,11 +7,13 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { EventoAgente } from '@shared/core/agente'
 import type { Nucleo as TipoNucleo } from '../src/main/core/index'
 import { LlmFalso, texto, usar } from './ayudas'
+import { ServidorFalso } from './servidor-falso'
 
 // `DIR` (~/.odesk-agent) se calcula al importar: se apunta HOME a una carpeta temporal antes.
 const git = (cwd: string, ...args: string[]): string => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
 let repo: string
 let Nucleo: new () => TipoNucleo
+let srv: ServidorFalso
 
 beforeAll(async () => {
   const home = await mkdtemp(join(tmpdir(), 'home-'))
@@ -25,8 +27,10 @@ beforeAll(async () => {
   git(repo, 'add', '-A')
   git(repo, 'commit', '-q', '-m', 'inicial')
   await mkdir(join(home, '.odesk-agent'))
-  await writeFile(join(home, '.odesk-agent', 'proyectos.json'), JSON.stringify({ grupos: [], proyectos: [{ id: 'p1', nombre: 'P', ruta: repo }] }))
+  srv = await new ServidorFalso([{ id: 'p1', nombre: 'P', ruta: repo }]).iniciar()
+  srv.apuntar()
   ;({ Nucleo } = await import('../src/main/core/index'))
+  await srv.entrar()
 })
 
 /** Lanza un flujo con un LLM guionizado y contesta a las solicitudes humanas con `decidir`. */
@@ -116,8 +120,8 @@ describe('Nucleo: flujo aislado en git worktree', () => {
   it('rechaza el flujo aislado en un repo sin commits', async () => {
     const vacio = await mkdtemp(join(tmpdir(), 'vacio-'))
     git(vacio, 'init', '-q')
-    const home = process.env.HOME!
-    await writeFile(join(home, '.odesk-agent', 'proyectos.json'), JSON.stringify({ grupos: [], proyectos: [{ id: 'p2', nombre: 'V', ruta: vacio }] }))
+    srv.proyectos.push({ id: 'p2', nombre: 'V', ruta: vacio })
+    await srv.refrescar()
     const nucleo = new Nucleo()
     await nucleo.preferencias.fijar('api')
     ;(nucleo as unknown as { llm: () => Promise<LlmFalso> }).llm = async () => new LlmFalso([])

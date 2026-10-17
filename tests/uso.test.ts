@@ -12,6 +12,7 @@ import { RegistroHerramientas } from '../src/main/core/tools/registro'
 import { diaLocal, leerLimites, LlmMedido, Medidor } from '../src/main/core/uso/medidor'
 import type { Nucleo as TipoNucleo } from '../src/main/core/index'
 import { LlmFalso, texto, usar } from './ayudas'
+import { ServidorFalso } from './servidor-falso'
 
 const tmp = (): Promise<string> => mkdtemp(join(tmpdir(), 'uso-'))
 const uso = (e: number, s: number) => ({ tokensEntrada: e, tokensSalida: s })
@@ -140,7 +141,10 @@ describe('Nucleo: modelo elegido', () => {
   let Nucleo: new () => TipoNucleo
   beforeAll(async () => {
     vi.stubEnv('HOME', await tmp())
+    const srv = await new ServidorFalso().iniciar()
+    srv.apuntar()
     ;({ Nucleo } = await import('../src/main/core/index'))
+    await srv.entrar()
   })
   it('usa el modelo fijado (sin router), rechaza ids raros y sin clave lista los conocidos', async () => {
     const n = new Nucleo()

@@ -90,6 +90,19 @@ const api: ApiCentro = {
     puertos: () => ipcRenderer.invoke(Canales.navegadorPuertos),
     externo: (url) => ipcRenderer.invoke(Canales.navegadorExterno, url)
   },
+  sesion: {
+    estado: () => ipcRenderer.invoke(Canales.sesionEstado),
+    iniciar: (c) => ipcRenderer.invoke(Canales.sesionIniciar, c),
+    iniciarConGoogle: () => ipcRenderer.invoke(Canales.sesionGoogle),
+    cuenta: (op, entrada) => ipcRenderer.invoke(Canales.sesionCuenta, op, entrada),
+    fijarServidor: (url) => ipcRenderer.invoke(Canales.sesionServidor, url),
+    onPerdida: (cb) => {
+      const f = (): void => cb()
+      ipcRenderer.on(Canales.sesionPerdida, f)
+      return () => ipcRenderer.removeListener(Canales.sesionPerdida, f)
+    },
+    cerrar: () => ipcRenderer.invoke(Canales.sesionCerrar)
+  },
   agentes: {
     listar: () => ipcRenderer.invoke(Canales.agentesListar),
     guardar: (r) => ipcRenderer.invoke(Canales.agentesGuardar, r),
