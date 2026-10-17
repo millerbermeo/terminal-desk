@@ -403,7 +403,7 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
   const estado = !actual || actual.noEditable ? '' : actual.estado === 'guardando' ? 'Guardando…' : actual.estado === 'error' ? `Error: ${actual.mensaje}` : actual.estado === 'conflicto' ? 'Conflicto con el disco' : actual.sucio ? (auto ? 'Sin guardar…' : 'Sin guardar') : 'Guardado'
 
   return (
-    <div className="ed">
+    <div className="ed" onKeyDown={(e) => e.key === 'Escape' && arbolVisible && setArbolVisible(false)}>
       <aside className={`ed-arbol${arbolVisible ? ' abierto' : ''}`} onMouseDown={(e) => e.stopPropagation()}>
         <div className="ed-arbol-cab">
           <strong title={nombre}>{nombre}</strong>
@@ -471,7 +471,8 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
           </div>
         )}
 
-        <div className="ed-cuerpo">
+        {/* En panel estrecho el árbol es un cajón: al pulsar en el código se cierra (el clic sigue llegando al editor). */}
+        <div className="ed-cuerpo" onMouseDown={() => arbolVisible && setArbolVisible(false)}>
           {!actual && (
             <EstadoVacio icono={<IconoArchivo />} titulo={`Editor de ${nombre}`} texto="Elige un archivo del árbol. Los cambios se guardan solos. Clic derecho en el árbol para crear, renombrar o borrar." />
           )}
