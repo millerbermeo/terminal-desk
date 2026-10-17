@@ -6,7 +6,7 @@ import { ErrorSesion, type ClienteServidor } from './cliente'
 
 /** Mismo patrón que acepta el servidor: solo documentos de cuenta conocidos (nada fuera de la carpeta de datos). */
 export const ID_DOC_CUENTA =
-  /^(?:(?:memoria|permisos|comandos)\/[A-Za-z0-9_-]{1,64}\.json|preferencias\.json|proveedores\.json|mcp\.json|tareas\/[A-Za-z0-9_-]{1,64}|tareas-estados)$/
+  /^(?:(?:memoria|permisos)\/[A-Za-z0-9_-]{1,64}\.json|preferencias\.json|proveedores\.json|mcp\.json|tareas\/[A-Za-z0-9_-]{1,64}|tareas-estados)$/
 
 export interface DocLocal {
   data: Record<string, unknown>
@@ -176,7 +176,7 @@ function conClavesLocales(id: string, remoto: Record<string, unknown>, local: un
 }
 
 /**
- * Archivos de cuenta de `~/.odesk-agent`: memoria, permisos y comandos (un archivo por documento), preferencias, proveedores y
+ * Archivos de cuenta de `~/.odesk-agent`: memoria y permisos (un archivo por documento), preferencias, proveedores y
  * servidores MCP. `alAplicar` avisa tras escribir uno que llegó de otro equipo (p. ej. para olvidar una caché).
  */
 export class FuenteArchivos implements FuenteCuenta {
@@ -192,7 +192,7 @@ export class FuenteArchivos implements FuenteCuenta {
   async listar(): Promise<Map<string, DocLocal>> {
     const salida = new Map<string, DocLocal>()
     const candidatos = ['preferencias.json', 'proveedores.json', 'mcp.json']
-    for (const carpeta of ['memoria', 'permisos', 'comandos']) {
+    for (const carpeta of ['memoria', 'permisos']) {
       try {
         for (const n of await readdir(join(this.dir, carpeta))) if (n.endsWith('.json')) candidatos.push(`${carpeta}/${n}`)
       } catch {

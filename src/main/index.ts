@@ -142,7 +142,7 @@ function crearVentana(opciones: { token?: string; x?: number; y?: number; titulo
 
 // ---------------------------------------------------------------- datos de la cuenta en la nube
 
-/** Memoria, permisos, comandos, preferencias, proveedores y MCP (sin claves), tareas sin proyecto y columnas del tablero. */
+/** Memoria, permisos, preferencias, proveedores y MCP (sin claves), tareas sin proyecto y columnas del tablero. */
 const syncCuenta = new SincronizadorCuenta(servidor, join(DIR, 'sync-cuenta.json'), [
   new FuenteArchivos(DIR, (id) => {
     if (id === 'preferencias.json') nucleo.preferencias.olvidarCache()
@@ -168,16 +168,6 @@ async function sincronizarCuenta(): Promise<{ ok: boolean; mensaje: string }> {
     if (!(err instanceof ErrorSesion)) console.warn('No se pudo sincronizar la cuenta:', (err as Error).message)
     return { ok: false, mensaje: err instanceof ErrorServidor ? err.message : 'No se pudo sincronizar.' }
   }
-}
-
-let pendienteCuenta: NodeJS.Timeout | undefined
-
-/** Sube pronto un cambio de datos de la cuenta (p. ej. un comando `/` creado o editado), agrupando ráfagas. */
-function sincronizarPronto(): void {
-  if (!bucleCuenta) return // sin sesión no hay nada que subir
-  if (pendienteCuenta) clearTimeout(pendienteCuenta)
-  pendienteCuenta = setTimeout(() => void sincronizarCuenta(), 1500)
-  pendienteCuenta.unref()
 }
 
 function iniciarBucleCuenta(): void {
@@ -284,7 +274,7 @@ function operarCuenta(op: NombreOperacionCuenta, e: Record<string, unknown>): Pr
 }
 
 function registrarIpc(): void {
-  registrarIpcCore(nucleo, sincronizarPronto)
+  registrarIpcCore(nucleo)
   registrarIpcArchivos()
   ipcMain.handle(Canales.gitOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGit(carpetaDeProyecto, op, entrada, nucleo.github.credencialesPara))
   ipcMain.handle(Canales.githubOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGitHub(nucleo.github, op, entrada))

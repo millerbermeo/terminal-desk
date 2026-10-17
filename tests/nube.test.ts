@@ -90,25 +90,24 @@ describe('datos de la cuenta en la nube', () => {
     nube = new NubeFalsa()
   })
 
-  it('memoria, permisos, comandos y preferencias de un equipo llegan al otro; los borrados también', async () => {
+  it('memoria, permisos y preferencias de un equipo llegan al otro; los borrados también', async () => {
     const a = await equipo(nube)
     const b = await equipo(nube)
     await escribir(join(a.dir, 'memoria', 'global.json'), { entradas: [{ titulo: 'usa pnpm' }] })
     await escribir(join(a.dir, 'permisos', 'global.json'), { reglas: [1] })
-    await escribir(join(a.dir, 'comandos', 'global.json'), { comandos: ['/commit'] })
     await escribir(join(a.dir, 'preferencias.json'), { proveedor: 'api' })
-    expect((await a.sync.sincronizar()).subidos).toBeGreaterThanOrEqual(4)
+    expect((await a.sync.sincronizar()).subidos).toBeGreaterThanOrEqual(3)
     await b.sync.sincronizar()
     expect(await json(join(b.dir, 'memoria', 'global.json'))).toEqual({ entradas: [{ titulo: 'usa pnpm' }] })
     expect(await json(join(b.dir, 'preferencias.json'))).toEqual({ proveedor: 'api' })
-    expect(await json(join(b.dir, 'comandos', 'global.json'))).toEqual({ comandos: ['/commit'] })
+    expect(await json(join(b.dir, 'permisos', 'global.json'))).toEqual({ reglas: [1] })
 
-    await rm(join(b.dir, 'comandos', 'global.json')) // se borra en B
+    await rm(join(b.dir, 'permisos', 'global.json')) // se borra en B
     await b.sync.sincronizar()
     expect((await a.sync.sincronizar()).borrados).toBe(1)
-    await expect(readFile(join(a.dir, 'comandos', 'global.json'))).rejects.toThrow()
+    await expect(readFile(join(a.dir, 'permisos', 'global.json'))).rejects.toThrow()
     await a.sync.sincronizar() // el borrado no vuelve a subirse ni resucita
-    expect(nube.docs.get('comandos/global.json')?.deleted).toBe(true)
+    expect(nube.docs.get('permisos/global.json')?.deleted).toBe(true)
   })
 
   it('si cambió en los dos equipos gana lo más reciente; un equipo nuevo no pisa la cuenta con sus valores por defecto', async () => {

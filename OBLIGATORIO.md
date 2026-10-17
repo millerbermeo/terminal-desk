@@ -70,7 +70,8 @@ Las claves de API (proveedores de IA, servidores MCP), el cliente API y el token
 | Proyectos, grupos, agentes y skills | Solo en el servidor |
 | Tareas (de proyecto y sueltas), columnas del tablero | Copia local + sincronización |
 | Conversaciones y trazas del asistente (y sus borrados) | Copia local + sincronización |
-| Memoria, permisos, comandos `/`, preferencias | Copia local + sincronización |
+| Memoria, permisos, preferencias | Copia local + sincronización |
+| Comandos `/` | Solo en el servidor (tabla `commands`; migración 0006) |
 | Proveedores de IA y servidores MCP (sin claves) | Copia local + sincronización |
 | Claves de proveedores y MCP, cliente API, token de GitHub | Bóveda cifrada con tu frase (opcional) |
 

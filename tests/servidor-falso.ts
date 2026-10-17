@@ -15,6 +15,8 @@ export interface ProyectoFalso {
  */
 export class ServidorFalso {
   readonly proyectos: ProyectoFalso[]
+  /** Comandos con `/` de la cuenta, tal como los guarda la API. */
+  readonly comandos: Record<string, unknown>[] = []
   readonly grupos: { id: string; nombre: string }[] = []
   private http!: Server
   url = ''
@@ -35,6 +37,25 @@ export class ServidorFalso {
           groups: this.grupos.map((g) => ({ id: g.id, name: g.nombre })),
           projects: this.proyectos.map((p) => ({ id: p.id, name: p.nombre, repo: null, groupId: p.grupo ?? null }))
         })
+      }
+      if (req.url === '/comandos') {
+        if (req.method === 'GET') return responder(200, { commands: this.comandos })
+        const trozos: Buffer[] = []
+        req.on('data', (t: Buffer) => trozos.push(t))
+        req.on('end', () => {
+          const c = JSON.parse(Buffer.concat(trozos).toString() || '{}') as { name: string; projectId?: string }
+          const i = this.comandos.findIndex((x) => x.name === c.name && (x.projectId ?? null) === (c.projectId ?? null))
+          if (req.method === 'PUT') {
+            const fila = { id: `c${this.comandos.length}`, projectId: null, template: null, command: null, args: false, allowed: false, ...c }
+            if (i >= 0) this.comandos[i] = fila
+            else this.comandos.push(fila)
+            return responder(200, fila)
+          }
+          if (i < 0) return responder(404, { message: 'El comando no existe' })
+          this.comandos.splice(i, 1)
+          responder(204)
+        })
+        return
       }
       if (req.url === '/agentes' && req.method === 'GET') return responder(200, { resources: [], activations: [] })
       responder(404, { message: 'no implementado en el servidor falso' })

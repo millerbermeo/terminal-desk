@@ -1,14 +1,14 @@
-import { basename } from 'node:path'
+import { readdir, readFile, rename } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import { COMANDOS_INCLUIDOS, type ComandoUsuario } from '@shared/core/comandos'
 
 export { dividirArgumentos, expandirPlantilla } from '@shared/core/comandos'
 import { esDestructiva } from '../guardrails/destructivo'
-import { AlmacenJson, validarId } from '../memory/almacen'
+import { ErrorServidor, ErrorSesion, servidor } from '../../servidor/cliente'
 import { INTERPRETES } from '../permisos/reglas'
 
 export const AMBITO_GLOBAL = 'global'
 const NOMBRE = /^[a-z][a-z0-9_-]{0,31}$/
-const MAX_COMANDOS = 100
 
 /** Motivo por el que un comando no es válido, o null. */
 export function validarComando(c: ComandoUsuario): string | null {
@@ -30,20 +30,112 @@ export function validarComando(c: ComandoUsuario): string | null {
   return null
 }
 
-interface Documento {
-  comandos: ComandoUsuario[]
+interface ComandoApi {
+  id: string
+  projectId: string | null
+  name: string
+  description: string
+  type: 'prompt' | 'ejecutable'
+  template: string | null
+  command: string[] | null
+  args: boolean
+  allowed: boolean
 }
 
-/** Comandos propios por proyecto (más globales) en ~/.odesk-agent/comandos/ (0600). El del proyecto manda sobre el global. */
-export class ComandosStore {
-  private readonly almacen: AlmacenJson<Documento>
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CACHE_MS = 2000
 
-  constructor(dir: string) {
-    this.almacen = new AlmacenJson<Documento>(dir, 0o600)
+function ambitoValido(ambito: string): string {
+  if (ambito !== AMBITO_GLOBAL && !UUID.test(ambito)) throw new Error('Ámbito inválido: debe ser «global» o el id de un proyecto de la cuenta')
+  return ambito
+}
+
+function aComando(c: ComandoApi): ComandoUsuario {
+  return {
+    nombre: c.name,
+    descripcion: c.description,
+    tipo: c.type,
+    ...(c.type === 'prompt' ? { plantilla: c.template ?? '' } : { comando: c.command ?? [], argumentos: c.args, permitido: c.allowed })
+  }
+}
+
+/**
+ * Comandos propios de la cuenta (globales y por proyecto), guardados en el servidor (`/comandos`): lo que se crea o edita aquí
+ * lo ven todos los equipos. El del proyecto manda sobre el global. `dirLegado` es la carpeta JSON de versiones anteriores: sus
+ * comandos se suben una vez y el archivo se aparta (`.migrado`).
+ */
+export class ComandosStore {
+  private cache?: { en: number; lista: ComandoApi[] }
+  private migrado = false
+
+  constructor(private readonly dirLegado?: string) {}
+
+  olvidar(): void {
+    this.cache = undefined
+  }
+
+  private async todos(): Promise<ComandoApi[]> {
+    if (this.cache && Date.now() - this.cache.en < CACHE_MS) return this.cache.lista
+    const lista = (await servidor.get<{ commands: ComandoApi[] }>('/comandos')).commands
+    this.cache = { en: Date.now(), lista }
+    if (!this.migrado) {
+      this.migrado = true
+      if (await this.migrarLegado(lista)) {
+        this.olvidar()
+        return this.todos()
+      }
+    }
+    return lista
+  }
+
+  /** Sube los comandos de los JSON antiguos que el servidor aún no tiene. `true` si subió alguno. */
+  private async migrarLegado(existentes: ComandoApi[]): Promise<boolean> {
+    if (!this.dirLegado) return false
+    let subio = false
+    try {
+      for (const f of await readdir(this.dirLegado)) {
+        if (!f.endsWith('.json')) continue
+        const ambito = f.slice(0, -5)
+        if (ambito !== AMBITO_GLOBAL && !UUID.test(ambito)) continue // proyectos antiguos sin id del servidor: no hay a dónde subirlos
+        try {
+          const doc = JSON.parse(await readFile(join(this.dirLegado, f), 'utf8')) as { comandos?: ComandoUsuario[] }
+          for (const c of doc.comandos ?? []) {
+            const ya = existentes.some((e) => e.name === c.nombre && (e.projectId ?? AMBITO_GLOBAL) === ambito)
+            if (!ya && validarComando(c) === null) {
+              await servidor.put('/comandos', this.cuerpo(c, ambito))
+              subio = true
+            }
+          }
+          await rename(join(this.dirLegado, f), join(this.dirLegado, `${f}.migrado`))
+        } catch (err) {
+          if (err instanceof ErrorServidor) throw err // sesión o red: se reintenta en la próxima lectura
+        }
+      }
+    } catch (err) {
+      if (err instanceof ErrorServidor) {
+        this.migrado = false
+        throw err
+      }
+    }
+    return subio
+  }
+
+  private cuerpo(c: ComandoUsuario, ambito: string): Record<string, unknown> {
+    return {
+      name: c.nombre,
+      description: c.descripcion,
+      type: c.tipo,
+      ...(ambito !== AMBITO_GLOBAL ? { projectId: ambito } : {}),
+      ...(c.tipo === 'prompt' ? { template: c.plantilla ?? '' } : { command: c.comando ?? [], args: c.argumentos === true, allowed: c.permitido === true })
+    }
   }
 
   async listar(ambito: string = AMBITO_GLOBAL): Promise<ComandoUsuario[]> {
-    return (await this.almacen.leer(validarId(ambito)))?.comandos ?? []
+    ambitoValido(ambito)
+    return (await this.todos())
+      .filter((c) => (c.projectId ?? AMBITO_GLOBAL) === ambito)
+      .map(aComando)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre))
   }
 
   async efectivos(proyectoId?: string): Promise<ComandoUsuario[]> {
@@ -54,6 +146,7 @@ export class ComandosStore {
   }
 
   async guardar(c: ComandoUsuario, ambito: string = AMBITO_GLOBAL): Promise<ComandoUsuario[]> {
+    ambitoValido(ambito)
     const limpio: ComandoUsuario = {
       nombre: c.nombre.trim(),
       descripcion: c.descripcion.trim(),
@@ -62,16 +155,26 @@ export class ComandosStore {
     }
     const motivo = validarComando(limpio)
     if (motivo) throw new Error(motivo)
-    const doc = await this.almacen.actualizar(validarId(ambito), (actual) => {
-      const resto = (actual?.comandos ?? []).filter((x) => x.nombre !== limpio.nombre)
-      if (resto.length >= MAX_COMANDOS) throw new Error('Demasiados comandos: elimina alguno')
-      return { comandos: [...resto, limpio].sort((a, b) => a.nombre.localeCompare(b.nombre)) }
-    })
-    return doc?.comandos ?? []
+    try {
+      await servidor.put('/comandos', this.cuerpo(limpio, ambito))
+    } catch (err) {
+      if (err instanceof ErrorServidor && !(err instanceof ErrorSesion)) throw new Error(err.message, { cause: err })
+      throw err
+    } finally {
+      this.olvidar()
+    }
+    return this.listar(ambito)
   }
 
   async eliminar(nombre: string, ambito: string = AMBITO_GLOBAL): Promise<ComandoUsuario[]> {
-    const doc = await this.almacen.actualizar(validarId(ambito), (actual) => (actual ? { comandos: actual.comandos.filter((x) => x.nombre !== nombre) } : undefined))
-    return doc?.comandos ?? []
+    ambitoValido(ambito)
+    try {
+      await servidor.delete('/comandos', { name: nombre, ...(ambito !== AMBITO_GLOBAL ? { projectId: ambito } : {}) })
+    } catch (err) {
+      if (!(err instanceof ErrorServidor) || err.estado !== 404) throw err // ya no existía: nada que borrar
+    } finally {
+      this.olvidar()
+    }
+    return this.listar(ambito)
   }
 }

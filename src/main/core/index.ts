@@ -863,8 +863,7 @@ export class Nucleo {
   }
 }
 
-/** `alCambiarCuenta`: se llama tras cambiar datos de la cuenta (p. ej. comandos) para subirlos pronto a la nube. */
-export function registrarIpcCore(nucleo: Nucleo, alCambiarCuenta?: () => void): void {
+export function registrarIpcCore(nucleo: Nucleo): void {
   ipcMain.handle(Canales.coreEjecutar, async (e, sol: SolicitudAgente) => {
     if (typeof sol?.prompt !== 'string' || !sol.prompt.trim()) throw new Error('prompt vacío')
     const emisor = e.sender
@@ -914,16 +913,8 @@ export function registrarIpcCore(nucleo: Nucleo, alCambiarCuenta?: () => void): 
   ipcMain.handle(Canales.coreAdjuntoEliminar, (_e, id: string) => nucleo.adjuntos.eliminar(String(id)))
   ipcMain.handle(Canales.coreComandosListar, (_e, ambito?: string) => nucleo.comandos.listar(ambito || undefined))
   ipcMain.handle(Canales.coreComandosEfectivos, (_e, proyectoId?: string) => nucleo.comandos.efectivos(proyectoId || undefined))
-  ipcMain.handle(Canales.coreComandosGuardar, async (_e, comando: ComandoUsuario, ambito?: string) => {
-    const r = await nucleo.comandos.guardar(comando, ambito || undefined)
-    alCambiarCuenta?.()
-    return r
-  })
-  ipcMain.handle(Canales.coreComandosEliminar, async (_e, nombre: string, ambito?: string) => {
-    const r = await nucleo.comandos.eliminar(String(nombre), ambito || undefined)
-    alCambiarCuenta?.()
-    return r
-  })
+  ipcMain.handle(Canales.coreComandosGuardar, (_e, comando: ComandoUsuario, ambito?: string) => nucleo.comandos.guardar(comando, ambito || undefined))
+  ipcMain.handle(Canales.coreComandosEliminar, (_e, nombre: string, ambito?: string) => nucleo.comandos.eliminar(String(nombre), ambito || undefined))
   ipcMain.handle(Canales.coreComandoEjecutar, (e, proyectoId: string, nombre: string, argumentos: string) =>
     nucleo.ejecutarComando(String(proyectoId), String(nombre), String(argumentos ?? ''), (ev) => {
       if (!e.sender.isDestroyed()) e.sender.send(Canales.coreEvento, ev)
