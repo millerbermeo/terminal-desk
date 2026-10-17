@@ -33,6 +33,7 @@ export interface ContextoActual {
   tokens: number
   aprox: boolean // estimación (tras comprimir o al retomar) en vez de un dato real de la API
   modelo?: string // último modelo conocido del agente raíz
+  ventana?: number // ventana real informada por el CLI (suscripción); si falta, se usa la del modelo
 }
 
 /** Lo que ocupa el contexto ahora: el dato real de la última llamada, o una estimación si aún no hay. */
@@ -43,7 +44,7 @@ export function contextoDe(turnos: readonly Turno[], estimado?: number): Context
     for (let j = evs.length - 1; j >= 0; j--) {
       const e = evs[j]!
       if (!modelo && (e.tipo === 'uso_contexto' || e.tipo === 'ruta') && e.modelo) modelo = e.modelo
-      if (e.tipo === 'uso_contexto') return { tokens: e.tokens, aprox: false, ...((modelo ?? e.modelo) ? { modelo: modelo ?? e.modelo! } : {}) }
+      if (e.tipo === 'uso_contexto') return { tokens: e.tokens, aprox: false, ...((modelo ?? e.modelo) ? { modelo: modelo ?? e.modelo! } : {}), ...(e.ventana ? { ventana: e.ventana } : {}) }
       if (e.tipo === 'contexto') return { tokens: e.tokensDespues, aprox: true, ...(modelo ? { modelo } : {}) }
     }
   }

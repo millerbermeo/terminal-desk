@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
 import logo from '../assets/logo.png'
-import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoMas } from './Iconos'
+import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoMas, IconoTareas } from './Iconos'
 
 interface Props {
   datos: DatosProyectos
@@ -25,7 +25,7 @@ interface Props {
   onAbrirAsistente: (p: Proyecto) => void
 }
 
-export type Vista = 'terminales' | 'config' | 'proveedores' | 'agentes' | 'asistente'
+export type Vista = 'terminales' | 'config' | 'proveedores' | 'agentes' | 'asistente' | 'tareas'
 
 interface MenuIA {
   proyecto: Proyecto
@@ -149,6 +149,10 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
           <IconoChispa />
           <span>Asistente</span>
           {pendientesAsistente > 0 && <span className="insignia" title="El asistente espera tu confirmación">{pendientesAsistente}</span>}
+        </button>
+        <button className={`item item-config${vista === 'tareas' ? ' activo' : ''}`} onClick={() => onVista(vista === 'tareas' ? 'terminales' : 'tareas')}>
+          <IconoTareas />
+          <span>Tareas</span>
         </button>
         <button className={`item item-config${vista === 'agentes' ? ' activo' : ''}`} onClick={() => onVista(vista === 'agentes' ? 'terminales' : 'agentes')}>
           <IconoAgente />

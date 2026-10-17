@@ -80,8 +80,9 @@ function Detalle({ uso, tokensSesion }: { uso: ResumenUso; tokensSesion: number 
 export function BarraUso({ contexto, modelo, modelos, tokensSesion }: Props) {
   const uso = useUso()
   const [abierto, setAbierto] = useState(false)
-  const ventana = ventanaDe(modelos, modelo ?? contexto?.modelo)
-  const pct = contexto ? Math.min(100, Math.round((contexto.tokens / ventana) * 100)) : 0
+  const real = contexto?.ventana && (!modelo || modelo === contexto.modelo) ? contexto.ventana : undefined
+  const ventana = real ?? ventanaDe(modelos, modelo ?? contexto?.modelo)
+  const pct = contexto && ventana ? Math.min(100, Math.round((contexto.tokens / ventana) * 100)) : 0
   const nivel = pct >= 90 ? 'rojo' : pct >= 70 ? 'ambar' : ''
   const limiteTokens = uso?.limites?.tokens ?? uso?.limites?.entrada
   const libre = limiteTokens && limiteTokens.limite > 0 ? Math.round((limiteTokens.restante / limiteTokens.limite) * 100) : undefined
@@ -92,15 +93,27 @@ export function BarraUso({ contexto, modelo, modelos, tokensSesion }: Props) {
         className="ag-ctx"
         title={
           contexto
-            ? `La conversación ocupa ${contexto.tokens.toLocaleString()} de ${ventana.toLocaleString()} tokens del modelo${contexto.aprox ? ' (estimación)' : ' (dato real de la última llamada)'}. Al llegar al 70 % se comprime sola: se podan los resultados y adjuntos antiguos y se resume lo anterior.`
-            : `Aún no hay contexto: ventana de ${ventana.toLocaleString()} tokens.`
+            ? ventana
+              ? `La conversación ocupa ${contexto.tokens.toLocaleString()} de ${ventana.toLocaleString()} tokens del modelo${contexto.aprox ? ' (estimación)' : ' (dato real de la última llamada)'}. Al llegar al 70 % se comprime sola: se podan los resultados y adjuntos antiguos y se resume lo anterior.`
+              : `La conversación ocupa ${contexto.tokens.toLocaleString()} tokens. El tamaño de la ventana de este modelo aún no se conoce: se sabrá cuando el CLI lo informe.`
+            : ventana
+              ? `Aún no hay contexto: ventana de ${ventana.toLocaleString()} tokens.`
+              : 'Aún no hay contexto. El tamaño de la ventana de este modelo se conocerá al usarlo.'
         }
       >
         <span className="largo">Contexto</span>
-        <div className={`ag-ctx-barra ${nivel}`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Contexto usado">
-          <i style={{ width: `${pct}%` }} />
-        </div>
-        <span>{contexto ? `${contexto.aprox ? '≈' : ''}${pct} % · ${fmt(contexto.tokens)} / ${fmt(ventana)}` : `0 / ${fmt(ventana)}`}</span>
+        {ventana && (
+          <div className={`ag-ctx-barra ${nivel}`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Contexto usado">
+            <i style={{ width: `${pct}%` }} />
+          </div>
+        )}
+        <span>
+          {ventana
+            ? contexto
+              ? `${contexto.aprox ? '≈' : ''}${pct} % · ${fmt(contexto.tokens)} / ${fmt(ventana)}`
+              : `0 / ${fmt(ventana)}`
+            : `${contexto ? fmt(contexto.tokens) : 0} tokens`}
+        </span>
       </div>
       <span className="ag-espacio" />
       {libre !== undefined && (

@@ -7,6 +7,7 @@ import type { ComandoUsuario } from './core/comandos'
 import type { NuevaRegla, ReglaPermiso } from './core/permisos'
 import type { InfoModelo, ResumenUso } from './core/uso'
 import type { EstadoCuenta, ProveedorModelo } from './core/cuenta'
+import type { NombreOperacionTareas, OperacionesTareas } from './tareas'
 import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion'
 import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
 import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso } from './modelos'
@@ -55,6 +56,12 @@ export const Canales = {
   coreCuentaProveedor: 'core:cuenta-proveedor',
   coreCuentaIniciar: 'core:cuenta-iniciar',
   coreCuentaCerrar: 'core:cuenta-cerrar',
+  tareasOperar: 'tareas:operar',
+  tareasCambio: 'tareas:cambio',
+  coreCuentaAgregar: 'core:cuenta-agregar',
+  coreCuentaQuitar: 'core:cuenta-quitar',
+  coreCuentaActivar: 'core:cuenta-activar',
+  coreCuentaAuto: 'core:cuenta-auto',
   coreUsoObtener: 'core:uso-obtener',
   coreUso: 'core:uso',
   coreAdjuntoSubir: 'core:adjunto-subir',
@@ -207,8 +214,14 @@ export interface ApiCentro {
     cuentaEstado(): Promise<EstadoCuenta>
     cuentaProveedor(proveedor: ProveedorModelo): Promise<EstadoCuenta>
     /** Abre el navegador para iniciar sesión con la cuenta de Claude (correo, Google o SSO); resuelve al terminar. */
-    cuentaIniciarSesion(): Promise<EstadoCuenta>
-    cuentaCerrarSesion(): Promise<EstadoCuenta>
+    cuentaIniciarSesion(id?: string): Promise<EstadoCuenta>
+    cuentaCerrarSesion(id?: string): Promise<EstadoCuenta>
+    /** Crea una cuenta de suscripción (carpeta propia, aislada) y la activa; falta iniciar sesión en ella. */
+    cuentaAgregar(nombre: string): Promise<EstadoCuenta>
+    cuentaQuitar(id: string): Promise<EstadoCuenta>
+    cuentaActivar(id: string): Promise<EstadoCuenta>
+    /** Cambiar solo a otra cuenta cuando la activa llega a su límite de uso. */
+    cuentaCambioAutomatico(activo: boolean): Promise<EstadoCuenta>
     /** Consumo de esta aplicación hoy y límites de tasa que informa la API. */
     uso(): Promise<ResumenUso>
     /** Cambios en el consumo en tiempo real (tras cada llamada al modelo). */
@@ -247,6 +260,12 @@ export interface ApiCentro {
     /** Relee mcp.json y reconecta los servidores. */
     mcpReiniciar(): Promise<InfoServidorMcp[]>
     onEvento(cb: (e: EventoAgente) => void): () => void
+  }
+  /** Tareas de proyectos: una sola operación tipada (`OperacionesTareas`); la interfaz actúa como «usuario». */
+  tareas: {
+    operar<K extends NombreOperacionTareas>(op: K, entrada: OperacionesTareas[K]['entrada']): Promise<OperacionesTareas[K]['salida']>
+    /** Algo cambió las tareas (la propia interfaz, o la IA por herramientas o MCP): hay que volver a leer. */
+    onCambio(cb: () => void): () => void
   }
   agentes: {
     listar(): Promise<BibliotecaAgentes>

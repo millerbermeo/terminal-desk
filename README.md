@@ -20,6 +20,7 @@ Electron · Vite · React · TypeScript · xterm.js · node-pty
 - **Proveedores de IA**: lanza Claude Code, Codex, Gemini, Ollama… dentro de la terminal de un proyecto con un clic (✦).
 - **Agentes y skills de Claude Code**: biblioteca compartida o por proyecto, activable por grupo; se inyecta como plugin sin tocar el repositorio.
 - **Asistente integrado**: núcleo de agentes propio sobre la API de Anthropic, con subagentes, herramientas, cliente MCP, memoria corta y larga, flujos en git worktrees, guardrails, confirmación humana, permisos persistentes, comandos con `/`, trazas y evals.
+- **Tareas por grupos y proyectos** (tablero, lista, resumen y actividad) que la IA también lee y cambia con las mismas reglas: criterios de aceptación, dependencias, estados configurables e historial de quién hizo qué.
 - **Editor de archivos** (CodeMirror 6) en cada celda, con árbol del proyecto, pestañas y guardado automático.
 - **Seguro por defecto**: `contextIsolation`, `sandbox` y CSP activos; las credenciales se redactan en las trazas.
 
@@ -173,6 +174,7 @@ La barra superior del Asistente elige con qué se paga el modelo:
 | Flujos y grupos | No disponibles | Sí |
 
 - **Iniciar sesión:** el botón «Iniciar sesión» abre el navegador (correo, Google o SSO), igual que en la extensión de VSCode. La app nunca ve tus credenciales: lo hace el CLI (`claude auth login`). Si no hay sesión, el Asistente no envía y te lo indica.
+- **Varias cuentas:** «＋ Cuenta» añade otra cuenta de Claude (cada una con su propio inicio de sesión, aislada en `~/.centro-proyectos/cuentas/<id>/`) y el selector cambia de cuenta. Con «Cambiar sola al llegar al límite», si la cuenta activa agota su límite de uso el mensaje continúa con otra cuenta con sesión (solo si aún no había ejecutado nada, para no repetir cambios) y la conversación se lleva sin reenviar el historial. Úsalo con cuentas tuyas (p. ej. trabajo y personal); rotar cuentas para esquivar límites puede ir contra los términos de Anthropic.
 - **Permisos con suscripción:** el CLI no puede pedir confirmación en este modo, así que lo que requiere permiso se deniega. «Preguntar todo» = solo lectura; «Aceptar ediciones» permite modificar archivos; «Autónomo» añade las verificaciones del proyecto (typecheck, lint, test). Los comandos peligrosos no se ejecutan.
 - La clave `ANTHROPIC_API_KEY` se ignora en modo suscripción para no cobrarte por tokens sin querer.
 - Las terminales con Claude Code (✦) siempre usan la sesión del CLI, independientemente de esta opción.
@@ -188,6 +190,7 @@ Todo se guarda en `~/.centro-proyectos/`:
 | `agentes.json` | Biblioteca de agentes y skills |
 | `preferencias.json`, `sesiones-cli.json` | Proveedor elegido (suscripción/API) y sesiones del CLI para continuar conversaciones |
 | `sesiones/` | Plugins generados para Claude Code |
+| `tareas/`, `tareas.token`, `tareas.sock`, `mcp/` | Tareas (con su historial), credencial y socket local del servidor MCP de tareas y su configuración |
 | `conversaciones/`, `memoria/`, `trazas/`, `evals/`, `permisos/`, `comandos/`, `worktrees/` | Estado del Asistente |
 
 ## Desarrollo
@@ -264,4 +267,5 @@ Los instaladores se ejecutan sin privilegios (en Linux piden `sudo` solo para el
 - [docs/fase-4.md](docs/fase-4.md) — worktrees, guardrails, confirmación humana
 - [docs/fase-5.md](docs/fase-5.md) — trazas y evals
 - [docs/interfaz.md](docs/interfaz.md) — editor de archivos y pestaña Asistente
+- [docs/tareas.md](docs/tareas.md) — tareas por grupos y proyectos, y su integración con la IA (MCP)
 - [docs/permisos-autonomia-comandos.md](docs/permisos-autonomia-comandos.md) — permisos, autonomía y comandos `/`

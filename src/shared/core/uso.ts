@@ -1,7 +1,7 @@
 export interface InfoModelo {
   id: string
   nombre: string
-  ventana: number // tokens de contexto que admite
+  ventana?: number // tokens de contexto que admite; ausente si no se conoce (suscripción, hasta usar el modelo)
 }
 
 export interface LimiteApi {

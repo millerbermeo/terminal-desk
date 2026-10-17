@@ -1,8 +1,11 @@
 import { execFile, spawn } from 'node:child_process'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { EventoAgente, ResultadoAgente } from '@shared/core/agente'
-import type { EstadoCuenta, ProveedorModelo } from '@shared/core/cuenta'
+import type { InfoModelo } from '@shared/core/uso'
+import { HERRAMIENTAS_TAREAS, PREFIJO_MCP_TAREAS } from '@shared/tareas-herramientas'
+import type { CuentaSuscripcion, EstadoCuenta, ProveedorModelo } from '@shared/core/cuenta'
 import type { ModoAutonomia } from '@shared/core/permisos'
 
 /**
@@ -13,11 +16,13 @@ import type { ModoAutonomia } from '@shared/core/permisos'
 const WINDOWS = process.platform === 'win32'
 
 /** Sin estas variables el CLI usaría la clave de API (y se cobraría por tokens) en vez de la suscripción. */
-function entornoSuscripcion(): NodeJS.ProcessEnv {
+function entornoSuscripcion(carpeta?: string): NodeJS.ProcessEnv {
   const env = { ...process.env }
   delete env.ANTHROPIC_API_KEY
   delete env.ANTHROPIC_AUTH_TOKEN
   delete env.ELECTRON_RUN_AS_NODE
+  // Otra cuenta = otra carpeta de configuración: el CLI guarda ahí su propio inicio de sesión y sus sesiones.
+  if (carpeta) env.CLAUDE_CONFIG_DIR = carpeta
   return env
 }
 
@@ -42,11 +47,11 @@ interface SalidaCli {
   error: string
 }
 
-async function correrCli(args: string[], opciones: { timeoutMs?: number; senal?: AbortSignal } = {}): Promise<SalidaCli> {
+async function correrCli(args: string[], opciones: { timeoutMs?: number; senal?: AbortSignal; carpeta?: string } = {}): Promise<SalidaCli> {
   const bin = await rutaClaude()
   if (!bin) throw new Error('No encuentro el CLI «claude». Instálalo (https://claude.com/claude-code) y vuelve a intentarlo.')
   return new Promise((res, rej) => {
-    const hijo = spawn(bin, args, { env: entornoSuscripcion(), stdio: ['ignore', 'pipe', 'pipe'], ...(WINDOWS ? { shell: true } : {}) })
+    const hijo = spawn(bin, args, { env: entornoSuscripcion(opciones.carpeta), stdio: ['ignore', 'pipe', 'pipe'], ...(WINDOWS ? { shell: true } : {}) })
     let salida = ''
     let error = ''
     hijo.stdout.on('data', (d: Buffer) => (salida += d))
@@ -72,10 +77,10 @@ export interface SesionCli {
 }
 
 /** Estado de la sesión del CLI. Solo cuenta como «suscripción» una sesión de claude.ai. */
-export async function estadoSesion(): Promise<SesionCli> {
+export async function estadoSesion(carpeta?: string): Promise<SesionCli> {
   if (!(await rutaClaude())) return { cli: false, sesion: false, aviso: 'No encuentro el CLI «claude». Instálalo para usar tu suscripción.' }
   try {
-    const r = await correrCli(['auth', 'status', '--json'], { timeoutMs: 15_000 })
+    const r = await correrCli(['auth', 'status', '--json'], { timeoutMs: 15_000, ...(carpeta ? { carpeta } : {}) })
     const j = JSON.parse(r.salida.trim() || '{}') as { loggedIn?: boolean; authMethod?: string; email?: string }
     if (!j.loggedIn) return { cli: true, sesion: false, aviso: 'Inicia sesión con tu cuenta de Claude para usar tu suscripción.' }
     if (j.authMethod && j.authMethod !== 'claude.ai')
@@ -86,21 +91,24 @@ export async function estadoSesion(): Promise<SesionCli> {
   }
 }
 
-let inicioEnCurso: Promise<void> | undefined
+const iniciosEnCurso = new Map<string, Promise<void>>()
 
-/** `claude auth login`: abre el navegador y espera a que se complete (hasta 5 minutos). */
-export function iniciarSesion(): Promise<void> {
-  inicioEnCurso ??= (async () => {
-    const r = await correrCli(['auth', 'login', '--claudeai'], { timeoutMs: 5 * 60_000 })
-    if (r.codigo !== 0) throw new Error((r.error || r.salida).trim().split('\n').at(-1) || 'No se completó el inicio de sesión')
-  })().finally(() => {
-    inicioEnCurso = undefined
-  })
-  return inicioEnCurso
+/** `claude auth login`: abre el navegador y espera a que se complete (hasta 5 minutos). Uno a la vez por cuenta. */
+export function iniciarSesion(carpeta?: string): Promise<void> {
+  const clave = carpeta ?? ''
+  let p = iniciosEnCurso.get(clave)
+  if (!p) {
+    p = (async () => {
+      const r = await correrCli(['auth', 'login', '--claudeai'], { timeoutMs: 5 * 60_000, ...(carpeta ? { carpeta } : {}) })
+      if (r.codigo !== 0) throw new Error((r.error || r.salida).trim().split('\n').at(-1) || 'No se completó el inicio de sesión')
+    })().finally(() => void iniciosEnCurso.delete(clave))
+    iniciosEnCurso.set(clave, p)
+  }
+  return p
 }
 
-export async function cerrarSesion(): Promise<void> {
-  await correrCli(['auth', 'logout'], { timeoutMs: 15_000 })
+export async function cerrarSesion(carpeta?: string): Promise<void> {
+  await correrCli(['auth', 'logout'], { timeoutMs: 15_000, ...(carpeta ? { carpeta } : {}) })
 }
 
 /** Preferencia de proveedor (por defecto, la suscripción). */
@@ -158,8 +166,10 @@ export class SesionesCli {
 const LECTURA = ['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch']
 
 /** Autonomía -> permisos del CLI. En modo `-p` no hay forma de preguntar: lo que no está permitido se deniega. */
-export function permisosCli(autonomia: ModoAutonomia, verificaciones: string[]): string[] {
+export function permisosCli(autonomia: ModoAutonomia, verificaciones: string[], conTareas = false): string[] {
   const permitidas = [...LECTURA]
+  // Tareas (servidor MCP de la app): consultarlas siempre; cambiarlas, como las ediciones de archivos, desde «Aceptar ediciones».
+  if (conTareas) for (const h of HERRAMIENTAS_TAREAS) if (h.riesgo === 'lectura' || autonomia !== 'preguntar') permitidas.push(PREFIJO_MCP_TAREAS + h.nombre)
   if (autonomia === 'autonomo') for (const v of verificaciones) permitidas.push(`Bash(${v}:*)`)
   return ['--permission-mode', autonomia === 'preguntar' ? 'default' : 'acceptEdits', '--allowedTools', ...permitidas]
 }
@@ -175,6 +185,14 @@ export interface OpcionesEjecucion {
   sistemaExtra?: string
   carpetasExtra?: string[]
   senal: AbortSignal
+  /** Archivo `--mcp-config` con el servidor MCP de tareas de la app (y se permiten sus herramientas según la autonomía). */
+  mcpTareas?: string
+  /** Carpeta de configuración de la cuenta con la que se ejecuta (ausente = la principal). */
+  carpetaCuenta?: string
+  /** No emitir `inicio` (reintento con otra cuenta: el turno ya lo mostró). */
+  omitirInicio?: boolean
+  /** No emitir `fin`: lo emite quien llama (puede decidir reintentar con otra cuenta). */
+  retenerFin?: boolean
   /** Recibe los eventos sin `ejecucionId`, `agente` ni `profundidad` (los pone quien llama). */
   alEvento: (e: Record<string, unknown> & { tipo: EventoAgente['tipo'] }) => void
 }
@@ -208,13 +226,83 @@ interface MensajeCli {
   is_error?: boolean
   result?: unknown
   usage?: UsoCli
+  api_error_status?: number | null
+  rate_limit_info?: { status?: string; resetsAt?: number; rateLimitType?: string }
+  modelUsage?: Record<string, { contextWindow?: number }>
 }
 
 const textoDe = (c: unknown): string =>
   typeof c === 'string' ? c : Array.isArray(c) ? c.map((b: BloqueCli) => (b.type === 'text' ? (b.text ?? '') : `[${b.type}]`)).join('\n') : ''
 
+/** Ventana real de cada modelo, aprendida del CLI al usarlo (`modelUsage.contextWindow`): la lista de modelos no la trae. */
+const ventanasObservadas = new Map<string, number>()
+
+/** Modelos de la suscripción: se los pide al CLI con la petición de control `initialize` (la usa también el SDK de agentes). */
+export async function listarModelosCli(carpeta?: string): Promise<InfoModelo[]> {
+  const bin = await rutaClaude()
+  if (!bin) return []
+  return new Promise((res) => {
+    const hijo = spawn(bin, ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'], {
+      cwd: tmpdir(),
+      env: entornoSuscripcion(carpeta),
+      stdio: ['pipe', 'pipe', 'ignore'],
+      ...(WINDOWS ? { shell: true } : {})
+    })
+    let hecho = false
+    let pendiente = ''
+    const terminar = (lista: InfoModelo[]): void => {
+      if (hecho) return
+      hecho = true
+      clearTimeout(timer)
+      hijo.kill()
+      res(lista)
+    }
+    const timer = setTimeout(() => terminar([]), 20_000)
+    hijo.on('error', () => terminar([]))
+    hijo.on('close', () => terminar([]))
+    hijo.stdin.on('error', () => undefined)
+    hijo.stdout.on('data', (d: Buffer) => {
+      pendiente += d.toString('utf8')
+      let i: number
+      while ((i = pendiente.indexOf('\n')) >= 0) {
+        const linea = pendiente.slice(0, i).trim()
+        pendiente = pendiente.slice(i + 1)
+        if (!linea.includes('"control_response"')) continue
+        try {
+          const r = JSON.parse(linea) as { response?: { request_id?: string; response?: { models?: { value?: string; resolvedModel?: string; displayName?: string }[] } } }
+          if (r.response?.request_id !== 'modelos') continue
+          const vistos = new Set<string>()
+          const lista: InfoModelo[] = []
+          // Los alias («default», «opus»…) resuelven al mismo modelo que su id completo: se deja una sola entrada por id.
+          for (const m of (r.response.response?.models ?? []).filter((x) => x.value !== 'default')) {
+            const id = m.resolvedModel ?? m.value
+            if (!id || vistos.has(id)) continue
+            vistos.add(id)
+            const ventana = ventanasObservadas.get(id)
+            lista.push({ id, nombre: `Claude ${m.displayName || id}`, ...(ventana ? { ventana } : {}) })
+          }
+          terminar(lista)
+        } catch {
+          /* línea no válida: se ignora */
+        }
+      }
+    })
+    hijo.stdin.write(JSON.stringify({ type: 'control_request', request_id: 'modelos', request: { subtype: 'initialize' } }) + '\n')
+  })
+}
+
+/** Límite de uso alcanzado: lo que avisa el CLI es la señal fiable; el texto del error es el respaldo. */
+export interface LimiteUso {
+  /** ms desde epoch en que se renueva, si el CLI lo informó. */
+  hasta?: number
+}
+
+const TEXTO_LIMITE = /\b(?:usage|rate)[ _-]limit|hit your (?:\w+ )?limit|(?:5-hour|weekly|session) limit|limit reached.{0,6}resets/i
+
+export const esErrorDeLimite = (texto: string): boolean => TEXTO_LIMITE.test(texto) && !/context limit|budget limit/i.test(texto)
+
 /** Ejecuta `claude -p` con salida stream-json y la traduce a los eventos del Asistente. */
-export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesionCli?: string; resultado: ResultadoAgente }> {
+export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesionCli?: string; resultado: ResultadoAgente; limite?: LimiteUso; herramientas: number }> {
   const bin = await rutaClaude()
   if (!bin) throw new Error('No encuentro el CLI «claude».')
   const args = [
@@ -222,13 +310,14 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
     '--output-format', 'stream-json',
     '--verbose',
     '--include-partial-messages',
-    ...permisosCli(o.autonomia, o.verificaciones),
+    ...permisosCli(o.autonomia, o.verificaciones, Boolean(o.mcpTareas)),
+    ...(o.mcpTareas ? ['--mcp-config', o.mcpTareas] : []),
     ...(o.modelo ? ['--model', o.modelo] : []),
     ...(o.reanudar ? ['--resume', o.reanudar] : []),
     ...(o.sistemaExtra ? ['--append-system-prompt', o.sistemaExtra] : []),
     ...(o.carpetasExtra?.length ? ['--add-dir', ...o.carpetasExtra] : [])
   ]
-  const hijo = spawn(bin, args, { cwd: o.cwd, env: entornoSuscripcion(), stdio: ['pipe', 'pipe', 'pipe'], ...(WINDOWS ? { shell: true } : {}) })
+  const hijo = spawn(bin, args, { cwd: o.cwd, env: entornoSuscripcion(o.carpetaCuenta), stdio: ['pipe', 'pipe', 'pipe'], ...(WINDOWS ? { shell: true } : {}) })
   const abortar = (): void => void hijo.kill()
   o.senal.addEventListener('abort', abortar, { once: true })
 
@@ -238,10 +327,13 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
   let ultimoTexto = ''
   let ultimoUso: UsoCli = {}
   let modelo: string | undefined
+  let ventana: number | undefined
+  let limite: LimiteUso | undefined
+  let herramientas = 0
   let final: { error?: string; texto?: string; uso?: UsoCli; esError: boolean } | undefined
   let errores = ''
 
-  o.alEvento({ tipo: 'inicio', prompt: o.prompt })
+  if (!o.omitirInicio) o.alEvento({ tipo: 'inicio', prompt: o.prompt })
 
   const procesar = (m: MensajeCli): void => {
     if (typeof m.session_id === 'string') sesionCli = m.session_id
@@ -250,6 +342,11 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
       case 'system':
         if (m.subtype === 'init' && typeof m.model === 'string') modelo = m.model
         return
+      case 'rate_limit_event': {
+        const i = m.rate_limit_info
+        if (i?.status === 'rejected' && propio) limite = { ...(typeof i.resetsAt === 'number' && i.resetsAt > 0 ? { hasta: i.resetsAt < 1e12 ? i.resetsAt * 1000 : i.resetsAt } : {}) }
+        return
+      }
       case 'stream_event': {
         const d = m.event?.delta
         if (propio && m.event?.type === 'content_block_delta' && d?.type === 'text_delta' && d.text) o.alEvento({ tipo: 'texto_delta', texto: String(d.text) })
@@ -270,6 +367,7 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
           if (b.type !== 'tool_use' || !b.id) continue
           const llamada = { id: b.id, nombre: b.name ?? 'herramienta', entrada: b.input ?? {} }
           llamadas.set(b.id, llamada)
+          herramientas++
           o.alEvento({ tipo: 'herramienta_inicio', llamada })
         }
         return
@@ -283,9 +381,16 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
         }
         return
       }
-      case 'result':
+      case 'result': {
+        // El CLI informa la ventana real de cada modelo usado (p. ej. 200000 o 1000000).
+        const ventanas = Object.entries(m.modelUsage ?? {}).filter(([, u]) => typeof u.contextWindow === 'number' && u.contextWindow > 0)
+        const propia = ventanas.find(([id]) => modelo && (id === modelo || id.startsWith(modelo) || modelo.startsWith(id))) ?? ventanas[0]
+        if (!limite && (m.api_error_status === 429 || (m.is_error === true && typeof m.result === 'string' && esErrorDeLimite(m.result)))) limite = {}
+        for (const [id, u] of ventanas) ventanasObservadas.set(id, u.contextWindow!)
+        if (propia) ventana = propia[1].contextWindow
         final = { esError: m.is_error === true || (typeof m.subtype === 'string' && m.subtype.startsWith('error')), texto: typeof m.result === 'string' ? m.result : '', ...(m.usage ? { uso: m.usage } : {}), ...(typeof m.result === 'string' && m.is_error ? { error: m.result } : {}) }
         return
+      }
     }
   }
 
@@ -316,7 +421,7 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
 
   const cancelado = o.senal.aborted
   const contexto = (ultimoUso.input_tokens ?? 0) + (ultimoUso.cache_read_input_tokens ?? 0) + (ultimoUso.cache_creation_input_tokens ?? 0)
-  if (contexto > 0) o.alEvento({ tipo: 'uso_contexto', tokens: contexto, ...(modelo ? { modelo } : {}) })
+  if (contexto > 0) o.alEvento({ tipo: 'uso_contexto', tokens: contexto, ...(modelo ? { modelo } : {}), ...(ventana ? { ventana } : {}) })
 
   const uso = final?.uso ?? ultimoUso
   const fallo = final ? final.esError : codigo !== 0
@@ -329,11 +434,14 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
     pasos,
     ...(mensaje ? { error: mensaje } : {})
   }
-  o.alEvento({ tipo: 'fin', resultado })
-  return { ...(sesionCli ? { sesionCli } : {}), resultado }
+  if (!o.retenerFin) o.alEvento({ tipo: 'fin', resultado })
+  return { ...(sesionCli ? { sesionCli } : {}), resultado, ...(limite && resultado.estado === 'error' ? { limite } : {}), herramientas }
 }
 
-export async function estadoCuenta(proveedor: ProveedorModelo, claveApi: boolean): Promise<EstadoCuenta> {
-  const s = await estadoSesion()
-  return { proveedor, claveApi, cli: s.cli, sesion: s.sesion, ...(s.email ? { email: s.email } : {}), ...(s.metodo ? { metodo: s.metodo } : {}), ...(s.aviso ? { aviso: s.aviso } : {}) }
+export async function estadoCuenta(proveedor: ProveedorModelo, claveApi: boolean, cuentas: CuentaSuscripcion[], activaId: string, cambioAutomatico: boolean): Promise<EstadoCuenta> {
+  const activa = cuentas.find((c) => c.id === activaId)
+  const s: SesionCli = { cli: Boolean(await rutaClaude()), sesion: activa?.sesion ?? false, ...(activa?.email ? { email: activa.email } : {}), ...(activa?.sesion ? { metodo: 'claude.ai' } : {}) }
+  if (!s.cli) s.aviso = 'No encuentro el CLI «claude». Instálalo para usar tu suscripción.'
+  else if (!s.sesion) s.aviso = activa?.aviso ?? `Inicia sesión con tu cuenta de Claude${activa && !activa.principal ? ` en «${activa.nombre}»` : ''} para usar tu suscripción.`
+  return { proveedor, claveApi, cuentas, cuentaActivaId: activaId, cambioAutomatico, cli: s.cli, sesion: s.sesion, ...(s.email ? { email: s.email } : {}), ...(s.metodo ? { metodo: s.metodo } : {}), ...(s.aviso ? { aviso: s.aviso } : {}) }
 }

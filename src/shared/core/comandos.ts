@@ -22,8 +22,22 @@ export const COMANDOS_INCLUIDOS = [
   { nombre: 'historial', descripcion: 'Abre el historial de conversaciones', uso: '/historial' },
   { nombre: 'permisos', descripcion: 'Reglas de permisos de este proyecto', uso: '/permisos' },
   { nombre: 'comandos', descripcion: 'Gestiona tus comandos con /', uso: '/comandos' },
+  { nombre: 'plan', descripcion: 'Descompone una funcionalidad en tareas con criterios y dependencias (no implementa nada)', uso: '/plan <funcionalidad>' },
+  { nombre: 'tareas', descripcion: 'Revisa las tareas del proyecto: bloqueos, mal definidas y siguiente paso', uso: '/tareas' },
   { nombre: 'ayuda', descripcion: 'Lista todos los comandos', uso: '/ayuda' }
 ] as const
+
+/** Comandos incluidos que se expanden a una petición para el agente (el resto los resuelve la interfaz). */
+export const PLANTILLAS_INCLUIDAS: Record<string, string> = {
+  plan:
+    'Planifica esta funcionalidad SIN implementarla todavía: 1) consulta las tareas del proyecto (listar_tareas) para no duplicar nada; ' +
+    '2) revisa la estructura del código que se verá afectada; 3) crea el plan con crear_tareas: tareas pequeñas y ordenadas, cada una con ' +
+    'criterios de aceptación verificables, notas técnicas (archivos y enfoque), prioridad y dependencias entre ellas (depende_de_indices); ' +
+    '4) resume el orden de ejecución y señala riesgos o requisitos que falten. Funcionalidad: $ARGUMENTOS',
+  tareas:
+    'Revisa las tareas de este proyecto: usa resumen_tareas y listar_tareas. Dime qué está bloqueado y por qué, qué tareas están mal definidas ' +
+    '(sin criterios de aceptación) o parecen duplicadas, y qué falta. Recomiéndame las prioridades y el siguiente paso. No cambies nada sin que te lo pida.'
+}
 
 /** Sustituye `$ARGUMENTOS` en la plantilla (si no aparece, los argumentos se añaden al final). */
 export function expandirPlantilla(plantilla: string, argumentos: string): string {

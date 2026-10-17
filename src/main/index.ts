@@ -11,7 +11,9 @@ import { GestorTerminales } from './terminales'
 import { eliminarProveedor, guardarProveedor, listarProveedores, obtenerProveedor } from './proveedores'
 import { verificarPassword } from './autenticacion'
 import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones } from './agentes'
-import { agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, sugerirRutas, validarRuta } from './proyectos'
+import { DIR, agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, sugerirRutas, validarRuta } from './proyectos'
+import { configurarMcpTareas } from './core/tareas/mcp-config'
+import { iniciarServidorTareas, type ServidorTareas } from './core/tareas/servidor'
 
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto')
@@ -109,11 +111,17 @@ function registrarIpc(): void {
     return r.canceled ? [] : r.filePaths
   })
   ipcMain.handle(Canales.proyectosSugerirRutas, (_e, prefijo: string) => sugerirRutas(String(prefijo ?? '')))
-  ipcMain.handle(Canales.proyectosEliminar, (_e, id: string) => eliminarProyecto(id))
+  ipcMain.handle(Canales.proyectosEliminar, async (_e, id: string) => {
+    const datos = await eliminarProyecto(id)
+    await nucleo.tareas.desvincular({ proyectoId: id }) // sus tareas no se pierden: quedan sueltas
+    return datos
+  })
   ipcMain.handle(Canales.grupoEliminar, async (_e, id: string, password: string): Promise<ResultadoEliminarGrupo> => {
     const auth = await verificarPassword(String(password ?? ''))
     if (!auth.ok) return auth
-    return { ok: true, datos: await eliminarGrupo(id) }
+    const datos = await eliminarGrupo(id)
+    await nucleo.tareas.desvincular({ grupoId: id })
+    return { ok: true, datos }
   })
   ipcMain.handle(Canales.agentesListar, () => leerBiblioteca())
   ipcMain.handle(Canales.agentesGuardar, (_e, r: Recurso) => guardarRecurso(r))
@@ -170,7 +178,14 @@ function registrarIpc(): void {
   ipcMain.on(Canales.terminalCerrar, (_e, id: string) => terminales.cerrar(id))
 }
 
+let servidorTareas: ServidorTareas | undefined
+
 app.whenReady().then(() => {
+  configurarMcpTareas({ raizApp: app.getAppPath(), dirDatos: DIR })
+  // Socket local para que la IA (servidor MCP, en otro proceso) use las tareas; solo este proceso las escribe.
+  void iniciarServidorTareas(DIR, nucleo.tareas)
+    .then((s) => (servidorTareas = s))
+    .catch((err) => console.error('Servidor de tareas no iniciado:', err))
   registrarIpc()
   void limpiarSesiones()
   void nucleo.iniciarMcp()
@@ -188,6 +203,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   terminales.cerrarTodas()
+  void servidorTareas?.cerrar()
   void nucleo.detener()
 })
 app.on('will-quit', () => terminales.cerrarTodas())

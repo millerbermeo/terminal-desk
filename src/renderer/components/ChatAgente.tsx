@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EventoAgente } from '@shared/core/agente'
 import { LIMITES_ADJUNTOS, type Adjunto } from '@shared/core/adjuntos'
-import { COMANDOS_INCLUIDOS, expandirPlantilla, type ComandoUsuario } from '@shared/core/comandos'
+import { COMANDOS_INCLUIDOS, PLANTILLAS_INCLUIDAS, expandirPlantilla, type ComandoUsuario } from '@shared/core/comandos'
 import type { ModoAutonomia } from '@shared/core/permisos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { Agente, Turno } from '../agente/useAgente'
@@ -92,6 +92,12 @@ function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
       )
     case 'contexto':
       return <div className="ag-nota">Contexto comprimido ({e.estrategia}): {e.tokensAntes} → {e.tokensDespues} tokens</div>
+    case 'cuenta_cambiada':
+      return (
+        <div className="ag-nota">
+          Límite de uso alcanzado en «{e.de}»{e.hasta ? ` (se renueva ${new Date(e.hasta).toLocaleString()})` : ''}. Continúo con «{e.a}».
+        </div>
+      )
     case 'aprobacion_automatica':
       return <div className="ag-nota">✓ {e.clase === 'plan' ? 'Plan' : 'Acción'} aprobado automáticamente ({e.motivo})</div>
     case 'comando_salida':
@@ -305,6 +311,13 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         if (!proyecto) return aviso('El flujo necesita un proyecto: abre el asistente desde la celda de un proyecto o elígelo en el selector.')
         if (!resto) return aviso('Uso: /flujo <petición>')
         return lanzar(resto, true)
+      case 'plan':
+        if (!proyecto) return aviso('El plan necesita un proyecto: abre el asistente desde la celda de un proyecto o elígelo en el selector.')
+        if (!resto) return aviso('Uso: /plan <funcionalidad>')
+        return lanzar(expandirPlantilla(PLANTILLAS_INCLUIDAS.plan!, resto))
+      case 'tareas':
+        if (!proyecto) return aviso('Elige un proyecto para revisar sus tareas.')
+        return lanzar(PLANTILLAS_INCLUIDAS.tareas!)
       case 'chat':
         return setModo('chat')
       case 'modo':
@@ -422,7 +435,8 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             <option value="auto">Modelo: automático</option>
             {modelos.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.nombre} · {m.ventana >= 1_000_000 ? `${m.ventana / 1_000_000}M` : `${Math.round(m.ventana / 1000)}k`}
+                {m.nombre}
+                {m.ventana ? ` · ${m.ventana >= 1_000_000 ? `${m.ventana / 1_000_000}M` : `${Math.round(m.ventana / 1000)}k`}` : ''}
               </option>
             ))}
           </select>

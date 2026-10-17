@@ -5,6 +5,7 @@ import type { Activaciones, BibliotecaAgentes, Recurso } from '@shared/modelos'
 import type { DestinoActivacion, ResultadoRecurso } from '@shared/ipc'
 import { activosDe, slug } from '@shared/agentes'
 import { DIR, leerProyectos } from './proyectos'
+import { configMcpTareas } from './core/tareas/mcp-config'
 
 const ARCHIVO = join(DIR, 'agentes.json')
 const SESIONES = join(DIR, 'sesiones')
@@ -158,7 +159,9 @@ async function construirPlugin(proyectoId: string): Promise<string | null> {
   const proyecto = datos.proyectos.find((p) => p.id === proyectoId)
   if (!proyecto) return null
   const activos = activosDe(await leerBiblioteca(), proyecto).map((a) => a.recurso)
-  if (activos.length === 0) return null
+  // Además de los agentes y skills, el plugin lleva el servidor MCP de tareas: Claude Code ve las tareas del proyecto.
+  const mcp = configMcpTareas(proyectoId)
+  if (activos.length === 0 && !mcp) return null
 
   const agentes = activos.filter((r) => r.tipo === 'agente')
   const skills = activos.filter((r) => r.tipo === 'skill')
@@ -172,6 +175,7 @@ async function construirPlugin(proyectoId: string): Promise<string | null> {
         2
       ) + '\n'
   }
+  if (mcp) archivos['.mcp.json'] = JSON.stringify(mcp, null, 2) + '\n'
   for (const a of agentes) {
     const cabecera = [campo('name', nombres.get(a.id)!), campo('description', a.descripcion)]
     if (a.herramientas?.length) cabecera.push(campo('tools', a.herramientas.join(', ')))

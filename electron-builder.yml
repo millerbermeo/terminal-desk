@@ -9,6 +9,7 @@ files:
   - package.json
 asarUnpack:
   - node_modules/node-pty/**
+  - out/main/**
 linux:
   icon: icon.png
   target: [AppImage, deb]

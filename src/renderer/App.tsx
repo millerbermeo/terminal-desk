@@ -3,6 +3,7 @@ import type { BibliotecaAgentes, DatosProyectos, Proyecto, ProveedorEstado } fro
 import { IconoCerrar, IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, IconoTerminal, IconoVentana } from './components/Iconos'
 import { Sidebar, type Vista } from './components/Sidebar'
 import { Asistente } from './components/Asistente'
+import { Tareas } from './components/Tareas'
 import { ModalSolicitudGlobal } from './components/ModalSolicitud'
 import { escucharSolicitudes, useSolicitudes } from './agente/solicitudes'
 import { ConfigAgentes } from './components/ConfigAgentes'
@@ -329,6 +330,7 @@ export function App() {
       {vista === 'agentes' && <ConfigAgentes datos={datos} biblioteca={biblioteca} onBiblioteca={setBiblioteca} />}
       {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}
       <Asistente datos={datos} visible={vista === 'asistente'} />
+      <Tareas datos={datos} visible={vista === 'tareas'} />
       {/* siempre montado (oculto en las pantallas de configuración) para no matar los procesos de las terminales */}
       <main className="principal" style={{ display: vista !== 'terminales' ? 'none' : 'flex' }}>
         <div className="ventanas" role="tablist" ref={barraPestanas}>

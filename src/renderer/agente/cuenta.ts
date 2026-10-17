@@ -62,7 +62,11 @@ export function useCuenta() {
     return () => window.removeEventListener('focus', alEnfocar)
   }, [])
   const elegir = useCallback((p: ProveedorModelo) => accion('proveedor', () => window.api.core.cuentaProveedor(p)), [])
-  const iniciarSesion = useCallback(() => accion('iniciando', () => window.api.core.cuentaIniciarSesion()), [])
-  const cerrarSesion = useCallback(() => accion('cerrando', () => window.api.core.cuentaCerrarSesion()), [])
-  return { cuenta: s.estado, ocupado: s.ocupado, error: s.error, elegir, iniciarSesion, cerrarSesion }
+  const iniciarSesion = useCallback((id?: string) => accion('iniciando', () => window.api.core.cuentaIniciarSesion(id)), [])
+  const cerrarSesion = useCallback((id?: string) => accion('cerrando', () => window.api.core.cuentaCerrarSesion(id)), [])
+  const activar = useCallback((id: string) => accion('activando', () => window.api.core.cuentaActivar(id)), [])
+  const agregar = useCallback((nombre: string) => accion('agregando', () => window.api.core.cuentaAgregar(nombre)), [])
+  const quitar = useCallback((id: string) => accion('quitando', () => window.api.core.cuentaQuitar(id)), [])
+  const cambioAutomatico = useCallback((activo: boolean) => accion('auto', () => window.api.core.cuentaCambioAutomatico(activo)), [])
+  return { cuenta: s.estado, ocupado: s.ocupado, error: s.error, elegir, iniciarSesion, cerrarSesion, activar, agregar, quitar, cambioAutomatico }
 }

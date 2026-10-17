@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { MODELOS_CONOCIDOS, VENTANA_POR_DEFECTO, type InfoModelo, type ResumenUso } from '@shared/core/uso'
+import { MODELOS_CONOCIDOS, type InfoModelo, type ResumenUso } from '@shared/core/uso'
 
 // ---- consumo y límites, en tiempo real (el proceso principal avisa tras cada llamada al modelo) ----
 let uso: ResumenUso | undefined
@@ -46,7 +46,7 @@ export function useModelos(): InfoModelo[] {
   return lista
 }
 
-export const ventanaDe = (lista: readonly InfoModelo[], id?: string): number => lista.find((m) => m.id === id)?.ventana ?? VENTANA_POR_DEFECTO
+export const ventanaDe = (lista: readonly InfoModelo[], id?: string): number | undefined => lista.find((m) => m.id === id)?.ventana
 
 /** 950 -> «950», 12 400 -> «12k», 1 250 000 -> «1,25M». */
 export function fmt(n: number): string {

@@ -6,7 +6,7 @@ const shared = resolve(__dirname, 'src/shared')
 
 export default defineConfig({
   main: {
-    build: { rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts') } } },
+    build: { rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts'), 'mcp-tareas': resolve(__dirname, 'src/main/mcp-tareas.ts') } } },
     resolve: { alias: { '@shared': shared } }
   },
   preload: {

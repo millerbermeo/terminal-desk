@@ -48,9 +48,11 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
   | { tipo: 'flujo_fin'; estado: EstadoFlujo; resumen: string }
   | { tipo: 'aprobacion_automatica'; clase: ClaseSolicitud; motivo: string }
   /** Tokens que ocupó el contexto en la última llamada del agente raíz (dato real de la API, no una estimación). */
-  | { tipo: 'uso_contexto'; tokens: number; modelo?: string }
+  | { tipo: 'uso_contexto'; tokens: number; modelo?: string; ventana?: number }
   | { tipo: 'comando_salida'; nombre: string; linea: string; ok: boolean; salida: string; duracionMs: number }
   | { tipo: 'a2a'; de: string; a: string; fase: 'envio' | 'respuesta'; texto: string }
+  /** La cuenta de suscripción activa llegó a su límite y la ejecución continúa con otra. */
+  | { tipo: 'cuenta_cambiada'; de: string; a: string; hasta?: number }
 )
 
 export type Complejidad = 'simple' | 'media' | 'compleja'

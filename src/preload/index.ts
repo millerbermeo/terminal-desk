@@ -38,8 +38,12 @@ const api: ApiCentro = {
     modelos: () => ipcRenderer.invoke(Canales.coreModelosListar),
     cuentaEstado: () => ipcRenderer.invoke(Canales.coreCuentaEstado),
     cuentaProveedor: (proveedor) => ipcRenderer.invoke(Canales.coreCuentaProveedor, proveedor),
-    cuentaIniciarSesion: () => ipcRenderer.invoke(Canales.coreCuentaIniciar),
-    cuentaCerrarSesion: () => ipcRenderer.invoke(Canales.coreCuentaCerrar),
+    cuentaIniciarSesion: (id) => ipcRenderer.invoke(Canales.coreCuentaIniciar, id),
+    cuentaCerrarSesion: (id) => ipcRenderer.invoke(Canales.coreCuentaCerrar, id),
+    cuentaAgregar: (nombre) => ipcRenderer.invoke(Canales.coreCuentaAgregar, nombre),
+    cuentaQuitar: (id) => ipcRenderer.invoke(Canales.coreCuentaQuitar, id),
+    cuentaActivar: (id) => ipcRenderer.invoke(Canales.coreCuentaActivar, id),
+    cuentaCambioAutomatico: (activo) => ipcRenderer.invoke(Canales.coreCuentaAuto, activo),
     uso: () => ipcRenderer.invoke(Canales.coreUsoObtener),
     onUso: (cb) => suscribir<ResumenUso>(Canales.coreUso, cb),
     adjuntoSubir: (nombre, datos) => ipcRenderer.invoke(Canales.coreAdjuntoSubir, nombre, datos),
@@ -63,6 +67,10 @@ const api: ApiCentro = {
     mcpEstado: () => ipcRenderer.invoke(Canales.coreMcpEstado),
     mcpReiniciar: () => ipcRenderer.invoke(Canales.coreMcpReiniciar),
     onEvento: (cb) => suscribir<EventoAgente>(Canales.coreEvento, cb)
+  },
+  tareas: {
+    operar: (op, entrada) => ipcRenderer.invoke(Canales.tareasOperar, op, entrada),
+    onCambio: (cb) => suscribir<null>(Canales.tareasCambio, () => cb())
   },
   agentes: {
     listar: () => ipcRenderer.invoke(Canales.agentesListar),
