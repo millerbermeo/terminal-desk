@@ -5,18 +5,21 @@ import { git, useGit, type ContextoGit } from '../versiones/useGit'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoMas, IconoRama, IconoReiniciar } from './Iconos'
 import { VersionesCambios } from './VersionesCambios'
+import { ModalClonar } from './ModalClonar'
 import { VersionesEtiquetas } from './VersionesEtiquetas'
+import { VersionesGitHub } from './VersionesGitHub'
 import { VersionesHistorial } from './VersionesHistorial'
 import { VersionesRamas } from './VersionesRamas'
 import { VersionesStash } from './VersionesStash'
 
-type Pestana = 'cambios' | 'historial' | 'ramas' | 'versiones' | 'stash'
+type Pestana = 'cambios' | 'historial' | 'ramas' | 'versiones' | 'stash' | 'github'
 const PESTANAS: { id: Pestana; nombre: string }[] = [
   { id: 'cambios', nombre: 'Cambios' },
   { id: 'historial', nombre: 'Historial' },
   { id: 'ramas', nombre: 'Ramas' },
   { id: 'versiones', nombre: 'Versiones' },
-  { id: 'stash', nombre: 'Stash' }
+  { id: 'stash', nombre: 'Stash' },
+  { id: 'github', nombre: 'GitHub' }
 ]
 const NOMBRE_OPERACION: Record<OperacionEnCurso, string> = { fusion: 'Fusión en curso', revert: 'Revert en curso', 'cherry-pick': 'Cherry-pick en curso', rebase: 'Rebase en curso' }
 const CLAVE = 'versiones:proyecto'
@@ -32,16 +35,20 @@ const guardado = (): string => {
 interface Props {
   datos: DatosProyectos
   visible: boolean
+  /** Se agregó un proyecto (p. ej. al clonar): la aplicación refresca su lista. */
+  onDatos: (d: DatosProyectos) => void
 }
 
 /** Control de versiones con git de cada proyecto: cambios, historial, ramas, versiones (etiquetas) y stash. */
-export function Versiones({ datos, visible }: Props) {
+export function Versiones({ datos, visible, onDatos }: Props) {
   const [proyectoId, setProyectoId] = useState(guardado)
   const [pestana, setPestana] = useState<Pestana>('cambios')
   const [aviso, setAviso] = useState('')
   const [conflictos, setConflictos] = useState('')
   const temporizador = useRef<number | undefined>(undefined)
   const [ident, setIdent] = useState({ nombre: '', correo: '', global: true })
+  const [clonando, setClonando] = useState(false)
+  const [conectado, setConectado] = useState(false)
 
   useEffect(() => {
     if (!datos.proyectos.some((p) => p.id === proyectoId)) setProyectoId(datos.proyectos[0]?.id ?? '')
@@ -116,9 +123,12 @@ export function Versiones({ datos, visible }: Props) {
         titulo="Este proyecto aún no usa git"
         texto="Inicializa un repositorio para guardar el historial de cambios, trabajar en ramas y publicar versiones."
         accion={
-          <button className="primario" disabled={ocupado !== ''} onClick={sincronizar.iniciar}>
-            <IconoMas /> Inicializar repositorio
-          </button>
+          <>
+            <button className="primario" disabled={ocupado !== ''} onClick={sincronizar.iniciar}>
+              <IconoMas /> Inicializar repositorio
+            </button>
+            <button onClick={() => (void window.api.github.operar('estado', {}).then((e) => setConectado(e.conectado)).catch(() => undefined), setClonando(true))}>Clonar uno de GitHub</button>
+          </>
         }
       />
     )
@@ -130,6 +140,7 @@ export function Versiones({ datos, visible }: Props) {
         {pestana === 'ramas' && <VersionesRamas c={contexto} />}
         {pestana === 'versiones' && <VersionesEtiquetas c={contexto} />}
         {pestana === 'stash' && <VersionesStash c={contexto} />}
+        {pestana === 'github' && <VersionesGitHub c={contexto} />}
       </>
     )
   }
@@ -177,6 +188,9 @@ export function Versiones({ datos, visible }: Props) {
             </button>
           </>
         )}
+        <button onClick={() => (void window.api.github.operar('estado', {}).then((e) => setConectado(e.conectado)).catch(() => undefined), setClonando(true))} title="Clonar un repositorio de GitHub (o por URL) y agregarlo como proyecto">
+          Clonar
+        </button>
         <button className="icono" onClick={() => void recargar()} disabled={cargando} title="Actualizar" aria-label="Actualizar">
           <IconoReiniciar />
         </button>
@@ -254,6 +268,21 @@ export function Versiones({ datos, visible }: Props) {
         </div>
       )}
       <div className="vc-cuerpo">{cuerpo}</div>
+      {clonando && (
+        <ModalClonar
+          datos={datos}
+          conectado={conectado}
+          onCerrar={() => setClonando(false)}
+          onClonado={(id) => {
+            void window.api.proyectos.listar().then((d) => {
+              onDatos(d)
+              setProyectoId(id)
+              setPestana('cambios')
+              avisar('Repositorio clonado y agregado como proyecto.')
+            })
+          }}
+        />
+      )}
     </main>
   )
 }

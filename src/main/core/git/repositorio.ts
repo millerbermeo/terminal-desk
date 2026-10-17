@@ -60,10 +60,26 @@ const sinSalto = (t: string, campo: string, max: number): string => {
  * Operaciones de git sobre un proyecto. Todo se ejecuta sin shell, con las rutas como literales y detrás de `--`, y desde la raíz del
  * repositorio (las rutas del estado son relativas a ella, aunque el proyecto sea una subcarpeta).
  */
+/** Credenciales para un remoto (variables de entorno para git): solo las da para los servidores que la aplicación conoce. */
+export type ProveedorCredenciales = (urlRemoto: string) => Promise<Record<string, string> | undefined>
+
 export class Repositorio {
   private raiz?: string
 
-  constructor(private readonly carpeta: string) {}
+  constructor(
+    private readonly carpeta: string,
+    private readonly credenciales?: ProveedorCredenciales
+  ) {}
+
+  /** Entorno de git para hablar con un remoto (p. ej. el token de GitHub vía GIT_ASKPASS); vacío si no hay credenciales para él. */
+  private async entornoRed(remoto?: string): Promise<Record<string, string>> {
+    if (!this.credenciales) return {}
+    const lista = (await this.g(['remote'])).stdout.split('\n').map((x) => x.trim()).filter(Boolean)
+    const nombre = remoto ?? (lista.includes('origin') ? 'origin' : lista[0])
+    if (!nombre) return {}
+    const r = await this.g(['remote', 'get-url', nombre])
+    return r.ok ? ((await this.credenciales(r.stdout.trim())) ?? {}) : {}
+  }
 
   // ---------------------------------------------------------------- base
 
@@ -213,6 +229,30 @@ export class Repositorio {
     const binario = /^Binary files .* differ$/m.test(r.stdout) || r.stdout.includes('GIT binary patch')
     const truncado = r.stdout.length > MAX_DIFF
     return { texto: truncado ? r.stdout.slice(0, MAX_DIFF) : r.stdout, binario, truncado }
+  }
+
+  /** Diferencias de todos los archivos que git ya conoce (los nuevos sin seguimiento no entran: se piden por su ruta). */
+  async diffGlobal(preparado = false): Promise<DiffArchivo> {
+    await this.exigirRepo()
+    const r = await this.g(['diff', ...(preparado ? ['--cached'] : []), '--no-color', '--no-ext-diff', '--find-renames'])
+    if (!r.ok) throw new Error(explicarError(r.stderr, 'diff'))
+    const truncado = r.stdout.length > MAX_DIFF
+    return { texto: truncado ? r.stdout.slice(0, MAX_DIFF) : r.stdout, binario: false, truncado }
+  }
+
+  /** Trae la rama de un pull request de GitHub (`pull/N/head`) como `<remoto>/pr/N` y cambia a una rama local que la sigue. */
+  traerPullRequest(numero: number, remoto?: string): Promise<EstadoGit> {
+    return this.escribir(async () => {
+      await this.exigirRepo()
+      if (!Number.isInteger(numero) || numero < 1) throw new Error('Número de pull request no válido.')
+      const r = await this.remotoElegido(remoto)
+      const salida = await this.g(['fetch', r, `+pull/${numero}/head:refs/remotes/${r}/pr/${numero}`], { timeoutMs: 180_000, env: await this.entornoRed(r) })
+      if (!salida.ok) throw new Error(explicarError(salida.stderr, 'fetch'))
+      const local = `pr/${numero}`
+      const yaLocal = (await this.g(['rev-parse', '--verify', '--quiet', `refs/heads/${local}`])).ok
+      await this.ok(yaLocal ? ['switch', local] : ['switch', '-c', local, '--track', `${r}/pr/${numero}`])
+      return this.estado()
+    })
   }
 
   preparar(rutas?: string[]): Promise<EstadoGit> {
@@ -449,7 +489,7 @@ export class Repositorio {
     return this.escribir(async () => {
       await this.exigirRepo()
       const r = await this.remotoElegido(remoto)
-      const salida = await this.g(['fetch', '--prune', r], { timeoutMs: 180_000 })
+      const salida = await this.g(['fetch', '--prune', r], { timeoutMs: 180_000, env: await this.entornoRed(r) })
       if (!salida.ok) throw new Error(explicarError(salida.stderr, 'fetch'))
       return { estado: await this.estado(), mensaje: (salida.stdout + salida.stderr).trim() || 'Todo al día.' }
     })
@@ -461,7 +501,7 @@ export class Repositorio {
       const estado = await this.estado()
       if (!estado.rama) throw new Error('Estás en un commit suelto (HEAD desacoplado): cambia a una rama para traer cambios.')
       if (!estado.upstream) throw new Error('La rama no sigue a ninguna rama remota todavía. Envíala primero (push) para enlazarla.')
-      const r = await this.g(['pull', '--no-edit', rebase ? '--rebase' : '--ff-only'], { timeoutMs: 180_000, env: { GIT_EDITOR: 'true' } })
+      const r = await this.g(['pull', '--no-edit', rebase ? '--rebase' : '--ff-only'], { timeoutMs: 180_000, env: { GIT_EDITOR: 'true', ...(await this.entornoRed(estado.upstream?.split('/')[0])) } })
       return this.conConflictos(r, 'pull')
     })
   }
@@ -474,7 +514,7 @@ export class Repositorio {
       if (estado.sinCommits) throw new Error('Aún no hay ningún commit que enviar.')
       const r = await this.remotoElegido(remoto)
       const args = estado.upstream ? ['push'] : ['push', '-u', r, estado.rama]
-      const salida = await this.g(args, { timeoutMs: 180_000 })
+      const salida = await this.g(args, { timeoutMs: 180_000, env: await this.entornoRed(estado.upstream ? estado.upstream.split('/')[0] : r) })
       if (!salida.ok) throw new Error(explicarError(salida.stderr, 'push'))
       return { estado: await this.estado(), mensaje: (salida.stderr + salida.stdout).trim() || 'Enviado.' }
     })
@@ -530,7 +570,7 @@ export class Repositorio {
       const n = nombre.trim()
       if (!(await this.g(['rev-parse', '--verify', '--quiet', `refs/tags/${n}`])).ok) throw new Error(`No existe la versión «${n}».`)
       const r = await this.remotoElegido(remoto)
-      const salida = await this.g(['push', r, `refs/tags/${n}`], { timeoutMs: 180_000 })
+      const salida = await this.g(['push', r, `refs/tags/${n}`], { timeoutMs: 180_000, env: await this.entornoRed(r) })
       if (!salida.ok) throw new Error(explicarError(salida.stderr, 'push'))
       return (salida.stderr + salida.stdout).trim() || 'Versión enviada.'
     })

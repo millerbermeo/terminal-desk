@@ -335,7 +335,7 @@ export function App() {
       {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}
       <Asistente datos={datos} visible={vista === 'asistente'} />
       <Tareas datos={datos} visible={vista === 'tareas'} />
-      <Versiones datos={datos} visible={vista === 'versiones'} />
+      <Versiones datos={datos} visible={vista === 'versiones'} onDatos={setDatos} />
       <Api visible={vista === 'api'} />
       <Navegador visible={vista === 'navegador'} />
       {/* siempre montado (oculto en las pantallas de configuración) para no matar los procesos de las terminales */}

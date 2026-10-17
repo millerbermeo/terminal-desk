@@ -14,7 +14,8 @@ import { verificarPassword } from './autenticacion'
 import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones } from './agentes'
 import { resolverPerfil } from './migracion'
 import { repararWorktrees } from './core/git/reparar'
-import { DIR, MIGRACION_DATOS, agregarProyectos, eliminarGrupo, eliminarProyecto, leerProyectos, sugerirRutas, validarRuta } from './proyectos'
+import { ejecutarOperacionGitHub } from './github/operaciones'
+import { DIR, MIGRACION_DATOS, agregarProyectos, carpetaDeProyecto, eliminarGrupo, eliminarProyecto, leerProyectos, sugerirRutas, validarRuta } from './proyectos'
 import { configurarMcpTareas } from './core/tareas/mcp-config'
 import { ejecutarOperacionGit } from './core/git/operaciones'
 import { writeFile } from 'node:fs/promises'
@@ -133,13 +134,8 @@ function crearVentana(opciones: { token?: string; x?: number; y?: number; titulo
 function registrarIpc(): void {
   registrarIpcCore(nucleo)
   registrarIpcArchivos()
-  ipcMain.handle(Canales.gitOperar, (_e, op: string, entrada: unknown) =>
-    ejecutarOperacionGit(async (id) => {
-      const p = (await leerProyectos()).proyectos.find((x) => x.id === String(id))
-      if (!p) throw new Error('El proyecto ya no existe.')
-      return p.ruta
-    }, op, entrada)
-  )
+  ipcMain.handle(Canales.gitOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGit(carpetaDeProyecto, op, entrada, nucleo.github.credencialesPara))
+  ipcMain.handle(Canales.githubOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGitHub(nucleo.github, op, entrada))
   ipcMain.handle(Canales.apiOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionApi(servicioApi, op, entrada))
   ipcMain.handle(Canales.navegadorAbrir, (_e, url: string) => navegador.abrir(String(url)))
   ipcMain.handle(Canales.navegadorAccion, (e, id: number, accion: AccionNavegador) => navegador.accion(Number(id), accion, e.sender))
@@ -230,7 +226,7 @@ app.whenReady().then(() => {
   // Se movieron los datos desde ~/.centro-proyectos: los worktrees de los agentes guardan rutas absolutas y hay que rehacerlas.
   if (MIGRACION_DATOS.migrado) void leerProyectos().then((d) => repararWorktrees(DIR, d.proyectos)).catch(() => undefined)
   // Socket local para que la IA (servidor MCP, en otro proceso) use las tareas; solo este proceso las escribe.
-  void iniciarServidorTareas(DIR, nucleo.tareas)
+  void iniciarServidorTareas(DIR, nucleo.ejecutarHerramienta)
     .then((s) => (servidorTareas = s))
     .catch((err) => console.error('Servidor de tareas no iniciado:', err))
   registrarIpc()

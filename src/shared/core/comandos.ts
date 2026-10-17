@@ -24,6 +24,8 @@ export const COMANDOS_INCLUIDOS = [
   { nombre: 'comandos', descripcion: 'Gestiona tus comandos con /', uso: '/comandos' },
   { nombre: 'plan', descripcion: 'Descompone una funcionalidad en tareas con criterios y dependencias (no implementa nada)', uso: '/plan <funcionalidad>' },
   { nombre: 'tareas', descripcion: 'Revisa las tareas del proyecto: bloqueos, mal definidas y siguiente paso', uso: '/tareas' },
+  { nombre: 'commit', descripcion: 'Revisa los cambios y propone el commit (espera tu visto bueno)', uso: '/commit [indicaciones]' },
+  { nombre: 'pr', descripcion: 'Redacta y abre un pull request de la rama actual en GitHub', uso: '/pr [indicaciones]' },
   { nombre: 'ayuda', descripcion: 'Lista todos los comandos', uso: '/ayuda' }
 ] as const
 
@@ -34,6 +36,14 @@ export const PLANTILLAS_INCLUIDAS: Record<string, string> = {
     '2) revisa la estructura del código que se verá afectada; 3) crea el plan con crear_tareas: tareas pequeñas y ordenadas, cada una con ' +
     'criterios de aceptación verificables, notas técnicas (archivos y enfoque), prioridad y dependencias entre ellas (depende_de_indices); ' +
     '4) resume el orden de ejecución y señala riesgos o requisitos que falten. Funcionalidad: $ARGUMENTOS',
+  commit:
+    'Prepara un commit con los cambios actuales del proyecto: 1) mira git_estado y git_diff (y git_historial para imitar el estilo de los mensajes); ' +
+    '2) agrupa lo que corresponde a un solo cambio: si hay cambios sin relación, dímelo y propón varios commits; 3) nunca incluyas archivos con secretos; ' +
+    '4) muéstrame el mensaje propuesto y los archivos, y espera mi visto bueno antes de usar git_preparar y git_commit. No envíes nada al remoto.',
+  pr:
+    'Abre un pull request con la rama actual: 1) mira git_estado (rama, commits por enviar) y git_historial para ver qué commits trae la rama; ' +
+    '2) si hay cambios sin confirmar, avísame; 3) redacta el título y la descripción (qué cambia, por qué y cómo probarlo); 4) muéstramelos y espera mi visto bueno; ' +
+    '5) con él, usa github_crear_pr (envía la rama si hace falta). No fusiones nada.',
   tareas:
     'Revisa las tareas de este proyecto: usa resumen_tareas y listar_tareas. Dime qué está bloqueado y por qué, qué tareas están mal definidas ' +
     '(sin criterios de aceptación) o parecen duplicadas, y qué falta. Recomiéndame las prioridades y el siguiente paso. No cambies nada sin que te lo pida.'

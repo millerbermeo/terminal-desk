@@ -1,7 +1,7 @@
 import { createInterface } from 'node:readline'
 import type { Readable, Writable } from 'node:stream'
 import type { ResultadoHerramienta } from '@shared/core/herramientas'
-import { HERRAMIENTAS_TAREAS, SERVIDOR_MCP_TAREAS } from '@shared/tareas-herramientas'
+import { HERRAMIENTAS_ODESK, SERVIDOR_MCP } from '@shared/herramientas-odesk'
 
 const VERSION_PROTOCOLO = '2024-11-05'
 
@@ -29,15 +29,15 @@ export function servirMcpTareas(entrada: Readable, salida: Writable, llamar: (he
         return ok(p.id, {
           protocolVersion: typeof p.params?.protocolVersion === 'string' ? p.params.protocolVersion : VERSION_PROTOCOLO,
           capabilities: { tools: {} },
-          serverInfo: { name: SERVIDOR_MCP_TAREAS, version: '1.0.0' }
+          serverInfo: { name: SERVIDOR_MCP, version: '1.0.0' }
         })
       case 'ping':
         return ok(p.id, {})
       case 'tools/list':
-        return ok(p.id, { tools: HERRAMIENTAS_TAREAS.map((h) => ({ name: h.nombre, description: h.descripcion, inputSchema: h.esquema })) })
+        return ok(p.id, { tools: HERRAMIENTAS_ODESK.map((h) => ({ name: h.nombre, description: h.descripcion, inputSchema: h.esquema })) })
       case 'tools/call': {
         const nombre = String(p.params?.name ?? '')
-        if (!HERRAMIENTAS_TAREAS.some((h) => h.nombre === nombre)) return fallo(p.id, -32602, `Herramienta desconocida: ${nombre}`)
+        if (!HERRAMIENTAS_ODESK.some((h) => h.nombre === nombre)) return fallo(p.id, -32602, `Herramienta desconocida: ${nombre}`)
         const r = await llamar(nombre, p.params?.arguments ?? {})
         return ok(p.id, { content: [{ type: 'text', text: r.texto }], ...(r.error ? { isError: true } : {}) })
       }

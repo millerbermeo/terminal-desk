@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, rename, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { SERVIDOR_MCP_TAREAS } from '@shared/tareas-herramientas'
+import { SERVIDOR_MCP } from '@shared/herramientas-odesk'
 import { DIR } from '../../proyectos'
 
 let raizApp = process.cwd()
@@ -35,7 +35,7 @@ export function configMcpTareas(proyectoId?: string): ConfigMcpTareas | undefine
   if (!script) return undefined
   return {
     mcpServers: {
-      [SERVIDOR_MCP_TAREAS]: {
+      [SERVIDOR_MCP]: {
         command: process.execPath,
         args: [script],
         env: { ELECTRON_RUN_AS_NODE: '1', ODESK_DIR: dirDatos, ...(proyectoId ? { ODESK_PROYECTO_ID: proyectoId } : {}) }

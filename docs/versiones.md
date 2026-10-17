@@ -12,6 +12,29 @@ Pantalla **Versiones** (barra lateral): gestiona con git la versión de cada pro
 - **Sincronizar**: Obtener (fetch), Traer (pull sin mezclar; con rebase si la rama divergió) y Enviar/Publicar rama. Los conflictos de fusión, revert, pull o stash se resuelven en «Cambios» y se confirman, o se aborta la operación.
 - **Primeros pasos**: inicializar el repositorio de un proyecto y configurar tu nombre y correo (global o del proyecto) cuando falta.
 
+## GitHub
+
+Pestaña **GitHub** de la pantalla Versiones, y botón **Clonar** siempre visible.
+
+- **Conectar**: un botón abre GitHub en la página de crear un token con los permisos (`repo`, `workflow`) ya marcados; lo pegas y listo. El token se guarda **cifrado con el llavero del sistema** (`safeStorage`), nunca en claro; si el sistema no ofrece un llavero seguro (Linux sin gestor de claves), solo vive en memoria hasta cerrar la app y la pantalla lo avisa. Se valida al conectar y se explica el error si falla.
+- **Clonar**: de tu lista de repositorios, por `propietario/repo` o por URL (https, ssh o una ruta local). Elige carpeta y grupo; se clona, se agrega como proyecto y se abre.
+- **Publicar**: si el proyecto no tiene remoto, «Crear y publicar» crea el repositorio en GitHub (privado por defecto, en tu cuenta o en una organización), lo enlaza como `origin` y envía la rama actual. Valida antes de crear nada (hace falta un commit y que no exista ya `origin`).
+- **Pull requests**: el de la rama actual con el estado de sus comprobaciones (CI), crear uno (envía la rama antes si hace falta) o fusionar (squash, merge o rebase, con confirmación); lista de los abiertos y «Traer rama» para revisarlos en local.
+- **Incidencias**: listar (sin los pull requests, que la API mezcla) y crear.
+- **El repositorio se deduce del remoto** del proyecto, también con alias de `~/.ssh/config` (se resuelven con `ssh -G`; `ssh.github.com`, el acceso por el puerto 443, cuenta como GitHub).
+- **Enviar y traer por https funcionan sin configurar nada**: a git se le dan las credenciales con `GIT_ASKPASS` (un script que lee el token de la variable de entorno del proceso; no está escrito en el archivo) y solo para el servidor de GitHub por https.
+
+## Con el asistente
+
+El chat tiene herramientas de git y de GitHub (las mismas por el registro del núcleo en modo API y por el servidor MCP en suscripción y terminales ✦). El contexto de cada mensaje incluye el estado de git del proyecto.
+
+- **Consultar**: `git_estado`, `git_diff`, `git_historial`, `git_ramas`, `github_estado`, `github_listar_prs`, `github_listar_issues`, `github_estado_ci`. Siempre permitidas.
+- **Cambiar** (desde «Aceptar ediciones»): `git_preparar`, `git_commit`, `git_crear_rama`, `git_cambiar_rama`.
+- **Salen de la máquina** (solo en modo «Autónomo» en suscripción; en modo API siempre piden confirmación explícita y nunca se recuerdan): `git_enviar`, `git_traer`, `github_crear_pr`, `github_crear_repo`, `github_crear_issue`, `github_comentar`.
+- **Nunca**: descartar cambios, borrar ramas, reset, push forzado, fusionar pull requests. Eso es tuyo, en la pantalla.
+- **Secretos**: la IA se niega a preparar o confirmar archivos que parecen secretos (`.env`, claves, credenciales…).
+- **Comandos**: `/commit` (revisa el diff, propone el mensaje y espera tu visto bueno) y `/pr` (redacta título y descripción y espera tu visto bueno antes de abrirlo).
+
 ## Cómo está hecho
 
 - `src/shared/versiones.ts`: tipos, un solo contrato tipado (`OperacionesGit`) y lógica pura (siguiente versión, validación de rutas y nombres, análisis del diff).
@@ -23,4 +46,4 @@ Pantalla **Versiones** (barra lateral): gestiona con git la versión de cada pro
 
 ## Fuera de alcance (a propósito)
 
-Reescribir historia (reset, rebase interactivo, push forzado), resolver conflictos línea a línea en la interfaz (se abre el archivo en el editor), submódulos, clonar repositorios y firmar commits.
+Reescribir historia (reset, rebase interactivo, push forzado), resolver conflictos línea a línea en la interfaz (se abre el archivo en el editor), submódulos, firmar commits, y GitHub Enterprise con SSO (se admite otro servidor con `ODESK_GITHUB_HOST` y `ODESK_GITHUB_API`, sin probar).

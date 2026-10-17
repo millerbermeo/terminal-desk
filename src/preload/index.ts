@@ -76,6 +76,9 @@ const api: ApiCentro = {
   git: {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.gitOperar, op, entrada)
   },
+  github: {
+    operar: (op, entrada) => ipcRenderer.invoke(Canales.githubOperar, op, entrada)
+  },
   api: {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.apiOperar, op, entrada)
   },

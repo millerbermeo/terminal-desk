@@ -1,5 +1,5 @@
 import type { NombreOperacionGit, OperacionesGit } from '@shared/versiones'
-import { Repositorio } from './repositorio'
+import { Repositorio, type ProveedorCredenciales } from './repositorio'
 
 type Entrada<K extends NombreOperacionGit> = OperacionesGit[K]['entrada']
 type Implementaciones = { [K in NombreOperacionGit]: (r: Repositorio, e: Entrada<K>) => Promise<OperacionesGit[K]['salida']> }
@@ -43,10 +43,10 @@ const OPERACIONES: Implementaciones = {
  * Operaciones de git de la interfaz. El renderer solo manda el id del proyecto; la carpeta la resuelve `carpetaDe`
  * (que falla si el proyecto no existe), así que nunca se opera fuera de los proyectos registrados.
  */
-export async function ejecutarOperacionGit(carpetaDe: (proyectoId: string) => Promise<string>, op: unknown, entrada: unknown): Promise<unknown> {
+export async function ejecutarOperacionGit(carpetaDe: (proyectoId: string) => Promise<string>, op: unknown, entrada: unknown, credenciales?: ProveedorCredenciales): Promise<unknown> {
   if (typeof op !== 'string' || !Object.hasOwn(OPERACIONES, op)) throw new Error(`Operación de git desconocida: ${String(op)}`)
   const e = entrada !== null && typeof entrada === 'object' ? (entrada as { proyectoId?: unknown }) : {}
   if (typeof e.proyectoId !== 'string' || !e.proyectoId) throw new Error('Falta el proyecto.')
-  const repo = new Repositorio(await carpetaDe(e.proyectoId))
+  const repo = new Repositorio(await carpetaDe(e.proyectoId), credenciales)
   return (OPERACIONES[op as NombreOperacionGit] as (r: Repositorio, e: unknown) => Promise<unknown>)(repo, e)
 }

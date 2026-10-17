@@ -5,6 +5,7 @@ import { PassThrough } from 'node:stream'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { DatosProyectos } from '@shared/modelos'
 import { ESTADOS_POR_DEFECTO, evaluarTransicion, haceCiclo, siguienteTarea, validarEstados, type Tarea } from '@shared/tareas'
+import { HERRAMIENTAS_ODESK } from '@shared/herramientas-odesk'
 import { HERRAMIENTAS_TAREAS } from '@shared/tareas-herramientas'
 import { AlmacenJson } from '../src/main/core/memory/almacen'
 import { llamarTareas, rutaSocketTareas } from '../src/main/core/tareas/cliente'
@@ -276,12 +277,12 @@ describe('herramientas de la IA', () => {
 describe('permisos del CLI con tareas', () => {
   it('siempre permite consultar; cambiar solo desde «Aceptar ediciones»', () => {
     const preguntar = permisosCli('preguntar', [], true)
-    expect(preguntar).toContain('mcp__odesk-tareas__listar_tareas')
-    expect(preguntar).not.toContain('mcp__odesk-tareas__crear_tarea')
+    expect(preguntar).toContain('mcp__odesk__listar_tareas')
+    expect(preguntar).not.toContain('mcp__odesk__crear_tarea')
     const ediciones = permisosCli('ediciones', [], true)
-    expect(ediciones).toContain('mcp__odesk-tareas__crear_tarea')
-    expect(ediciones).toContain('mcp__odesk-tareas__cambiar_estado_tarea')
-    expect(permisosCli('preguntar', [], false).some((p) => p.includes('odesk-tareas'))).toBe(false)
+    expect(ediciones).toContain('mcp__odesk__crear_tarea')
+    expect(ediciones).toContain('mcp__odesk__cambiar_estado_tarea')
+    expect(permisosCli('preguntar', [], false).some((p) => p.includes('mcp__odesk__'))).toBe(false)
   })
 })
 
@@ -289,7 +290,7 @@ describe('socket local y servidor MCP', () => {
   it('la IA (otro proceso) usa las tareas por el socket; el token protege; sin app abierta avisa', async () => {
     expect((await llamarTareas(dir, 'listar_tareas', {})).texto).toMatch(/no está abierto/)
 
-    const servidor = await iniciarServidorTareas(dir, s)
+    const servidor = await iniciarServidorTareas(dir, (n, e, c) => ejecutarHerramientaTareas(s, n, e, c))
     try {
       const r = await llamarTareas(dir, 'crear_tarea', { titulo: 'Por socket', proyecto_id: 'p1' })
       expect(r.error).toBeUndefined()
@@ -315,7 +316,7 @@ describe('socket local y servidor MCP', () => {
     expect(rutaSocketTareas(dir).length).toBeLessThanOrEqual(100)
     expect(rutaSocketTareas(larga).length).toBeLessThanOrEqual(100)
     expect(rutaSocketTareas(larga)).not.toBe(rutaSocketTareas(dir))
-    const servidor = await iniciarServidorTareas(larga, s)
+    const servidor = await iniciarServidorTareas(larga, (n, e, c) => ejecutarHerramientaTareas(s, n, e, c))
     try {
       expect((await llamarTareas(larga, 'crear_tarea', { titulo: 'Ruta larga' })).error).toBeUndefined()
       expect(await s.listar()).toHaveLength(1)
@@ -325,7 +326,7 @@ describe('socket local y servidor MCP', () => {
   })
 
   it('habla MCP por stdio: initialize, tools/list y tools/call (con isError cuando una regla lo impide)', async () => {
-    const servidor = await iniciarServidorTareas(dir, s)
+    const servidor = await iniciarServidorTareas(dir, (n, e, c) => ejecutarHerramientaTareas(s, n, e, c))
     const entrada = new PassThrough()
     const salida = new PassThrough()
     interface Rpc {
@@ -348,8 +349,8 @@ describe('socket local y servidor MCP', () => {
       entrada.end()
       await fin
       const por = (id: number): Rpc => respuestas.find((r) => r.id === id)!
-      expect(por(1).result).toMatchObject({ protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'odesk-tareas' } })
-      expect(por(2).result!.tools.map((t: { name: string }) => t.name)).toEqual(HERRAMIENTAS_TAREAS.map((h) => h.nombre))
+      expect(por(1).result).toMatchObject({ protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'odesk' } })
+      expect(por(2).result!.tools.map((t: { name: string }) => t.name)).toEqual(HERRAMIENTAS_ODESK.map((h) => h.nombre))
       expect(por(2).result!.tools[0]!.inputSchema.type).toBe('object')
       expect(por(3).result!.isError).toBeUndefined()
       expect((await s.obtener('1')).tarea).toMatchObject({ titulo: 'Vía MCP', proyectoId: 'p1' })
@@ -372,7 +373,7 @@ describe('socket local y servidor MCP', () => {
     expect(a).toBe((await archivoMcpTareas('p1'))!)
     expect(a).not.toBe((await archivoMcpTareas('p2'))!)
     const cfg = JSON.parse(await readFile(a, 'utf8'))
-    expect(cfg.mcpServers['odesk-tareas']).toMatchObject({ args: [join(raiz, 'out', 'main', 'mcp-tareas.js')], env: { ELECTRON_RUN_AS_NODE: '1', ODESK_DIR: dir, ODESK_PROYECTO_ID: 'p1' } })
+    expect(cfg.mcpServers['odesk']).toMatchObject({ args: [join(raiz, 'out', 'main', 'mcp-tareas.js')], env: { ELECTRON_RUN_AS_NODE: '1', ODESK_DIR: dir, ODESK_PROYECTO_ID: 'p1' } })
     // Sin el servidor compilado no se ofrece (y nada se rompe)
     configurarMcpTareas({ raizApp: join(raiz, 'no-existe'), dirDatos: dir })
     expect(await archivoMcpTareas('p1')).toBeUndefined()

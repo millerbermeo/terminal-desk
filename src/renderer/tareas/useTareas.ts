@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EstadoTarea, FiltroTareas, Tarea } from '@shared/tareas'
 
-export const mensajeDe = (err: unknown): string => (err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+export const mensajeDe = (err: unknown): string => (err as Error).message.replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, '')
 
 /** Ámbito de la vista: todas, sin proyecto, un grupo o un proyecto (se escribe como «p:<id>» / «g:<id>» en el selector). */
 export type Ambito = '' | '__sin__' | `p:${string}` | `g:${string}`

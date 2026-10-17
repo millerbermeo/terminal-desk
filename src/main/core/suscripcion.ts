@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { EventoAgente, ResultadoAgente } from '@shared/core/agente'
 import type { InfoModelo } from '@shared/core/uso'
-import { HERRAMIENTAS_TAREAS, PREFIJO_MCP_TAREAS } from '@shared/tareas-herramientas'
+import { HERRAMIENTAS_ODESK, PREFIJO_MCP } from '@shared/herramientas-odesk'
 import type { CuentaSuscripcion, EstadoCuenta, ProveedorModelo } from '@shared/core/cuenta'
 import type { ModoAutonomia } from '@shared/core/permisos'
 
@@ -166,10 +166,16 @@ export class SesionesCli {
 const LECTURA = ['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch']
 
 /** Autonomía -> permisos del CLI. En modo `-p` no hay forma de preguntar: lo que no está permitido se deniega. */
-export function permisosCli(autonomia: ModoAutonomia, verificaciones: string[], conTareas = false): string[] {
+export function permisosCli(autonomia: ModoAutonomia, verificaciones: string[], conHerramientas = false): string[] {
   const permitidas = [...LECTURA]
-  // Tareas (servidor MCP de la app): consultarlas siempre; cambiarlas, como las ediciones de archivos, desde «Aceptar ediciones».
-  if (conTareas) for (const h of HERRAMIENTAS_TAREAS) if (h.riesgo === 'lectura' || autonomia !== 'preguntar') permitidas.push(PREFIJO_MCP_TAREAS + h.nombre)
+  // Herramientas de la app (servidor MCP: tareas, git y GitHub). Consultar siempre; cambiar, como las ediciones de archivos, desde
+  // «Aceptar ediciones»; lo que sale de la máquina (enviar, publicar en GitHub) solo en modo «Autónomo»: aquí no hay quien confirme.
+  if (conHerramientas) {
+    for (const h of HERRAMIENTAS_ODESK) {
+      const permitida = h.riesgo === 'lectura' || (h.riesgo === 'escritura' && autonomia !== 'preguntar') || (h.riesgo === 'ejecucion' && autonomia === 'autonomo')
+      if (permitida) permitidas.push(PREFIJO_MCP + h.nombre)
+    }
+  }
   if (autonomia === 'autonomo') for (const v of verificaciones) permitidas.push(`Bash(${v}:*)`)
   return ['--permission-mode', autonomia === 'preguntar' ? 'default' : 'acceptEdits', '--allowedTools', ...permitidas]
 }

@@ -53,8 +53,18 @@ function destructivoGit(args: readonly string[]): string | null {
   }
 }
 
+/** Herramientas de la aplicación que publican fuera de la máquina: siempre piden confirmación y nunca se recuerdan ni se permiten por regla. */
+const PUBLICAN: Record<string, string> = {
+  git_enviar: 'sube commits a un repositorio remoto (push)',
+  github_crear_repo: 'crea un repositorio en GitHub',
+  github_crear_pr: 'publica un pull request en GitHub',
+  github_crear_issue: 'publica una incidencia en GitHub',
+  github_comentar: 'publica un comentario en GitHub'
+}
+
 /** Motivo por el que una llamada es destructiva o sale de la máquina (siempre exige confirmación explícita). */
 export function esDestructiva(herramienta: string, entrada: Record<string, unknown>): string | null {
+  if (Object.hasOwn(PUBLICAN, herramienta)) return PUBLICAN[herramienta]!
   if (herramienta === 'ejecutar_comando') {
     const bin = basename(String(entrada.comando ?? ''))
     const args = Array.isArray(entrada.args) ? entrada.args.map(String) : []

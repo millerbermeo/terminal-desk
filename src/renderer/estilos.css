@@ -1025,3 +1025,17 @@ button.enlace:hover:not(:disabled) { background: none; text-decoration: underlin
   .api-entornos-cuerpo { grid-template-columns: 1fr; }
   .api-entornos-lista { border-right: none; padding-right: 0; }
 }
+
+/* ---- GitHub ---- */
+.gh-pasos { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 14px; color: var(--texto-suave); line-height: 1.6; }
+.gh-pasos li { padding-left: 4px; }
+.gh-pasos li > div { margin-top: 8px; }
+.gh-pasos code, .vc-nota code { padding: 1px 6px; border-radius: 6px; background: var(--bg-hover); color: var(--texto); font: 12px 'JetBrains Mono', 'DejaVu Sans Mono', monospace; }
+.gh-repos { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--borde); border-radius: var(--radio); padding: 4px; background: var(--bg-sutil); }
+.gh-repo { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 8px; text-align: left; background: transparent; border-color: transparent; font-weight: 400; padding: 6px 10px; }
+.gh-repo:hover:not(:disabled) { background: var(--bg-hover); border-color: transparent; }
+.gh-repo.sel { background: var(--acento-suave); }
+.gh-ci { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.gh-ci button.chip { cursor: pointer; font-weight: 600; }
+.gh-ci button.chip:disabled { cursor: default; }
+.gh-checks { list-style: none; margin: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--borde); border-radius: var(--radio); background: var(--bg-popover); font-size: 12px; box-shadow: var(--sombra-2); position: relative; z-index: 2; }

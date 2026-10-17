@@ -336,6 +336,10 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         setSugOculta(false)
         return setTexto('/')
     }
+    if (PLANTILLAS_INCLUIDAS[nombre]) {
+      if (!proyecto) return aviso(`«/${nombre}» trabaja sobre un proyecto: abre el asistente desde la celda de un proyecto o elígelo en el selector.`)
+      return lanzar(expandirPlantilla(PLANTILLAS_INCLUIDAS[nombre]!, resto))
+    }
     const c = comandos.find((x) => x.nombre === nombre)
     if (!c) return aviso(`No existe el comando «/${nombre}». Escribe /ayuda para ver la lista, o créalo con /comandos.`)
     if (c.tipo === 'prompt') return lanzar(expandirPlantilla(c.plantilla ?? '', resto))

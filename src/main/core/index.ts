@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, safeStorage } from 'electron'
 import type { InfoSuite, ResultadoEvals } from '@shared/core/evals'
 import type { TurnoGuardado } from '@shared/core/sesion'
 import { LIMITES_ADJUNTOS } from '@shared/core/adjuntos'
@@ -15,7 +15,7 @@ import type { BloqueContenido, DecisionHumana, EstadoFlujo, EjecucionIniciada, E
 import type { NuevaEntradaMemoria } from '@shared/core/memoria'
 import { Canales } from '@shared/ipc'
 import { leerProveedores } from '../proveedores'
-import { DIR, leerProyectos } from '../proyectos'
+import { DIR, carpetaDeProyecto, leerProyectos, registrarProyecto } from '../proyectos'
 import { Agente } from './agents/agente'
 import { Harness, type Aprobador, type Validador } from './agents/harness'
 import { MODELO_POR_DEFECTO, ProveedorAnthropic } from './agents/llm/anthropic'
@@ -52,9 +52,12 @@ import { MemoriaLargoPlazo } from './memory/largo-plazo'
 import { MemoriaCortoPlazo } from './memory/sesion'
 import { OrquestadorMcp } from './mcp/orquestador'
 import { Cuentas, llevarSesion } from './cuentas'
+import { Repositorio } from './git/repositorio'
 import { AlmacenJson } from './memory/almacen'
 import { ServicioTareas, type Documento as DocumentoTareas } from './tareas/servicio'
-import { herramientasTareas } from './tareas/herramientas'
+import { crearEjecutorOdesk, herramientasOdesk, type EjecutorOdesk } from './herramientas-odesk'
+import { AlmacenToken, type Cifrador } from '../github/token'
+import { ServicioGitHub } from '../github/servicio'
 import { ejecutarOperacionTareas } from './tareas/operaciones'
 import { archivoMcpTareas } from './tareas/mcp-config'
 import { cerrarSesion, ejecutarSuscripcion, estadoCuenta, estadoSesion, iniciarSesion, listarModelosCli, Preferencias, SesionesCli } from './suscripcion'
@@ -97,6 +100,25 @@ interface Corrida {
   alEvento: (e: EventoAgente) => void
 }
 
+/** Cifrado del token de GitHub con el llavero del sistema; sin un llavero seguro (Linux sin gestor de claves) no hay cifrado y el token no se guarda. */
+function cifradorDelSistema(): Cifrador {
+  const disponible = (): boolean => {
+    try {
+      if (!safeStorage?.isEncryptionAvailable()) return false
+      // En Linux sin gestor de claves Electron usa un cifrado con clave fija («basic_text»): equivale a no cifrar.
+      const motor = (safeStorage as { getSelectedStorageBackend?: () => string }).getSelectedStorageBackend?.()
+      return !(process.platform === 'linux' && (motor === 'basic_text' || motor === 'unknown'))
+    } catch {
+      return false
+    }
+  }
+  return {
+    disponible,
+    cifrar: (t) => safeStorage.encryptString(t).toString('base64'),
+    descifrar: (c) => safeStorage.decryptString(Buffer.from(c, 'base64'))
+  }
+}
+
 export class Nucleo {
   readonly registro = new RegistroHerramientas()
   readonly sesiones = new MemoriaCortoPlazo(join(DIR, 'conversaciones'))
@@ -114,6 +136,8 @@ export class Nucleo {
   readonly medidor = new Medidor(join(DIR, 'uso'))
   readonly preferencias = new Preferencias(join(DIR, 'preferencias.json'))
   private readonly sesionesCli = new SesionesCli(join(DIR, 'sesiones-cli.json'))
+  readonly github: ServicioGitHub
+  readonly ejecutarHerramienta: EjecutorOdesk
   readonly cuentas = new Cuentas(join(DIR, 'cuentas.json'), join(DIR, 'cuentas'))
   readonly tareas = new ServicioTareas(new AlmacenJson<DocumentoTareas>(join(DIR, 'tareas'), 0o600), {
     proyectos: () => leerProyectos(),
@@ -140,7 +164,16 @@ export class Nucleo {
   constructor(private readonly aprobar?: Aprobador) {
     registrarIntegradas(this.registro)
     for (const h of herramientasMemoria(this.memoria)) this.registro.registrar(h)
-    for (const h of herramientasTareas(this.tareas)) this.registro.registrar(h)
+    this.github = new ServicioGitHub({
+      token: new AlmacenToken(join(DIR, 'github.json'), cifradorDelSistema()),
+      carpetaDe: carpetaDeProyecto,
+      agregarProyecto: registrarProyecto,
+      dirDatos: DIR
+    })
+    // Todas las herramientas de la aplicación (tareas, git y GitHub) salen de un único ejecutor: el registro del núcleo las usa en modo
+    // API y el servidor MCP en suscripción y en las terminales ✦.
+    this.ejecutarHerramienta = crearEjecutorOdesk({ tareas: this.tareas, github: this.github, carpetaDe: carpetaDeProyecto, credenciales: this.github.credencialesPara })
+    for (const h of herramientasOdesk(this.ejecutarHerramienta)) this.registro.registrar(h)
   }
 
   async iniciarMcp(): Promise<InfoServidorMcp[]> {
@@ -278,11 +311,30 @@ export class Nucleo {
     return { ejecucionId: id, sesionId }
   }
 
+  /** Resumen de git del proyecto para el prompt (rama, cambios, remoto): lo justo para que el asistente sepa dónde está parado. */
+  private async contextoGit(ruta: string): Promise<string> {
+    try {
+      const e = await new Repositorio(ruta).estado()
+      if (!e.repo) return ''
+      const preparados = e.archivos.filter((a) => !a.conflicto && a.indice !== '.').length
+      const cambios = e.archivos.filter((a) => !a.conflicto && !a.sinSeguimiento && a.trabajo !== '.').length
+      const nuevos = e.archivos.filter((a) => a.sinSeguimiento).length
+      const remoto = e.remotos.length ? `remotos: ${e.remotos.join(', ')}` : 'sin remoto'
+      return [
+        `Git: rama «${e.rama ?? `(commit suelto ${e.desacoplado ?? ''})`}»${e.upstream ? ` (sigue a ${e.upstream}: ${e.adelante} por enviar, ${e.atras} por traer)` : ''}; ${preparados} preparados, ${cambios} modificados, ${nuevos} nuevos; ${remoto}${e.operacion ? `; operación en curso: ${e.operacion}` : ''}.`,
+        'Para git y GitHub usa las herramientas git_* y github_* (no ejecutes git a mano). Confirma solo lo que corresponde a un cambio, con un mensaje en el estilo del historial; nunca incluyas archivos con secretos; no envíes ni publiques nada sin que el usuario lo haya pedido.'
+      ].join('\n')
+    } catch {
+      return ''
+    }
+  }
+
   /** Contexto que se añade al prompt de sistema: memoria de largo plazo, tareas del proyecto y, si hay, el aviso de adjuntos. */
   private async contextoSistema(prompt: string, proyecto: Proyecto | undefined, conAdjuntos: boolean): Promise<string> {
     const memoria = await this.memoria.contextoPara(prompt, proyecto?.id)
     const tareas = proyecto ? await this.tareas.contextoParaIA(proyecto.id, proyecto.nombre).catch(() => '') : ''
-    return [memoria, tareas, conAdjuntos ? AVISO_ADJUNTOS : ''].filter(Boolean).join('\n\n').trim()
+    const gitCtx = proyecto ? await this.contextoGit(proyecto.ruta) : ''
+    return [memoria, tareas, gitCtx, conAdjuntos ? AVISO_ADJUNTOS : ''].filter(Boolean).join('\n\n').trim()
   }
 
   /** Cuentas de suscripción con el estado de su sesión (se consulta al CLI de cada una en paralelo). */

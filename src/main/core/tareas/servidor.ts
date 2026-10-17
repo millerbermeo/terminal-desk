@@ -2,8 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, type Socket } from 'node:net'
 import { archivoTokenTareas, rutaSocketTareas, type PeticionTareas, type RespuestaTareas } from './cliente'
-import { ejecutarHerramientaTareas } from './herramientas'
-import type { ServicioTareas } from './servicio'
+import type { EjecutorOdesk } from '../herramientas-odesk'
 
 const MAX_PETICION = 2_000_000
 
@@ -34,10 +33,10 @@ const igual = (a: string, b: string): boolean => {
 }
 
 /**
- * Servidor local por el que la IA (a través del servidor MCP) usa las tareas. Solo este proceso las escribe: no hay dos procesos
- * peleando por el archivo, y las reglas son las mismas que para la interfaz. Todo lo que llega aquí se trata como autor «ia».
+ * Servidor local por el que la IA (a través del servidor MCP) usa las herramientas de la aplicación (tareas, git y GitHub). Solo este
+ * proceso escribe los datos y toca los repositorios: las reglas son las mismas que para la interfaz. Todo lo que llega aquí es de la IA.
  */
-export async function iniciarServidorTareas(dir: string, servicio: ServicioTareas): Promise<ServidorTareas> {
+export async function iniciarServidorTareas(dir: string, ejecutar: EjecutorOdesk): Promise<ServidorTareas> {
   const token = await leerOCrearToken(dir)
   const ruta = rutaSocketTareas(dir)
   if (process.platform !== 'win32') await rm(ruta, { force: true }) // restos de una ejecución anterior
@@ -65,7 +64,7 @@ export async function iniciarServidorTareas(dir: string, servicio: ServicioTarea
         const p = JSON.parse(linea) as Partial<PeticionTareas>
         id = String(p.id ?? '')
         if (typeof p.token !== 'string' || !igual(p.token, token)) return void socket.destroy()
-        const r = await ejecutarHerramientaTareas(servicio, String(p.herramienta ?? ''), p.entrada, { proyectoId: p.proyectoId })
+        const r = await ejecutar(String(p.herramienta ?? ''), p.entrada, { proyectoId: p.proyectoId })
         const respuesta: RespuestaTareas = { id, ...r }
         if (!socket.destroyed) socket.write(JSON.stringify(respuesta) + '\n')
       } catch (err) {

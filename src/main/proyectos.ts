@@ -180,3 +180,19 @@ export function eliminarGrupo(id: string): Promise<DatosProyectos> {
     return datos
   })
 }
+
+/** Carpeta de un proyecto registrado (falla si ya no existe). */
+export async function carpetaDeProyecto(id: string): Promise<string> {
+  const p = (await leerProyectos()).proyectos.find((x) => x.id === String(id))
+  if (!p) throw new Error('El proyecto ya no existe.')
+  return p.ruta
+}
+
+/** Registra una carpeta como proyecto (con su grupo, si se indica) y devuelve su id. */
+export async function registrarProyecto(ruta: string, nombre: string, grupoId?: string): Promise<{ id: string }> {
+  const r = await agregarProyectos({ ...(grupoId ? { grupoId } : {}), proyectos: [{ nombre, ruta }] })
+  if (r.errores.length) throw new Error(r.errores.map((e) => e.mensaje).join('; '))
+  const registrado = r.datos.proyectos.at(-1)
+  if (!registrado) throw new Error('No se pudo registrar el proyecto.')
+  return { id: registrado.id }
+}

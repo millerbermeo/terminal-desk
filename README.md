@@ -22,6 +22,7 @@ Electron · Vite · React · TypeScript · xterm.js · node-pty
 - **Asistente integrado**: núcleo de agentes propio sobre la API de Anthropic, con subagentes, herramientas, cliente MCP, memoria corta y larga, flujos en git worktrees, guardrails, confirmación humana, permisos persistentes, comandos con `/`, trazas y evals.
 - **Tareas por grupos y proyectos** (tablero, lista, resumen y actividad) que la IA también lee y cambia con las mismas reglas: criterios de aceptación, dependencias, estados configurables e historial de quién hizo qué.
 - **Control de versiones con git** por proyecto: cambios y diff, commits, historial, ramas y fusiones, versiones (etiquetas con la siguiente versión semántica sugerida), stash y sincronización con el remoto.
+- **GitHub y git en el chat**: el asistente puede consultar y confirmar cambios, crear ramas, abrir pull requests y revisar incidencias y CI (con `/commit` y `/pr`); la pantalla Versiones conecta tu cuenta con un token (guardado cifrado), clona, publica y gestiona pull requests.
 - **Navegador integrado**: abre lo que desarrollas en una ventana con barra de direcciones y herramientas de desarrollo, detecta los servidores locales en marcha y también lo abre en el navegador del sistema.
 - **Cliente API** (estilo Postman): peticiones HTTP con entornos (`{{variables}}`), colecciones, historial, importar/copiar cURL y la respuesta con el JSON en árbol.
 - **Editor de archivos** (CodeMirror 6) en cada celda, con árbol del proyecto, pestañas y guardado automático.
@@ -194,6 +195,7 @@ Todo se guarda en `~/.odesk-agent/`. Si venías de una versión anterior (la app
 | `agentes.json` | Biblioteca de agentes y skills |
 | `preferencias.json`, `sesiones-cli.json` | Proveedor elegido (suscripción/API) y sesiones del CLI para continuar conversaciones |
 | `sesiones/` | Plugins generados para Claude Code |
+| `github.json`, `askpass-github.*` | Token de GitHub **cifrado** con el llavero del sistema (0600) y el script con el que git se autentica (no contiene el token) |
 | `api/` | Cliente API: colecciones, entornos (con sus tokens, sin cifrar; 0600) e historial |
 | `tareas/`, `tareas.token`, `tareas.sock`, `mcp/` | Tareas (con su historial), credencial y socket local del servidor MCP de tareas y su configuración |
 | `conversaciones/`, `memoria/`, `trazas/`, `evals/`, `permisos/`, `comandos/`, `worktrees/` | Estado del Asistente |

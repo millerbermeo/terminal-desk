@@ -5,7 +5,7 @@ export interface DefHerramientaTareas {
   nombre: string
   descripcion: string
   esquema: EsquemaEntrada
-  riesgo: Extract<Riesgo, 'lectura' | 'escritura'>
+  riesgo: Riesgo
 }
 
 const t = (description: string): { type: string; description: string } => ({ type: 'string', description })
@@ -180,5 +180,3 @@ export const HERRAMIENTAS_TAREAS: readonly DefHerramientaTareas[] = [
   }
 ]
 
-export const PREFIJO_MCP_TAREAS = 'mcp__odesk-tareas__'
-export const SERVIDOR_MCP_TAREAS = 'odesk-tareas'
