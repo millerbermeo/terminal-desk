@@ -17,7 +17,9 @@ import { iniciarServidorTareas, type ServidorTareas } from './core/tareas/servid
 
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto')
-app.setName('ODESK AI')
+app.setName('Odesk Agent')
+// El nombre de la app cambió, pero los datos de Electron (localStorage del renderer) siguen en la carpeta de siempre.
+app.setPath('userData', join(app.getPath('appData'), 'ODESK AI'))
 // Linux: enlaza la ventana con odesk-ai.desktop (nombre e icono en el dock/menú de aplicaciones)
 app.setDesktopName('odesk-ai.desktop')
 
@@ -59,7 +61,7 @@ function crearVentana(opciones: { token?: string; x?: number; y?: number; titulo
     width: esPrincipal ? 1280 : 1000,
     height: esPrincipal ? 800 : 700,
     ...(opciones.x !== undefined && opciones.y !== undefined ? { x: opciones.x, y: opciones.y } : {}),
-    title: opciones.titulo ?? 'ODESK AI',
+    title: opciones.titulo ?? 'Odesk Agent',
     icon: icono,
     backgroundColor: '#0f1115',
     autoHideMenuBar: true,
@@ -150,7 +152,7 @@ function registrarIpc(): void {
     pendientes.set(token, payload)
     crearVentana({
       token,
-      titulo: `${payload.nombre} · ODESK AI`,
+      titulo: `${payload.nombre} · Odesk Agent`,
       ...(pos ? { x: Math.round(pos.x - 120), y: Math.round(pos.y - 20) } : {})
     })
   })

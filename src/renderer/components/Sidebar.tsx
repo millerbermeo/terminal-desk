@@ -122,8 +122,8 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
   return (
     <aside className="sidebar">
       <header className="marca">
-        <img className="logo" src={logo} alt="ODESK AI" />
-        <h1>ODESK AI</h1>
+        <img className="logo" src={logo} alt="Odesk Agent" />
+        <h1>Odesk Agent</h1>
       </header>
       <div className="acciones">
         <button className="btn-nueva" onClick={onNueva}>

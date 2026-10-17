@@ -36,7 +36,7 @@ export async function llamarTareas(dir: string, herramienta: string, entrada: un
   try {
     token = (await readFile(archivoTokenTareas(dir), 'utf8')).trim()
   } catch {
-    return { texto: 'ODESK AI no está abierto: las tareas solo se pueden consultar o cambiar con la aplicación en marcha.', error: true }
+    return { texto: 'Odesk Agent no está abierto: las tareas solo se pueden consultar o cambiar con la aplicación en marcha.', error: true }
   }
   const id = randomBytes(6).toString('hex')
   return new Promise((resolver) => {
@@ -50,9 +50,9 @@ export async function llamarTareas(dir: string, herramienta: string, entrada: un
       socket.destroy()
       resolver(r)
     }
-    const timer = setTimeout(() => terminar({ texto: 'ODESK AI no respondió a tiempo.', error: true }), esperaMs)
-    socket.on('error', () => terminar({ texto: 'ODESK AI no está abierto: las tareas solo se pueden consultar o cambiar con la aplicación en marcha.', error: true }))
-    socket.on('close', () => terminar({ texto: 'ODESK AI cerró la conexión sin responder.', error: true }))
+    const timer = setTimeout(() => terminar({ texto: 'Odesk Agent no respondió a tiempo.', error: true }), esperaMs)
+    socket.on('error', () => terminar({ texto: 'Odesk Agent no está abierto: las tareas solo se pueden consultar o cambiar con la aplicación en marcha.', error: true }))
+    socket.on('close', () => terminar({ texto: 'Odesk Agent cerró la conexión sin responder.', error: true }))
     socket.on('connect', () => {
       const p: PeticionTareas = { id, token, herramienta, entrada, ...(proyectoId ? { proyectoId } : {}) }
       socket.write(JSON.stringify(p) + '\n')
@@ -65,7 +65,7 @@ export async function llamarTareas(dir: string, herramienta: string, entrada: un
         const r = JSON.parse(buffer.slice(0, i)) as RespuestaTareas
         if (r.id === id) terminar({ texto: String(r.texto ?? ''), ...(r.error ? { error: true } : {}) })
       } catch {
-        terminar({ texto: 'Respuesta inválida de ODESK AI.', error: true })
+        terminar({ texto: 'Respuesta inválida de Odesk Agent.', error: true })
       }
     })
   })

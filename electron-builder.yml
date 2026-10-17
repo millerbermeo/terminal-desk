@@ -1,5 +1,5 @@
 appId: dev.centro-proyectos.app
-productName: ODESK AI
+productName: Odesk Agent
 directories:
   output: dist
   buildResources: resources

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Instalador y actualizador de ODESK AI (Linux y macOS).
+# Instalador y actualizador de Odesk Agent (Linux y macOS).
 #
 #   curl -fsSL https://raw.githubusercontent.com/millerbermeo/terminal-desk/main/install.sh | bash
 #
@@ -62,7 +62,7 @@ desinstalar() {
   if [ "$BORRAR_DATOS" = 1 ]; then
     paso "Borrando datos de usuario en $DATOS"
     rm -rf "$DATOS"
-    echo "Listo. ODESK AI y todos sus datos eliminados."
+    echo "Listo. Odesk Agent y todos sus datos eliminados."
   else
     echo "Listo. Tus proyectos y ajustes siguen en $DATOS (para borrarlos también: --todo)."
   fi
@@ -149,7 +149,7 @@ if [ -d "$REPO_DIR/.git" ]; then
     REF="${REF:-main}"
   fi
 else
-  paso "Descargando ODESK AI"
+  paso "Descargando Odesk Agent"
   rm -rf "$REPO_DIR"
   git clone --quiet "$REPO" "$REPO_DIR"
   [ -n "$REF" ] || REF="$(git -C "$REPO_DIR" symbolic-ref --short HEAD)"
@@ -170,7 +170,7 @@ if [ "$NUEVO" = "$ACTUAL" ] && [ -d "$REPO_DIR/out" ] && [ -e "$LANZADOR" ]; the
 fi
 
 if pgrep -f "$REPO_DIR/node_modules/electron" >/dev/null 2>&1; then
-  aviso "ODESK AI está abierto: ciérralo y vuelve a abrirlo tras actualizar."
+  aviso "Odesk Agent está abierto: ciérralo y vuelve a abrirlo tras actualizar."
 fi
 
 git -C "$REPO_DIR" checkout --quiet --force --detach "$NUEVO"
@@ -217,11 +217,11 @@ if [ "$SO" = Linux ]; then
   cat > "$ESCRITORIO" <<EOF
 [Desktop Entry]
 Type=Application
-Name=ODESK AI
+Name=Odesk Agent
 Comment=Gestor de proyectos con varias terminales y agentes de IA
 Exec=$LANZADOR
 Icon=$REPO_DIR/resources/icon.png
-StartupWMClass=ODESK AI
+StartupWMClass=Odesk Agent
 Terminal=false
 Categories=Development;
 EOF

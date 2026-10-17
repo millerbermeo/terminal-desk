@@ -170,7 +170,7 @@ async function construirPlugin(proyectoId: string): Promise<string | null> {
   const archivos: Record<string, string> = {
     '.claude-plugin/plugin.json':
       JSON.stringify(
-        { name: 'centro', version: '1.0.0', description: `Agentes y skills de ODESK AI para ${proyecto.nombre}`, author: { name: 'ODESK AI' } },
+        { name: 'centro', version: '1.0.0', description: `Agentes y skills de Odesk Agent para ${proyecto.nombre}`, author: { name: 'Odesk Agent' } },
         null,
         2
       ) + '\n'

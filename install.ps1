@@ -1,4 +1,4 @@
-# Instalador y actualizador de ODESK AI (Windows).
+# Instalador y actualizador de Odesk Agent (Windows).
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/millerbermeo/terminal-desk/main/install.ps1 | iex"
 #
@@ -13,7 +13,8 @@ $Dir = if ($env:CENTRO_DIR) { $env:CENTRO_DIR } else { Join-Path $env:LOCALAPPDA
 $NodeMajor = 24
 $NodeMin = 20
 $Lanzador = Join-Path $Dir 'odesk.cmd'
-$Atajo = Join-Path ([Environment]::GetFolderPath('Programs')) 'ODESK AI.lnk'
+$Atajo = Join-Path ([Environment]::GetFolderPath('Programs')) 'Odesk Agent.lnk'
+$AtajoAntiguo = Join-Path ([Environment]::GetFolderPath('Programs')) 'ODESK AI.lnk' # nombre anterior de la app
 
 function Paso($m) { Write-Host "==> $m" -ForegroundColor Green }
 function Fallo($m) { Write-Host "error: $m" -ForegroundColor Red; throw $m }
@@ -24,7 +25,7 @@ function Ejecutar([string]$exe, [string[]]$args_) {
 
 if ($env:CENTRO_UNINSTALL -in '1', 'all') {
   Paso "Desinstalando de $Dir"
-  Remove-Item -Recurse -Force $Dir, $Atajo -ErrorAction SilentlyContinue
+  Remove-Item -Recurse -Force $Dir, $Atajo, $AtajoAntiguo -ErrorAction SilentlyContinue
   $u = [Environment]::GetEnvironmentVariable('Path', 'User')
   $nuevo = ($u -split ';' | Where-Object { $_ -and $_ -ne $Dir }) -join ';'
   [Environment]::SetEnvironmentVariable('Path', $nuevo, 'User')
@@ -32,7 +33,7 @@ if ($env:CENTRO_UNINSTALL -in '1', 'all') {
   if ($env:CENTRO_UNINSTALL -eq 'all') {
     Paso "Borrando datos de usuario en $datos"
     Remove-Item -Recurse -Force $datos -ErrorAction SilentlyContinue
-    Write-Host 'Listo. ODESK AI y todos sus datos eliminados.'
+    Write-Host 'Listo. Odesk Agent y todos sus datos eliminados.'
   } else {
     Write-Host "Listo. Tus proyectos y ajustes siguen en $datos (para borrarlos también: CENTRO_UNINSTALL=all)."
   }
@@ -94,7 +95,7 @@ if (Test-Path (Join-Path $RepoDir '.git')) {
     $Ref = if ($h) { $h -replace '^origin/', '' } else { 'main' }
   }
 } else {
-  Paso 'Descargando ODESK AI'
+  Paso 'Descargando Odesk Agent'
   Remove-Item -Recurse -Force $RepoDir -ErrorAction SilentlyContinue
   Ejecutar 'git' @('clone', '--quiet', $Repo, $RepoDir)
   if (-not $Ref) { $Ref = (& git -C $RepoDir symbolic-ref --short HEAD) }
@@ -112,8 +113,8 @@ if ($nuevo -eq $actual -and (Test-Path (Join-Path $RepoDir 'out')) -and (Test-Pa
   return
 }
 
-if (Get-Process -Name 'ODESK AI', 'electron' -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$RepoDir*" }) {
-  Write-Host 'aviso: ODESK AI está abierto: ciérralo antes de actualizar.' -ForegroundColor Yellow
+if (Get-Process -Name 'Odesk Agent', 'electron' -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$RepoDir*" }) {
+  Write-Host 'aviso: Odesk Agent está abierto: ciérralo antes de actualizar.' -ForegroundColor Yellow
 }
 
 Ejecutar 'git' @('-C', $RepoDir, 'checkout', '--quiet', '--force', '--detach', $nuevo)
@@ -162,6 +163,7 @@ start "" "$electron" "$RepoDir" %*
 "@ | Set-Content -Path $Lanzador -Encoding ASCII
 
 $sh = New-Object -ComObject WScript.Shell
+Remove-Item -Force $AtajoAntiguo -ErrorAction SilentlyContinue
 $lnk = $sh.CreateShortcut($Atajo)
 $lnk.TargetPath = $electron
 $lnk.Arguments = "`"$RepoDir`""

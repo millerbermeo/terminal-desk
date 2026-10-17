@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="resources/icon.png" alt="ODESK AI" width="120" />
+<img src="resources/icon.png" alt="Odesk Agent" width="120" />
 
-# ODESK AI
+# Odesk Agent
 
 **Gestiona todos tus proyectos desde una sola ventana: terminales reales, CLIs de IA y un asistente de agentes integrado.**
 
