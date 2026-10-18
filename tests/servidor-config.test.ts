@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { servidorSeguro } from '@shared/sesion'
+import { servidorSeguro, URL_SERVIDOR_PRODUCCION } from '@shared/sesion'
 import { ClienteServidor, ErrorServidor, ErrorSesion } from '../src/main/servidor/cliente'
 import { avisoDeGit, vincularProyectoLocal } from '../src/main/servidor/vinculo'
 
@@ -74,6 +74,31 @@ describe('dirección del servidor', () => {
     const reabierto = new ClienteServidor()
     reabierto.configurar(join(dir, 'sesion.json'), cifradorFalso, archivoUrl)
     expect(reabierto.url).toBe('https://api.midominio.com') // persiste entre arranques
+  })
+
+  it('la dirección por defecto de la app instalada: sin nada guardado vale, y servidor.json o ODESK_API_URL mandan sobre ella', async () => {
+    const dir = await carpeta()
+    const archivoUrl = join(dir, 'servidor.json')
+    const sola = new ClienteServidor()
+    sola.usarPorDefecto(URL_SERVIDOR_PRODUCCION)
+    sola.configurar(join(dir, 's.json'), cifradorFalso, archivoUrl) // no hay servidor.json
+    expect(sola.url).toBe('https://odesk.millerrivera.com')
+    expect(servidorSeguro(sola.url)).toBe(true) // https: la app acepta mandar la sesión
+
+    await writeFile(archivoUrl, JSON.stringify({ url: 'https://elegido-por-el-usuario.com' }))
+    const guardado = new ClienteServidor()
+    guardado.usarPorDefecto(URL_SERVIDOR_PRODUCCION)
+    guardado.configurar(join(dir, 's.json'), cifradorFalso, archivoUrl)
+    expect(guardado.url).toBe('https://elegido-por-el-usuario.com')
+
+    process.env.ODESK_API_URL = 'http://localhost:4000'
+    try {
+      const entorno = new ClienteServidor()
+      entorno.usarPorDefecto(URL_SERVIDOR_PRODUCCION)
+      expect(entorno.url).toBe('http://localhost:4000')
+    } finally {
+      delete process.env.ODESK_API_URL
+    }
   })
 
   it('la variable ODESK_API_URL manda sobre el archivo', async () => {

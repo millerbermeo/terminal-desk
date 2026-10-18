@@ -69,4 +69,7 @@ export interface OperacionesCuenta {
   /** Borra la bóveda del servidor (si se olvidó la frase). */
   bovedaReiniciar: { entrada: Record<string, never>; salida: ResultadoBoveda }
 }
+/** Servidor al que se conecta la app instalada (empaquetada); en desarrollo se usa `http://localhost:3000` salvo que se indique otro. */
+export const URL_SERVIDOR_PRODUCCION = 'https://odesk.millerrivera.com'
+
 export type NombreOperacionCuenta = keyof OperacionesCuenta

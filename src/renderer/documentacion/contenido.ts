@@ -101,7 +101,7 @@ export const SECCIONES: Seccion[] = [
         items: [
           'En el servidor: proyectos, grupos y la biblioteca de agentes y skills (sus ids son UUID del servidor).',
           'En tu equipo (~/.odesk-agent/): sesión cifrada, proveedores, tareas, memoria, conversaciones, permisos, comandos, trazas, adjuntos, datos del cliente API y worktrees de agentes.',
-          'El servidor se elige con la variable ODESK_API_URL (por defecto http://localhost:3000); la pantalla de acceso muestra cuál está en uso.'
+          'El servidor: la app instalada usa https://odesk.millerrivera.com; en desarrollo (pnpm dev) usa http://localhost:3000. Se puede cambiar desde «cambiar» en la pantalla de acceso o con la variable ODESK_API_URL, que manda sobre todo; la pantalla de acceso muestra cuál está en uso.'
         ]
       }
     ],

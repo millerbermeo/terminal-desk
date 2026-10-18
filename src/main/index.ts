@@ -23,7 +23,7 @@ import { importarProyectosLocales } from './servidor/importar'
 import { iniciarSesionGoogle } from './servidor/google'
 import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
 import { cifradorDelSistema } from './cifrador'
-import type { CredencialesSesion, EstadoSesion, NombreOperacionCuenta, ResultadoBoveda, ResultadoPaso, ResultadoSesion } from '@shared/sesion'
+import { URL_SERVIDOR_PRODUCCION, type CredencialesSesion, type EstadoSesion, type NombreOperacionCuenta, type ResultadoBoveda, type ResultadoPaso, type ResultadoSesion } from '@shared/sesion'
 import { cambiarPerfil } from './perfiles'
 import { Boveda } from './servidor/boveda'
 import { seccionesSecretas } from './servidor/secretos'
@@ -479,6 +479,7 @@ function registrarIpc(): void {
 let servidorTareas: ServidorTareas | undefined
 
 app.whenReady().then(() => {
+  if (app.isPackaged) servidor.usarPorDefecto(URL_SERVIDOR_PRODUCCION) // instalada: el servidor de producción; `servidor.json` y ODESK_API_URL mandan sobre él
   servidor.configurar(join(DIR, 'sesion.json'), cifradorDelSistema(), join(DIR, 'servidor.json'))
   servidor.alPerderSesion = () => {
     for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(Canales.sesionPerdida)
