@@ -1,5 +1,5 @@
 import { chmod, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { aplicarBloques, compararTextos } from '@shared/diff'
 import {
   POLITICA_HISTORIAL,
@@ -235,11 +235,14 @@ export class ServicioHistorial {
 
   // ---------------------------------------------------------------- captura
 
-  /** Ruta relativa con `/` dentro del proyecto, o `undefined` si queda fuera o es la raíz. */
+  /**
+   * Ruta relativa con `/` dentro del proyecto, o `undefined` si queda fuera o es la raíz. Se resuelve antes de comprobar: `a/../../x` o
+   * (en Windows) una ruta de otra unidad no pueden colarse. Las rutas llegan también del gancho de Claude Code, es decir, de la IA.
+   */
   private relativa(p: Proyecto, cruda: string): string | undefined {
-    const r = aPosix(isAbsolute(cruda) ? relative(p.raiz, cruda) : cruda).replace(/^\.\//, '')
-    if (!r || r === '.' || r.startsWith('..') || r.startsWith('/')) return undefined
-    return r
+    const r = relative(p.raiz, resolve(p.raiz, cruda))
+    if (!r || r === '..' || r.startsWith(`..${sep}`) || isAbsolute(r)) return undefined
+    return aPosix(r)
   }
 
   /**

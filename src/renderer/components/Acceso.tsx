@@ -82,7 +82,8 @@ export function Acceso({ servidor, onEntrar, onServidor }: Props) {
           else setError(r.mensaje)
         }, 'No se pudo crear la cuenta.')
       case 'codigo':
-        return correr(async () => tratarSesion(await window.api.sesion.cuenta('verificar', { email: e, code: codigo.trim() })), 'No se pudo activar la cuenta.')
+        // La contraseña es la que se escribió al crear la cuenta (o al entrar): llegar a este paso siempre pasa por uno de los dos.
+        return correr(async () => tratarSesion(await window.api.sesion.cuenta('verificar', { email: e, code: codigo.trim(), password })), 'No se pudo activar la cuenta.')
       case 'olvido':
         return correr(async () => {
           const r = await window.api.sesion.cuenta('olvido', { email: e })

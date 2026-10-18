@@ -47,7 +47,8 @@ export function ApiPeticion({ peticion: p, vars, enviando, guardada, sucio, onCa
         <input
           className="api-url"
           value={p.url}
-          placeholder="http://localhost:3000/api/…   (puedes usar {{variables}})"
+          placeholder="http://localhost:3000/api/… o {{base}}/ruta"
+          title="URL de la petición; admite {{variables}} del entorno activo"
           spellCheck={false}
           onChange={(e) => cambiar({ url: e.target.value })}
           onKeyDown={(e) => e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !enviando && onEnviar()}

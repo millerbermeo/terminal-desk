@@ -134,8 +134,9 @@ export class ClienteServidor {
     return this.peticion<RespuestaPaso>('POST', '/auth/register', { email, password }, false)
   }
 
-  async verificar(email: string, code: string): Promise<EstadoSesion> {
-    return this.establecer(await this.peticion<RespuestaSesion>('POST', '/auth/verify', { email, code }, false))
+  /** Activa la cuenta: el servidor exige el código del correo y la contraseña con la que se registró. */
+  async verificar(email: string, code: string, password: string): Promise<EstadoSesion> {
+    return this.establecer(await this.peticion<RespuestaSesion>('POST', '/auth/verify', { email, code, password }, false))
   }
 
   reenviarVerificacion(email: string): Promise<RespuestaPaso> {

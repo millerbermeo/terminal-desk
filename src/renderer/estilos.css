@@ -914,8 +914,13 @@ button.enlace:hover:not(:disabled) { background: none; text-decoration: underlin
 .vc-casilla input[type='checkbox'] { width: auto; flex: none; }
 
 @media (max-width: 900px) {
-  .vc-cambios, .vc-historial { grid-template-columns: 1fr; grid-template-rows: minmax(180px, 45%) 1fr; }
-  .vc-lista { border-right: none; border-bottom: 1px solid var(--borde); }
+  /* Apilado: la lista de archivos no puede quedarse a 0 px por culpa del formulario del commit (si no cabe, la columna entera se desplaza). */
+  .vc-cambios, .vc-historial { grid-template-columns: 1fr; grid-template-rows: minmax(260px, 50%) minmax(0, 1fr); }
+  .vc-lista { border-right: none; border-bottom: 1px solid var(--borde); overflow-y: auto; }
+  .vc-lista-scroll { min-height: 88px; }
+  .vc-tabs { min-width: 0; }
+  .vc-tabs .segmentado { max-width: 100%; overflow-x: auto; }
+  .vc-tabs .segmentado button { flex: none; white-space: nowrap; }
   .vc-pagina { padding: 16px; }
 }
 

@@ -36,6 +36,7 @@ import { AlmacenJson } from './core/memory/almacen'
 import { ServicioApi } from './api/servicio'
 import { ejecutarOperacionApi } from './api/operaciones'
 import { abrirEnNavegadorDelSistema, GestorNavegador, rutaPreload } from './navegador'
+import { esPaginaDeLaApp } from './navegacion'
 import { servidoresLocales } from './puertos'
 import { iniciarServidorTareas, type ServidorTareas } from './core/tareas/servidor'
 
@@ -60,8 +61,17 @@ const servicioApi = new ServicioApi(new AlmacenJson(join(DIR, 'api'), 0o600), as
 })
 
 // Navegador integrado: cada ventana carga la interfaz con ?navegador=<id> (su barra de direcciones).
+/** Las ventanas con `window.api` solo muestran la interfaz: un archivo o enlace soltado encima (o un enlace sin `target`) no las lleva fuera. */
+function soloPaginasDeLaApp(wc: Electron.WebContents): void {
+  const destino = { urlDev: process.env.ELECTRON_RENDERER_URL, indexHtml: join(__dirname, '../renderer/index.html') }
+  wc.on('will-navigate', (e) => {
+    if (!esPaginaDeLaApp(e.url, destino)) e.preventDefault()
+  })
+}
+
 const navegador = new GestorNavegador(
   (win, id) => {
+    soloPaginasDeLaApp(win.webContents)
     if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(`${process.env.ELECTRON_RENDERER_URL}?navegador=${id}`)
     else void win.loadFile(join(__dirname, '../renderer/index.html'), { query: { navegador: String(id) } })
   },
@@ -122,6 +132,7 @@ function crearVentana(opciones: { token?: string; x?: number; y?: number; titulo
     if (/^https?:\/\//.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
+  soloPaginasDeLaApp(win.webContents)
 
   // Recarga de la página: los ptys del renderer anterior quedan huérfanos.
   win.webContents.on('did-start-navigation', (_e, _url, enLugar, enPrincipal) => {
@@ -196,8 +207,19 @@ async function sincronizarHistorial(): Promise<void> {
 let bucleCuenta: NodeJS.Timeout | undefined
 const CADA_MS = 30_000
 
-/** Una pasada: datos de la cuenta (crean proveedores y servidores MCP), sus claves, y los cambios de los proyectos. Nunca lanza. */
-async function sincronizarCuenta(): Promise<{ ok: boolean; mensaje: string }> {
+let pasadaEnCurso: Promise<{ ok: boolean; mensaje: string }> | undefined
+
+/**
+ * Una pasada: datos de la cuenta (crean proveedores y servidores MCP), sus claves, y los cambios de los proyectos. Nunca lanza. Si ya hay
+ * una en marcha (el bucle, el botón «Sincronizar» y el cierre pueden coincidir; con muchos proyectos una pasada supera los 30 s) se
+ * espera a esa: dos a la vez subirían la bóveda sobre la misma versión y bajarían dos veces lo mismo.
+ */
+function sincronizarCuenta(): Promise<{ ok: boolean; mensaje: string }> {
+  pasadaEnCurso ??= pasadaCuenta().finally(() => (pasadaEnCurso = undefined))
+  return pasadaEnCurso
+}
+
+async function pasadaCuenta(): Promise<{ ok: boolean; mensaje: string }> {
   try {
     const r = await syncCuenta.sincronizar()
     const b = await boveda.sincronizar()
@@ -284,7 +306,7 @@ function operarCuenta(op: NombreOperacionCuenta, e: Record<string, unknown>): Pr
     case 'registrar':
       return paso(() => servidor.registrar(t('email'), t('password')), 'Te enviamos un código a tu correo.')
     case 'verificar':
-      return conSesion(() => servidor.verificar(t('email'), t('code')))
+      return conSesion(() => servidor.verificar(t('email'), t('code'), t('password')))
     case 'reenviar':
       return paso(() => servidor.reenviarVerificacion(t('email')), 'Te enviamos un código nuevo.')
     case 'olvido':

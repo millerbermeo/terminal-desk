@@ -210,7 +210,9 @@ export async function carpetaDeProyecto(id: string): Promise<string> {
 export async function registrarProyecto(ruta: string, nombre: string, grupoId?: string): Promise<{ id: string }> {
   const r = await agregarProyectos({ ...(grupoId ? { grupoId } : {}), proyectos: [{ nombre, ruta }] })
   if (r.errores.length) throw new Error(r.errores.map((e) => e.mensaje).join('; '))
-  const registrado = r.datos.proyectos.at(-1)
+  // Por su carpeta, no por la posición: si la carpeta traía `.odesk/project.json` se reanudó un proyecto antiguo, que no es el último.
+  const destino = resolverRuta(ruta)
+  const registrado = r.datos.proyectos.find((p) => p.ruta === destino)
   if (!registrado) throw new Error('No se pudo registrar el proyecto.')
   return { id: registrado.id }
 }

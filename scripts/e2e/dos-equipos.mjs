@@ -108,7 +108,7 @@ async function crearCuenta(app, email, pass) {
   const r = await app.ev(`window.api.sesion.cuenta('registrar',{email:${JSON.stringify(email)},password:${JSON.stringify(pass)}})`)
   if (!r.ok) throw new Error(r.mensaje)
   await dormir(300)
-  return app.ev(`window.api.sesion.cuenta('verificar',{email:${JSON.stringify(email)},code:'${codigoDe(email)}'})`)
+  return app.ev(`window.api.sesion.cuenta('verificar',{email:${JSON.stringify(email)},code:'${codigoDe(email)}',password:${JSON.stringify(pass)}})`)
 }
 
 try {
@@ -124,9 +124,9 @@ try {
   paso('registrarse no da sesión: pide el código del correo', reg.ok && !(await a.ev('window.api.sesion.estado()')).activa, reg.mensaje)
   const sinActivar = await a.ev(`window.api.sesion.iniciar({email:'${EMAIL}',password:'${PASS}'})`)
   paso('entrar sin activar la cuenta no deja pasar y lo dice', sinActivar.ok === false && sinActivar.verificacionPendiente === true, sinActivar.mensaje)
-  const malo = await a.ev(`window.api.sesion.cuenta('verificar',{email:'${EMAIL}',code:'000000'})`)
+  const malo = await a.ev(`window.api.sesion.cuenta('verificar',{email:'${EMAIL}',code:'000000',password:'${PASS}'})`)
   paso('un código equivocado no activa', malo.ok === false)
-  const act = await a.ev(`window.api.sesion.cuenta('verificar',{email:'${EMAIL}',code:'${codigoDe(EMAIL)}'})`)
+  const act = await a.ev(`window.api.sesion.cuenta('verificar',{email:'${EMAIL}',code:'${codigoDe(EMAIL)}',password:'${PASS}'})`)
   paso('con el código del correo se activa y entra', act.ok === true && act.estado.email === EMAIL, act.mensaje)
   const yaExiste = await a.ev(`window.api.sesion.cuenta('registrar',{email:'${EMAIL}',password:'otra-clave-123'})`)
   paso('registrar un correo existente responde igual que uno nuevo (no lo revela)', yaExiste.ok && yaExiste.mensaje === reg.mensaje)

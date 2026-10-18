@@ -106,6 +106,23 @@ describe('captura de versiones', () => {
     expect(await s.registrarRuta(PID, join(raiz, 'ok.ts'), 'usuario')).toMatchObject({ ruta: 'ok.ts' })
   })
 
+  it('un «..» en medio de la ruta (p. ej. desde el gancho de Claude Code) no lee nada de fuera del proyecto', async () => {
+    const { s, raiz, esc } = await nuevo()
+    const vecina = `${raiz}-vecina`
+    await mkdir(vecina)
+    await writeFile(join(vecina, 'secreto.txt'), 'no debe entrar en el historial')
+    await esc('src/a.ts', 'x')
+    const nombre = vecina.split(/[\\/]/).pop()!
+    for (const r of [`src/../../${nombre}/secreto.txt`, `./src/../../${nombre}/secreto.txt`, `src/../..`]) {
+      expect(await s.registrarRuta(PID, r, 'ia'), r).toBeNull()
+      expect(await s.versiones(PID, r), r).toEqual([])
+      await expect(s.leer(PID, r, 'actual'), r).rejects.toThrow(/Ruta no válida/)
+    }
+    expect((await s.archivos(PID)).archivos).toEqual([])
+    // una ruta con «..» que se queda dentro sí vale, y se guarda ya resuelta
+    expect(await s.registrarRuta(PID, 'otra/../src/a.ts', 'ia')).toMatchObject({ ruta: 'src/a.ts' })
+  })
+
   it('respeta .gitignore', async () => {
     const { s, esc } = await nuevo({}, true)
     await esc('.gitignore', 'secretos/\n*.generado\n')

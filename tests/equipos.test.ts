@@ -259,6 +259,22 @@ describe('estado de git de este equipo', () => {
     }
     await expect(s.informar(false, true)).rejects.toThrow(/sin conexión/)
   })
+
+  it('un proyecto que ya tiene el máximo de equipos (409) tampoco frena a los demás', async () => {
+    const { s, srv, proyectos } = await nuevo()
+    const a = (await repoConRemoto()).dir
+    const b = (await repoConRemoto()).dir
+    proyectos.push({ id: P1, ruta: a }, { id: P2, ruta: b })
+    const put = srv.put
+    srv.put = async (ruta: string, c: unknown) => {
+      if (ruta.includes(P1)) throw Object.assign(new Error('Demasiados equipos para este proyecto'), { estado: 409 })
+      return put(ruta, c)
+    }
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    expect(await s.informar()).toBe(1)
+    expect(aviso.mock.calls.join(' ')).toMatch(/Demasiados equipos/)
+    aviso.mockRestore()
+  })
 })
 
 describe('mis equipos', () => {

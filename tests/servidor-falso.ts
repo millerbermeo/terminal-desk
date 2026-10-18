@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { vi } from 'vitest'
@@ -37,6 +38,22 @@ export class ServidorFalso {
           groups: this.grupos.map((g) => ({ id: g.id, name: g.nombre })),
           projects: this.proyectos.map((p) => ({ id: p.id, name: p.nombre, repo: null, groupId: p.grupo ?? null }))
         })
+      }
+      const uno = /^\/projects\/([^/?]+)$/.exec(req.url ?? '')
+      if (uno && req.method === 'GET') {
+        const p = this.proyectos.find((x) => x.id === decodeURIComponent(uno[1]!))
+        return p ? responder(200, { id: p.id, name: p.nombre, repo: null, groupId: p.grupo ?? null }) : responder(404, { message: 'El proyecto no existe' })
+      }
+      if (req.url === '/projects' && req.method === 'POST') {
+        const trozos: Buffer[] = []
+        req.on('data', (t: Buffer) => trozos.push(t))
+        req.on('end', () => {
+          const c = JSON.parse(Buffer.concat(trozos).toString() || '{}') as { name: string; groupId?: string }
+          const p: ProyectoFalso = { id: randomUUID(), nombre: c.name, ruta: '', ...(c.groupId ? { grupo: c.groupId } : {}) }
+          this.proyectos.push(p)
+          responder(201, { id: p.id, name: p.nombre, repo: null, groupId: p.grupo ?? null })
+        })
+        return
       }
       if (req.url === '/comandos') {
         if (req.method === 'GET') return responder(200, { commands: this.comandos })
@@ -80,7 +97,8 @@ export class ServidorFalso {
   async refrescar(): Promise<void> {
     const { olvidarProyectos, rutasLocales } = await import('../src/main/proyectos')
     // El servidor real no guarda rutas: cada equipo conoce las suyas. Aquí «este equipo» tiene todas las del test.
-    for (const p of this.proyectos) await rutasLocales.fijar(p.id, p.ruta)
+    // `ruta` vacía = proyecto de la cuenta que aún no tiene carpeta en este equipo.
+    for (const p of this.proyectos) if (p.ruta) await rutasLocales.fijar(p.id, p.ruta)
     olvidarProyectos()
   }
 

@@ -229,7 +229,13 @@ export class ServicioEquipos {
       try {
         if (await this.subir(p.id, p.ruta, traer, forzar)) n++
       } catch (err) {
-        if ((err as { estado?: number }).estado === 404) continue // el proyecto ya no existe en la cuenta
+        const estado = (err as { estado?: number }).estado
+        if (estado === 404) continue // el proyecto ya no existe en la cuenta
+        if (estado === 409) {
+          // el proyecto ya tiene el máximo de equipos: este no sale en la lista, pero los demás proyectos sí se informan
+          console.warn(`No se informó el estado de git del proyecto ${p.id}: ${(err as Error).message}`)
+          continue
+        }
         throw err
       }
     }

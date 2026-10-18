@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { trabajandoAhora, type AvisoEquipo, type PendienteClonar } from '@shared/equipos'
 import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
 import logo from '../assets/logo.png'
@@ -107,6 +107,12 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
   const [menu, setMenu] = useState<MenuIA | null>(null)
   const [compacta, forzada, alternarCompacta] = useBarraCompacta()
   const [filtro, setFiltro] = useState('')
+  const pie = useRef<HTMLElement>(null)
+
+  // El menú de abajo tiene su propio scroll (con la ventana baja no cabe entero): la herramienta abierta siempre queda a la vista.
+  useEffect(() => {
+    pie.current?.querySelector('.item-config.activo')?.scrollIntoView({ block: 'nearest' })
+  }, [vista])
 
   useEffect(() => {
     if (!menu) return
@@ -273,7 +279,7 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
           </section>
         )}
       </nav>
-      <footer>
+      <footer ref={pie}>
         {NAV.map((g) => (
           <div className="nav-grupo" key={g.grupo}>
             <div className="nav-etiqueta">{g.grupo}</div>
@@ -324,7 +330,7 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
               }}
             >
               <IconoChispa />
-              <span className="txt" title="{prov.nombre}">{prov.nombre}</span>
+              <span className="txt" title={prov.nombre}>{prov.nombre}</span>
               {!prov.disponible && <small title="No encontrado en el PATH de la app">?</small>}
             </button>
           ))}

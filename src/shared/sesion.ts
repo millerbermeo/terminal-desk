@@ -52,7 +52,8 @@ export interface ResumenSincronizacion {
 /** Operaciones de cuenta: un solo canal IPC tipado. */
 export interface OperacionesCuenta {
   registrar: { entrada: { email: string; password: string }; salida: ResultadoPaso }
-  verificar: { entrada: { email: string; code: string }; salida: ResultadoSesion }
+  /** `password`: la del registro (o la del login que pidió activar): el servidor la exige junto con el código. */
+  verificar: { entrada: { email: string; code: string; password: string }; salida: ResultadoSesion }
   reenviar: { entrada: { email: string }; salida: ResultadoPaso }
   olvido: { entrada: { email: string }; salida: ResultadoPaso }
   restablecer: { entrada: { email: string; code: string; password: string }; salida: ResultadoSesion }

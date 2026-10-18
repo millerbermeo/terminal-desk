@@ -128,6 +128,23 @@ describe('sincronizador', () => {
     fallo = undefined
     await sync.vaciar()
   })
+
+  it('vaciar() (al cerrar la app) espera también a lo que ya se estaba enviando y a lo que llega mientras', async () => {
+    const terminados: string[] = []
+    const lento = {
+      put: async (ruta: string) => {
+        await dormir(60)
+        terminados.push(ruta)
+        return {}
+      }
+    } as unknown as ClienteServidor
+    const s = new Sincronizador(lento, 5)
+    s.encolar(ID, 'chat', 'a', { v: 1 })
+    await dormir(20) // «a» ya está enviándose (el servidor tarda)
+    s.encolar(ID, 'chat', 'b', { v: 1 })
+    await s.vaciar()
+    expect(terminados).toEqual([`/projects/${ID}/docs/chat/a`, `/projects/${ID}/docs/chat/b`])
+  })
 })
 
 describe('ServicioTareas.fusionar (tareas de otra computadora)', () => {

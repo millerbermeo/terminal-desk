@@ -168,6 +168,14 @@ body {
 .acciones-proyecto { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
 .acciones-proyecto button { background: transparent; border-color: var(--borde); color: var(--texto-suave); font-size: 12px; padding: 6px 8px; border-radius: 9px; }
 .acciones-proyecto button:hover:not(:disabled) { background: var(--bg-hover); color: var(--texto); border-color: var(--borde-fuerte); }
+/* barra lateral de 200 px: «Abrir carpeta» y «Agregar ruta» no caben lado a lado. Se recortan con «…»; con altura de sobra, se apilan. */
+@media (max-width: 900px) {
+  .acciones-proyecto button { overflow: hidden; }
+  .acciones-proyecto .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
+@media (max-width: 900px) and (min-height: 700px) {
+  .acciones-proyecto { grid-template-columns: 1fr; }
+}
 
 /* filtro de proyectos */
 .buscar { position: relative; padding: 0 12px 6px; }

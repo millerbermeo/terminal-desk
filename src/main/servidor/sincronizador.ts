@@ -47,7 +47,7 @@ const hash = (v: unknown): string => createHash('sha1').update(JSON.stringify(v)
 export class Sincronizador {
   private readonly esperando = new Map<string, { timer: NodeJS.Timeout; p: Pendiente }>()
   private readonly listos: Pendiente[] = []
-  private activo = false
+  private enVuelo?: Promise<void>
   /** Hash de lo último que el servidor tiene de cada documento (evita reenviar lo que no cambió y los rebotes de la descarga). */
   private readonly conocido = new Map<string, string>()
   private avisado = 0
@@ -106,23 +106,26 @@ export class Sincronizador {
     void this.vaciarCola()
   }
 
-  private async vaciarCola(): Promise<void> {
-    if (this.activo) return
-    this.activo = true
-    try {
-      for (let p = this.listos.shift(); p; p = this.listos.shift()) {
-        const hecho = await this.enviar(p)
-        if (!hecho && p.intentos < MAX_REINTENTOS) {
-          p.intentos++
-          const t = setTimeout(() => {
-            this.listos.push(p)
-            void this.vaciarCola()
-          }, Math.min(30_000, 1000 * 2 ** p.intentos))
-          t.unref?.()
-        }
+  /** Envía lo que esté listo. Si ya se está enviando, devuelve ese mismo envío (que también recoge lo añadido mientras): quien espera, espera de verdad. */
+  private vaciarCola(): Promise<void> {
+    this.enVuelo ??= this.enviarListos().finally(() => {
+      this.enVuelo = undefined
+      if (this.listos.length) void this.vaciarCola() // llegó algo justo cuando terminaba
+    })
+    return this.enVuelo
+  }
+
+  private async enviarListos(): Promise<void> {
+    for (let p = this.listos.shift(); p; p = this.listos.shift()) {
+      const hecho = await this.enviar(p)
+      if (!hecho && p.intentos < MAX_REINTENTOS) {
+        p.intentos++
+        const t = setTimeout(() => {
+          this.listos.push(p)
+          void this.vaciarCola()
+        }, Math.min(30_000, 1000 * 2 ** p.intentos))
+        t.unref?.()
       }
-    } finally {
-      this.activo = false
     }
   }
 
@@ -176,7 +179,8 @@ export class Sincronizador {
       this.listos.push(p)
     }
     this.esperando.clear()
-    await this.vaciarCola()
+    do await this.vaciarCola()
+    while (this.listos.length)
   }
 
   /** Contexto del proyecto en el servidor: tablero, conversaciones, trazas y eventos (con `desde`, solo lo que cambió después). */
