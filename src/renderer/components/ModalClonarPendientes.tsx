@@ -15,7 +15,7 @@ interface Props {
 
 type Estado = { fase: 'espera' } | { fase: 'clonando' } | { fase: 'enlazando' } | { fase: 'ok'; ruta: string; enlazado?: boolean } | { fase: 'error'; mensaje: string }
 
-const REPO_DISTINTO = 'REPO_DISTINTO:'
+const REQUIERE_CONFIRMACION = 'REQUIERE_CONFIRMACION:'
 
 const CLAVE_PADRE = 'odesk.clonar.padre'
 const eq = window.api.equipos.operar
@@ -69,12 +69,12 @@ export function ModalClonarPendientes({ pendientes, inicial, onCerrar, onTermina
         r = await eq('enlazarPendiente', { proyectoId: p.id, ruta: elegida })
       } catch (err) {
         const m = mensajeDe(err)
-        if (!m.includes(REPO_DISTINTO)) throw err
+        if (!m.includes(REQUIERE_CONFIRMACION)) throw err
         const sigue = await confirmar({
-          titulo: 'La carpeta apunta a otro repositorio',
+          titulo: 'Revisa esta carpeta antes de enlazarla',
           tono: 'aviso',
           etiqueta: 'Enlazar de todos modos',
-          texto: `${m.slice(m.indexOf(REPO_DISTINTO) + REPO_DISTINTO.length).trim()}\n\n¿Enlazarla a «${p.nombre}» igualmente?`
+          texto: `${m.slice(m.indexOf(REQUIERE_CONFIRMACION) + REQUIERE_CONFIRMACION.length).trim()}\n\n¿Enlazarla a «${p.nombre}» igualmente?`
         })
         if (!sigue) {
           setEstados((e) => ({ ...e, [p.id]: { fase: 'espera' } }))

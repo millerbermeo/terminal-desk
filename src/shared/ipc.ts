@@ -42,6 +42,7 @@ export const Canales = {
   proyectosElegirCarpetas: 'proyectos:elegir-carpetas',
   proyectosSugerirRutas: 'proyectos:sugerir-rutas',
   proyectosEliminar: 'proyectos:eliminar',
+  proyectosCambiarCarpeta: 'proyectos:cambiar-carpeta',
   grupoEliminar: 'grupo:eliminar',
   terminalCrear: 'terminal:crear',
   terminalEscribir: 'terminal:escribir',
@@ -383,6 +384,8 @@ export interface ApiCentro {
     /** Carpetas que empiezan por lo escrito (autocompletado de rutas), hasta 30. */
     sugerirRutas(prefijo: string): Promise<string[]>
     eliminar(id: string): Promise<DatosProyectos>
+    /** Cambia la carpeta de un proyecto de este equipo (por si te equivocaste al enlazarlo). Con `confirmar`, aunque pida confirmación (id viejo o remoto distinto). */
+    cambiarCarpeta(id: string, ruta: string, confirmar?: boolean): Promise<{ datos: DatosProyectos; aviso?: string }>
     /** Exige la contraseña del usuario del sistema. */
     eliminarGrupo(id: string, password: string): Promise<ResultadoEliminarGrupo>
   }

@@ -29,7 +29,7 @@ import { cambiarPerfil } from './perfiles'
 import { Boveda } from './servidor/boveda'
 import { seccionesSecretas } from './servidor/secretos'
 import { FuenteArchivos, FuenteTareas, SincronizadorCuenta } from './servidor/sync-cuenta'
-import { DIR, MIGRACION_DATOS, rutasLocales, agregarProyectos, carpetaDeProyecto, enlazarCarpetaExistente, eliminarGrupo, eliminarProyecto, leerProyectos, proyectosSinCarpeta, sugerirRutas, validarRuta } from './proyectos'
+import { DIR, MIGRACION_DATOS, rutasLocales, agregarProyectos, carpetaDeProyecto, cambiarCarpetaProyecto, enlazarCarpetaExistente, eliminarGrupo, eliminarProyecto, leerProyectos, proyectosSinCarpeta, sugerirRutas, validarRuta } from './proyectos'
 import { configurarMcpTareas } from './core/tareas/mcp-config'
 import { ejecutarOperacionGit } from './core/git/operaciones'
 import { writeFile } from 'node:fs/promises'
@@ -410,6 +410,10 @@ function registrarIpc(): void {
     const datos = await eliminarProyecto(id)
     await nucleo.tareas.desvincular({ proyectoId: id }) // sus tareas no se pierden: quedan sueltas
     return datos
+  })
+  ipcMain.handle(Canales.proyectosCambiarCarpeta, async (_e, id: string, ruta: string, confirmar?: boolean) => {
+    const r = await cambiarCarpetaProyecto({ proyectoId: String(id), ruta: String(ruta ?? ''), ...(confirmar === true ? { confirmar: true } : {}) })
+    return { datos: await leerProyectos(), ...(r.aviso ? { aviso: r.aviso } : {}) }
   })
   ipcMain.handle(Canales.grupoEliminar, async (_e, id: string, password: string): Promise<ResultadoEliminarGrupo> => {
     const auth = await verificarPassword(String(password ?? ''))
