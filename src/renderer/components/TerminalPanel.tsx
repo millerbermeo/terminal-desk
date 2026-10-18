@@ -21,6 +21,13 @@ interface Props {
   onActivar: (id: string) => void
 }
 
+/**
+ * Chromium reparte unos 16 contextos WebGL por proceso; con muchas celdas (y más ventanas) los más viejos se pierden y dejan la terminal
+ * en blanco. Solo las primeras 8 usan WebGL; el resto usa el renderer normal de xterm, que no tiene ese límite.
+ */
+const MAX_WEBGL = 8
+let contextosWebgl = 0
+
 /** ptys que pasan a otra ventana: al desmontar el panel no se matan. */
 export const transferidas = new Set<string>()
 
@@ -72,6 +79,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
 
   useEffect(() => {
     const el = contenedor.current!
+    let liberarWebgl: () => void = () => undefined
     const t = new Terminal({
       fontFamily: "'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', Menlo, Consolas, monospace",
       fontSize: 14,
@@ -96,10 +104,22 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
     t.open(el)
 
     try {
-      const gl = new WebglAddon()
-      gl.onContextLoss(() => gl.dispose())
-      t.loadAddon(gl)
+      if (contextosWebgl < MAX_WEBGL) {
+        const gl = new WebglAddon()
+        contextosWebgl++
+        liberarWebgl = (): void => {
+          liberarWebgl = () => undefined
+          contextosWebgl--
+        }
+        gl.onContextLoss(() => {
+          gl.dispose()
+          liberarWebgl()
+          window.api.registro.enviar({ level: 'info', kind: 'webgl-context-lost', message: 'Se perdió el contexto WebGL de una terminal (usa el renderer normal)', context: { activos: contextosWebgl } })
+        })
+        t.loadAddon(gl)
+      }
     } catch {
+      liberarWebgl()
       // sin WebGL: xterm usa el renderer DOM
     }
 
@@ -226,6 +246,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
       clearTimeout(temporizador)
       bajas.forEach((b) => b())
       sugerencias.destruir()
+      liberarWebgl()
       if (ptyId && !transferidas.delete(ptyId)) window.api.terminal.cerrar(ptyId)
       t.dispose()
     }

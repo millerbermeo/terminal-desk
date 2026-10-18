@@ -19,6 +19,7 @@ import { ModalClonarPendientes } from './components/ModalClonarPendientes'
 import { ModalConfirmar } from './components/ModalConfirmar'
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
 import { transferidas } from './components/TerminalPanel'
+import { puedeDuplicar, tituloDuplicado, type TipoCelda } from './duplicar'
 
 const Documentacion = lazy(() => import('./components/Documentacion').then((m) => ({ default: m.Documentacion })))
 
@@ -30,6 +31,7 @@ export interface TerminalInfo {
   proyectoId?: string // proyecto de origen (para no duplicar al hacer clic de nuevo)
   ptyId?: string // proceso real (lo informa el panel al crearlo; también viene así de otra ventana)
   vista?: 'terminal' | 'asistente' | 'archivos' // qué se muestra en la celda; la terminal sigue viva debajo
+  duplicada?: boolean // copia de otra celda del proyecto: su asistente empieza una conversación propia
 }
 
 /** Una pestaña de la app: normalmente un grupo de proyectos con sus terminales. */
@@ -243,6 +245,20 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     const id = `v${++contador}`
     agregar(id, 'Terminales', [nuevaTerminal('Terminal')])
   }, [agregar])
+
+  // «Duplicar»: otra celda del mismo proyecto (terminal, asistente o archivos), con máximo 3 por tipo y 12 por pestaña.
+  const duplicarCelda = useCallback(
+    (ventanaId: string, termId: string, tipo: TipoCelda): void => {
+      const v = ventanas.find((x) => x.id === ventanaId)
+      const origen = v?.terminales.find((t) => t.id === termId)
+      if (!v || !origen?.proyectoId) return
+      if (!puedeDuplicar(v.terminales, origen, tipo).ok) return
+      const proyecto = origen.titulo.split(' · ')[0] ?? origen.titulo
+      const titulo = tituloDuplicado(proyecto, tipo, v.terminales.map((t) => t.titulo))
+      agregar(v.id, v.nombre, [{ ...nuevaTerminal(titulo, origen.cwd, undefined, origen.proyectoId), duplicada: true, ...(tipo === 'terminal' ? {} : { vista: tipo }) }])
+    },
+    [agregar, ventanas]
+  )
 
   const cerrarTerminal = useCallback(
     (ventanaId: string, termId: string) => {
@@ -547,6 +563,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
               onCerrar={(t) => cerrarTerminal(v.id, t)}
               onPty={(t, pty) => alPty(v.id, t, pty)}
               onVista={(t, vis) => cambiar(v.id, (x) => ({ ...x, terminales: x.terminales.map((y) => (y.id === t ? { ...y, vista: vis } : y)) }))}
+              onDuplicar={(t, tipo) => duplicarCelda(v.id, t, tipo)}
             />
           </section>
         ))}

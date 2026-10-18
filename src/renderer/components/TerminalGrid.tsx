@@ -1,6 +1,9 @@
-import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoCarpeta, IconoCerrar, IconoChispa, IconoTerminal } from './Iconos'
+import { LimiteErrores } from './LimiteErrores'
+import { MAX_CELDAS, puedeDuplicar, tipoDe, type TipoCelda } from '../duplicar'
 import { ChatAgente } from './ChatAgente'
 import { TerminalPanel } from './TerminalPanel'
 import { useAgente } from '../agente/useAgente'
@@ -13,6 +16,7 @@ import {
   hojaEn,
   intercambiar,
   limitarRazon,
+  minimo,
   normalizar,
   reconciliar,
   type DivisorGeo,
@@ -36,6 +40,8 @@ interface Props {
   onPty?: (terminalId: string, ptyId: string) => void
   /** Cambia lo que muestra una celda (terminal o asistente). */
   onVista?: (terminalId: string, vista: 'terminal' | 'asistente' | 'archivos') => void
+  /** Abre otra celda del mismo proyecto con ese contenido (con los límites de `duplicar.ts`). */
+  onDuplicar?: (terminalId: string, tipo: TipoCelda) => void
 }
 
 const MIN_ANCHO = 260 // px
@@ -54,12 +60,12 @@ interface Arrastre {
 }
 
 /** Asistente de una celda: conversación propia (estado por celda) con el proyecto fijado. */
-function AsistenteCelda({ proyecto }: { proyecto: { id: string; nombre: string } }) {
-  const agente = useAgente({ clave: proyecto.id }) // cada proyecto recuerda su conversación activa
+function AsistenteCelda({ proyecto, clave }: { proyecto: { id: string; nombre: string }; clave: string }) {
+  const agente = useAgente({ clave }) // la primera celda del proyecto recuerda su conversación; cada copia empieza la suya
   return <ChatAgente agente={agente} proyectoFijo={proyecto} />
 }
 
-export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveLayout, onPersonalizado, onActivar, onCerrar, onPty, onVista }: Props) {
+export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveLayout, onPersonalizado, onActivar, onCerrar, onPty, onVista, onDuplicar }: Props) {
   // El asistente y el editor de una celda se montan la primera vez que se muestran y ya no se desmontan (conservan la conversación
   // y los archivos abiertos con su historial de deshacer).
   const [montados, setMontados] = useState<Set<string>>(new Set())
@@ -78,11 +84,25 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveL
   const [arrastrando, setArrastrando] = useState<'divisor' | 'mover' | null>(null)
   const [moviendo, setMoviendo] = useState<string | null>(null)
 
-  const medidas = (): Medidas => {
-    const r = contenedor.current?.getBoundingClientRect()
-    // oculto (otra pestaña) mide 0: se usan medidas por defecto
-    return { ancho: r?.width || 1000, alto: r?.height || 700, minAncho: MIN_ANCHO, minAlto: MIN_ALTO }
-  }
+  // Tamaño real del lienzo (se vuelve a calcular el layout al cambiar la ventana); oculto (otra pestaña) mide 0: medidas por defecto.
+  const [tam, setTam] = useState({ ancho: 0, alto: 0 })
+  useEffect(() => {
+    const el = contenedor.current
+    if (!el) return
+    let raf = 0
+    const medir = (): void => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => setTam((p) => (Math.abs(p.ancho - el.clientWidth) < 1 && Math.abs(p.alto - el.clientHeight) < 1 ? p : { ancho: el.clientWidth, alto: el.clientHeight })))
+    }
+    const ro = new ResizeObserver(medir)
+    ro.observe(el)
+    medir()
+    return () => {
+      ro.disconnect()
+      cancelAnimationFrame(raf)
+    }
+  }, [])
+  const medidas = (): Medidas => ({ ancho: tam.ancho || 1000, alto: tam.alto || 700, minAncho: MIN_ANCHO, minAlto: MIN_ALTO })
 
   // Layout efectivo: se calcula en el render (sin parpadeo) y se guarda en el efecto.
   const efectivo = reconciliar(estado.arbol, ids, estado.personalizado, medidas())
@@ -152,9 +172,76 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveL
   }
 
   const rejilla = modo === 'rejilla'
+  // Si las celdas no caben ni en su tamaño mínimo, en vez de apretarlas hasta romperlas se pasa a un carrusel: una celda a la vista y un
+  // deslizador (o las flechas, o arrastrar/rueda en horizontal) para ver las demás.
+  const carrusel = rejilla && terminales.length > 1 && tam.ancho > 0 && !!efectivo.arbol && (minimo(efectivo.arbol, 'x', med) > tam.ancho + 1 || minimo(efectivo.arbol, 'y', med) > tam.alto + 1)
+  const [indice, setIndice] = useState(0)
+  const temporizadorScroll = useRef(0)
+  const irA = useCallback(
+    (i: number, suave = true): void => {
+      const n = terminales.length
+      const destino = terminales[Math.min(Math.max(i, 0), n - 1)]
+      if (!destino) return
+      const el = contenedor.current?.querySelector<HTMLElement>(`[data-celda="${destino.id}"]`)
+      el?.scrollIntoView({ behavior: suave ? 'smooth' : 'auto', inline: 'start', block: 'nearest' })
+      setIndice(Math.min(Math.max(i, 0), n - 1))
+    },
+    [terminales]
+  )
+  // al deslizar a mano, la celda que queda a la vista pasa a ser la activa (el foco va con ella)
+  const alDeslizar = (): void => {
+    window.clearTimeout(temporizadorScroll.current)
+    temporizadorScroll.current = window.setTimeout(() => {
+      const caja = contenedor.current
+      if (!caja) return
+      let mejor = 0
+      let dist = Infinity
+      terminales.forEach((t, i) => {
+        const el = caja.querySelector<HTMLElement>(`[data-celda="${t.id}"]`)
+        if (!el) return
+        const d = Math.abs(el.offsetLeft - caja.scrollLeft)
+        if (d < dist) {
+          dist = d
+          mejor = i
+        }
+      })
+      setIndice(mejor)
+      const t = terminales[mejor]
+      if (t && t.id !== activa) onActivar(t.id)
+    }, 120)
+  }
+  // la celda activa (clic en el proyecto, nueva celda…) se muestra; al entrar en modo carrusel también
+  useEffect(() => {
+    if (!carrusel || !activa) return
+    const i = terminales.findIndex((t) => t.id === activa)
+    if (i >= 0) irA(i, false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carrusel, activa])
+
+  // menú «Duplicar» de una celda
+  const [menuDup, setMenuDup] = useState<{ id: string; x: number; y: number } | null>(null)
+  useEffect(() => {
+    if (!menuDup) return
+    const cerrar = (): void => setMenuDup(null)
+    const tecla = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') cerrar()
+    }
+    window.addEventListener('mousedown', cerrar)
+    window.addEventListener('keydown', tecla)
+    window.addEventListener('blur', cerrar)
+    window.addEventListener('resize', cerrar)
+    return () => {
+      window.removeEventListener('mousedown', cerrar)
+      window.removeEventListener('keydown', tecla)
+      window.removeEventListener('blur', cerrar)
+      window.removeEventListener('resize', cerrar)
+    }
+  }, [menuDup])
+  const origenDup = menuDup ? terminales.find((t) => t.id === menuDup.id) : undefined
+
   const estiloPanel = (id: string): CSSProperties => {
     const r = rects[id]
-    if (!rejilla || !r) return {}
+    if (!rejilla || carrusel || !r) return {}
     return {
       left: `calc(${r.x * 100}% + ${MARGEN}px)`,
       top: `calc(${r.y * 100}% + ${MARGEN}px)`,
@@ -190,7 +277,7 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveL
           ))}
         </div>
       )}
-      <div ref={contenedor} className={`paneles ${modo}${arrastrando ? ` arrastrando arrastrando-${arrastrando}` : ''}`}>
+      <div ref={contenedor} className={`paneles ${modo}${carrusel ? ' carrusel' : ''}${arrastrando ? ` arrastrando arrastrando-${arrastrando}` : ''}`} onScroll={carrusel ? alDeslizar : undefined}>
         {terminales.length === 0 && (
           <EstadoVacio icono={<IconoTerminal />} titulo="Sin terminales abiertas" texto="Elige un proyecto en la barra lateral o crea una terminal nueva." />
         )}
@@ -199,14 +286,15 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveL
           return (
             <div
               key={t.id}
+              data-celda={t.id}
               className={`panel${t.id === activa ? ' activa' : ''}${moviendo === t.id ? ' en-mano' : ''}`}
               style={{ display: visible ? 'flex' : 'none', ...estiloPanel(t.id) }}
             >
               {rejilla && (
                 <div
                   className="panel-barra"
-                  title="Arrastra sobre otra terminal para intercambiarlas"
-                  onPointerDown={(e) => empezar(e, { tipo: 'mover', id: t.id })}
+                  title={carrusel ? t.titulo : 'Arrastra sobre otra terminal para intercambiarlas'}
+                  onPointerDown={(e) => !carrusel && empezar(e, { tipo: 'mover', id: t.id })}
                   onPointerMove={arrastrar}
                   onPointerUp={terminar}
                   onPointerCancel={terminar}
@@ -230,37 +318,60 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveL
                   <button className={t.vista === 'archivos' ? 'on' : ''} onClick={() => onVista(t.id, 'archivos')} title="Archivos del proyecto: árbol y editor con guardado automático (la terminal sigue viva)">
                     <IconoCarpeta /> Archivos
                   </button>
+                  {onDuplicar && (
+                    <button
+                      type="button"
+                      className="panel-duplicar"
+                      aria-haspopup="menu"
+                      aria-expanded={menuDup?.id === t.id}
+                      title="Abre otra terminal, asistente o panel de archivos de este proyecto en una celda nueva"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        const r = e.currentTarget.getBoundingClientRect()
+                        setMenuDup((m) => (m?.id === t.id ? null : { id: t.id, x: r.right, y: r.bottom }))
+                      }}
+                    >
+                      <span aria-hidden="true">⧉</span> Duplicar
+                    </button>
+                  )}
                 </div>
               )}
               {t.proyectoId && montados.has(`${t.id}:archivos`) && (
                 <div className="panel-archivos" style={{ display: t.vista === 'archivos' ? 'flex' : 'none' }}>
-                  <Suspense fallback={null}>
-                    <PanelArchivos proyectoId={t.proyectoId} nombre={t.titulo.split(' · ')[0] ?? t.titulo} visible={visible && t.vista === 'archivos'} />
-                  </Suspense>
+                  <LimiteErrores zona="archivos" compacto>
+                    <Suspense fallback={null}>
+                      <PanelArchivos proyectoId={t.proyectoId} nombre={t.titulo.split(' · ')[0] ?? t.titulo} visible={visible && t.vista === 'archivos'} />
+                    </Suspense>
+                  </LimiteErrores>
                 </div>
               )}
               {t.proyectoId && montados.has(`${t.id}:asistente`) && (
                 <div className="panel-asistente" style={{ display: t.vista === 'asistente' ? 'flex' : 'none' }}>
-                  <AsistenteCelda proyecto={{ id: t.proyectoId, nombre: t.titulo }} />
+                  <LimiteErrores zona="asistente" compacto>
+                    <AsistenteCelda proyecto={{ id: t.proyectoId, nombre: t.titulo }} clave={t.duplicada ? `${t.proyectoId}#${t.id}` : t.proyectoId} />
+                  </LimiteErrores>
                 </div>
               )}
               <div className="panel-terminal" style={{ display: !t.vista || t.vista === 'terminal' ? 'flex' : 'none' }}>
-                <TerminalPanel
-                  id={t.id}
-                  cwd={t.cwd}
-                  proveedorId={t.proveedorId}
-                  proyectoId={t.proyectoId}
-                  ptyExistente={t.ptyId}
-                  onPty={onPty}
-                  visible={visible && (!t.vista || t.vista === 'terminal')}
-                  activa={t.id === activa && (!t.vista || t.vista === 'terminal')}
-                  onActivar={onActivar}
-                />
+                <LimiteErrores zona="terminal" compacto>
+                  <TerminalPanel
+                    id={t.id}
+                    cwd={t.cwd}
+                    proveedorId={t.proveedorId}
+                    proyectoId={t.proyectoId}
+                    ptyExistente={t.ptyId}
+                    onPty={onPty}
+                    visible={visible && (!t.vista || t.vista === 'terminal')}
+                    activa={t.id === activa && (!t.vista || t.vista === 'terminal')}
+                    onActivar={onActivar}
+                  />
+                </LimiteErrores>
               </div>
             </div>
           )
         })}
         {rejilla &&
+          !carrusel &&
           divisores.map((d) => (
             <div
               key={d.id}
@@ -277,6 +388,51 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveL
             />
           ))}
       </div>
+      {carrusel && (
+        <div className="carrusel-barra" role="group" aria-label="Celdas de esta pestaña">
+          <button type="button" onClick={() => irA(indice - 1)} disabled={indice <= 0} aria-label="Celda anterior" title="Celda anterior">
+            ‹
+          </button>
+          <input type="range" min={0} max={terminales.length - 1} step={1} value={Math.min(indice, terminales.length - 1)} onChange={(e) => irA(Number(e.target.value))} aria-label="Deslizar entre las celdas" />
+          <button type="button" onClick={() => irA(indice + 1)} disabled={indice >= terminales.length - 1} aria-label="Celda siguiente" title="Celda siguiente">
+            ›
+          </button>
+          <span className="carrusel-etiqueta" title="No caben todas las celdas a la vez en este tamaño: desliza para ver las demás">
+            {Math.min(indice, terminales.length - 1) + 1} / {terminales.length} · {terminales[Math.min(indice, terminales.length - 1)]?.titulo}
+          </span>
+        </div>
+      )}
+      {menuDup &&
+        origenDup &&
+        onDuplicar &&
+        createPortal(
+          <div className="menu-ia menu-duplicar" role="menu" style={{ left: Math.max(8, Math.min(menuDup.x - 230, window.innerWidth - 240)), top: Math.min(menuDup.y + 4, window.innerHeight - 180) }} onMouseDown={(e) => e.stopPropagation()}>
+            <div className="menu-ia-tit">Duplicar en una celda nueva ({terminales.length}/{MAX_CELDAS})</div>
+            {(['terminal', 'asistente', 'archivos'] as const).map((tipo) => {
+              const p = puedeDuplicar(terminales, origenDup, tipo)
+              const etiqueta = tipo === 'terminal' ? 'Terminal' : tipo === 'asistente' ? 'Asistente' : 'Archivos'
+              return (
+                <button
+                  key={tipo}
+                  role="menuitem"
+                  disabled={!p.ok}
+                  title={p.ok ? `Abre otra ${etiqueta.toLowerCase()} de este proyecto` : p.motivo}
+                  onClick={() => {
+                    setMenuDup(null)
+                    onDuplicar(origenDup.id, tipo)
+                  }}
+                >
+                  {tipo === 'terminal' ? <IconoTerminal /> : tipo === 'asistente' ? <IconoChispa /> : <IconoCarpeta />}
+                  <span>{etiqueta}</span>
+                  <kbd>
+                    {p.usadas}/{p.max}
+                  </kbd>
+                </button>
+              )
+            })}
+          </div>,
+          document.body
+        )}
     </div>
   )
 }
