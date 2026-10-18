@@ -185,12 +185,23 @@ export type ResultadoEliminarGrupo =
 
 export type ResultadoProveedor = { ok: true; proveedores: ProveedorEstado[] } | { ok: false; mensaje: string }
 
+/** Lo que puede contener una pestaña de una celda. */
+export type TipoCelda = 'terminal' | 'asistente' | 'archivos'
+
+/** Pestaña duplicada dentro de una celda (la original de cada tipo no se guarda aquí). `n` es su número (2, 3, 4) y solo las terminales tienen `ptyId`. */
+export interface PestanaExtra {
+  id: string
+  tipo: TipoCelda
+  n: number
+  ptyId?: string
+}
+
 /** Pestaña que se pasa a una ventana nueva: las terminales siguen vivas (mismo pty). */
 export interface PayloadVentana {
   ventanaId: string // id de la pestaña de origen (clave del grupo)
   nombre: string
   modo: 'rejilla' | 'pestanas'
-  terminales: { id: string; titulo: string; ptyId: string; cwd?: string; proveedorId?: string; proyectoId?: string; vista?: 'terminal' | 'asistente' | 'archivos' }[]
+  terminales: { id: string; titulo: string; ptyId: string; cwd?: string; proveedorId?: string; proyectoId?: string; vista?: TipoCelda; extras?: PestanaExtra[]; extraActiva?: string }[]
 }
 
 export type ResultadoRecurso = { ok: true; biblioteca: BibliotecaAgentes } | { ok: false; mensaje: string }

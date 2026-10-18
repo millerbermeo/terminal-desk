@@ -1,9 +1,9 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { Fragment, lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoCarpeta, IconoCerrar, IconoChispa, IconoTerminal } from './Iconos'
 import { LimiteErrores } from './LimiteErrores'
-import { MAX_CELDAS, puedeDuplicar, tipoDe, type TipoCelda } from '../duplicar'
+import { extrasDe, MAX_PESTANAS, puedeDuplicar, TIPOS, tipoActivo, tituloPestana, type OperacionPestana, type TipoCelda } from '../duplicar'
 import { ChatAgente } from './ChatAgente'
 import { TerminalPanel } from './TerminalPanel'
 import { useAgente } from '../agente/useAgente'
@@ -40,8 +40,8 @@ interface Props {
   onPty?: (terminalId: string, ptyId: string) => void
   /** Cambia lo que muestra una celda (terminal o asistente). */
   onVista?: (terminalId: string, vista: 'terminal' | 'asistente' | 'archivos') => void
-  /** Abre otra celda del mismo proyecto con ese contenido (con los límites de `duplicar.ts`). */
-  onDuplicar?: (terminalId: string, tipo: TipoCelda) => void
+  /** Duplicar / cerrar / elegir las pestañas extra de una celda (hasta 3 duplicadas por tipo, `duplicar.ts`). */
+  onPestanas?: (terminalId: string, op: OperacionPestana) => void
 }
 
 const MIN_ANCHO = 260 // px
@@ -65,12 +65,15 @@ function AsistenteCelda({ proyecto, clave }: { proyecto: { id: string; nombre: s
   return <ChatAgente agente={agente} proyectoFijo={proyecto} />
 }
 
-export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveLayout, onPersonalizado, onActivar, onCerrar, onPty, onVista, onDuplicar }: Props) {
+export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveLayout, onPersonalizado, onActivar, onCerrar, onPty, onVista, onPestanas }: Props) {
   // El asistente y el editor de una celda se montan la primera vez que se muestran y ya no se desmontan (conservan la conversación
   // y los archivos abiertos con su historial de deshacer).
   const [montados, setMontados] = useState<Set<string>>(new Set())
   useEffect(() => {
-    const nuevos = terminales.filter((t) => (t.vista === 'asistente' || t.vista === 'archivos') && !montados.has(`${t.id}:${t.vista}`)).map((t) => `${t.id}:${t.vista}`)
+    const nuevos = terminales
+      .filter((t) => t.vista === 'asistente' || t.vista === 'archivos')
+      .map((t) => `${t.id}:${t.extraActiva ?? t.vista}`)
+      .filter((k) => !montados.has(k))
     if (nuevos.length) setMontados((s) => new Set([...s, ...nuevos]))
   }, [terminales, montados])
 
@@ -218,7 +221,7 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveL
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carrusel, activa])
 
-  // menú «Duplicar» de una celda
+  // menú «Duplicar» de una celda: añade una pestaña de terminal, asistente o archivos
   const [menuDup, setMenuDup] = useState<{ id: string; x: number; y: number } | null>(null)
   useEffect(() => {
     if (!menuDup) return
@@ -308,51 +311,116 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveL
                 </div>
               )}
               {t.proyectoId && onVista && (
-                <div className="panel-vista" role="group" aria-label="Contenido de la celda">
-                  <button className={!t.vista || t.vista === 'terminal' ? 'on' : ''} onClick={() => onVista(t.id, 'terminal')}>
-                    <IconoTerminal /> Terminal
-                  </button>
-                  <button className={t.vista === 'asistente' ? 'on' : ''} onClick={() => onVista(t.id, 'asistente')} title="Asistente integrado: conversa con el agente en este proyecto (la terminal sigue viva)">
-                    <IconoChispa /> Asistente
-                  </button>
-                  <button className={t.vista === 'archivos' ? 'on' : ''} onClick={() => onVista(t.id, 'archivos')} title="Archivos del proyecto: árbol y editor con guardado automático (la terminal sigue viva)">
-                    <IconoCarpeta /> Archivos
-                  </button>
-                  {onDuplicar && (
+                <div className="panel-vista" role="tablist" aria-label="Pestañas de la celda">
+                  {TIPOS.map((tipo) => {
+                    const baseActiva = tipoActivo(t) === tipo && !t.extraActiva
+                    const nombre = tituloPestana(tipo, 1)
+                    const icono = tipo === 'terminal' ? <IconoTerminal /> : tipo === 'asistente' ? <IconoChispa /> : <IconoCarpeta />
+                    const ayuda =
+                      tipo === 'terminal'
+                        ? 'Terminal del proyecto'
+                        : tipo === 'asistente'
+                          ? 'Asistente integrado: conversa con el agente en este proyecto (la terminal sigue viva)'
+                          : 'Archivos del proyecto: árbol y editor con guardado automático (la terminal sigue viva)'
+                    return (
+                      <Fragment key={tipo}>
+                        <button role="tab" aria-selected={baseActiva} className={baseActiva ? 'on' : ''} onClick={() => onVista(t.id, tipo)} title={ayuda}>
+                          {icono} {nombre}
+                        </button>
+                        {extrasDe(t.extras, tipo).map((x) => (
+                          <span key={x.id} className={`pestana-extra${t.extraActiva === x.id ? ' on' : ''}`}>
+                            <button role="tab" aria-selected={t.extraActiva === x.id} className={t.extraActiva === x.id ? 'on' : ''} onClick={() => onPestanas?.(t.id, { t: 'activar', id: x.id })} title={`${nombre} duplicado ${x.n}`}>
+                              {icono} {tituloPestana(tipo, x.n)}
+                            </button>
+                            <button type="button" className="cerrar-extra" aria-label={`Cerrar ${tituloPestana(tipo, x.n)}`} title={`Cerrar ${tituloPestana(tipo, x.n)}`} onClick={() => onPestanas?.(t.id, { t: 'cerrar', id: x.id })}>
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </Fragment>
+                    )
+                  })}
+                  {onPestanas && (
                     <button
                       type="button"
                       className="panel-duplicar"
                       aria-haspopup="menu"
                       aria-expanded={menuDup?.id === t.id}
-                      title="Abre otra terminal, asistente o panel de archivos de este proyecto en una celda nueva"
+                      title="Duplicar: abre otra pestaña de terminal, asistente o archivos en esta celda"
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         const r = e.currentTarget.getBoundingClientRect()
                         setMenuDup((m) => (m?.id === t.id ? null : { id: t.id, x: r.right, y: r.bottom }))
                       }}
                     >
-                      <span aria-hidden="true">⧉</span> Duplicar
+                      <span aria-hidden="true">＋</span> Duplicar
                     </button>
                   )}
                 </div>
               )}
-              {t.proyectoId && montados.has(`${t.id}:archivos`) && (
-                <div className="panel-archivos" style={{ display: t.vista === 'archivos' ? 'flex' : 'none' }}>
-                  <LimiteErrores zona="archivos" compacto>
-                    <Suspense fallback={null}>
-                      <PanelArchivos proyectoId={t.proyectoId} nombre={t.titulo.split(' · ')[0] ?? t.titulo} visible={visible && t.vista === 'archivos'} />
-                    </Suspense>
-                  </LimiteErrores>
-                </div>
+              {t.proyectoId && (
+                <>
+                  {montados.has(`${t.id}:archivos`) && (
+                    <div className="panel-archivos" style={{ display: tipoActivo(t) === 'archivos' && !t.extraActiva ? 'flex' : 'none' }}>
+                      <LimiteErrores zona="archivos" compacto>
+                        <Suspense fallback={null}>
+                          <PanelArchivos proyectoId={t.proyectoId} nombre={t.titulo.split(' · ')[0] ?? t.titulo} visible={visible && tipoActivo(t) === 'archivos' && !t.extraActiva} />
+                        </Suspense>
+                      </LimiteErrores>
+                    </div>
+                  )}
+                  {montados.has(`${t.id}:asistente`) && (
+                    <div className="panel-asistente" style={{ display: tipoActivo(t) === 'asistente' && !t.extraActiva ? 'flex' : 'none' }}>
+                      <LimiteErrores zona="asistente" compacto>
+                        <AsistenteCelda proyecto={{ id: t.proyectoId, nombre: t.titulo }} clave={t.proyectoId} />
+                      </LimiteErrores>
+                    </div>
+                  )}
+                  {(t.extras ?? []).map((x) => {
+                    const aVista = t.extraActiva === x.id
+                    if (x.tipo === 'archivos')
+                      return (
+                        montados.has(`${t.id}:${x.id}`) && (
+                          <div key={x.id} className="panel-archivos" style={{ display: aVista ? 'flex' : 'none' }}>
+                            <LimiteErrores zona="archivos" compacto>
+                              <Suspense fallback={null}>
+                                <PanelArchivos proyectoId={t.proyectoId!} nombre={t.titulo.split(' · ')[0] ?? t.titulo} visible={visible && aVista} />
+                              </Suspense>
+                            </LimiteErrores>
+                          </div>
+                        )
+                      )
+                    if (x.tipo === 'asistente')
+                      return (
+                        montados.has(`${t.id}:${x.id}`) && (
+                          <div key={x.id} className="panel-asistente" style={{ display: aVista ? 'flex' : 'none' }}>
+                            <LimiteErrores zona="asistente" compacto>
+                              <AsistenteCelda proyecto={{ id: t.proyectoId!, nombre: t.titulo }} clave={`${t.proyectoId}#${x.id}`} />
+                            </LimiteErrores>
+                          </div>
+                        )
+                      )
+                    // terminal duplicada: su propio proceso, que sigue vivo aunque se vea otra pestaña
+                    return (
+                      <div key={x.id} className="panel-terminal" style={{ display: aVista ? 'flex' : 'none' }}>
+                        <LimiteErrores zona="terminal" compacto>
+                          <TerminalPanel
+                            id={x.id}
+                            cwd={t.cwd}
+                            proyectoId={t.proyectoId}
+                            ptyExistente={x.ptyId}
+                            onPty={(_id, pty) => onPestanas?.(t.id, { t: 'pty', id: x.id, ptyId: pty })}
+                            visible={visible && aVista}
+                            activa={t.id === activa && aVista}
+                            onActivar={() => onActivar(t.id)}
+                          />
+                        </LimiteErrores>
+                      </div>
+                    )
+                  })}
+                </>
               )}
-              {t.proyectoId && montados.has(`${t.id}:asistente`) && (
-                <div className="panel-asistente" style={{ display: t.vista === 'asistente' ? 'flex' : 'none' }}>
-                  <LimiteErrores zona="asistente" compacto>
-                    <AsistenteCelda proyecto={{ id: t.proyectoId, nombre: t.titulo }} clave={t.duplicada ? `${t.proyectoId}#${t.id}` : t.proyectoId} />
-                  </LimiteErrores>
-                </div>
-              )}
-              <div className="panel-terminal" style={{ display: !t.vista || t.vista === 'terminal' ? 'flex' : 'none' }}>
+              <div className="panel-terminal" style={{ display: tipoActivo(t) === 'terminal' && !t.extraActiva ? 'flex' : 'none' }}>
                 <LimiteErrores zona="terminal" compacto>
                   <TerminalPanel
                     id={t.id}
@@ -361,8 +429,8 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveL
                     proyectoId={t.proyectoId}
                     ptyExistente={t.ptyId}
                     onPty={onPty}
-                    visible={visible && (!t.vista || t.vista === 'terminal')}
-                    activa={t.id === activa && (!t.vista || t.vista === 'terminal')}
+                    visible={visible && tipoActivo(t) === 'terminal' && !t.extraActiva}
+                    activa={t.id === activa && tipoActivo(t) === 'terminal' && !t.extraActiva}
                     onActivar={onActivar}
                   />
                 </LimiteErrores>
@@ -404,22 +472,24 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveL
       )}
       {menuDup &&
         origenDup &&
-        onDuplicar &&
+        onPestanas &&
         createPortal(
-          <div className="menu-ia menu-duplicar" role="menu" style={{ left: Math.max(8, Math.min(menuDup.x - 230, window.innerWidth - 240)), top: Math.min(menuDup.y + 4, window.innerHeight - 180) }} onMouseDown={(e) => e.stopPropagation()}>
-            <div className="menu-ia-tit">Duplicar en una celda nueva ({terminales.length}/{MAX_CELDAS})</div>
-            {(['terminal', 'asistente', 'archivos'] as const).map((tipo) => {
-              const p = puedeDuplicar(terminales, origenDup, tipo)
-              const etiqueta = tipo === 'terminal' ? 'Terminal' : tipo === 'asistente' ? 'Asistente' : 'Archivos'
+          <div className="menu-ia menu-duplicar" role="menu" style={{ left: Math.max(8, Math.min(menuDup.x - 240, window.innerWidth - 250)), top: Math.min(menuDup.y + 4, window.innerHeight - 190) }} onMouseDown={(e) => e.stopPropagation()}>
+            <div className="menu-ia-tit">
+              Duplicar en «{origenDup.titulo.split(' · ')[0]}» ({3 + (origenDup.extras?.length ?? 0)}/{MAX_PESTANAS} pestañas)
+            </div>
+            {TIPOS.map((tipo) => {
+              const p = puedeDuplicar(origenDup.extras, tipo)
+              const etiqueta = tituloPestana(tipo, 1)
               return (
                 <button
                   key={tipo}
                   role="menuitem"
                   disabled={!p.ok}
-                  title={p.ok ? `Abre otra ${etiqueta.toLowerCase()} de este proyecto` : p.motivo}
+                  title={p.ok ? `Abre otra pestaña de ${etiqueta.toLowerCase()} en esta celda` : p.motivo}
                   onClick={() => {
                     setMenuDup(null)
-                    onDuplicar(origenDup.id, tipo)
+                    onPestanas(origenDup.id, { t: 'agregar', tipo })
                   }}
                 >
                   {tipo === 'terminal' ? <IconoTerminal /> : tipo === 'asistente' ? <IconoChispa /> : <IconoCarpeta />}

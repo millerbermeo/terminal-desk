@@ -459,3 +459,12 @@ body {
 .carrusel-barra button { padding: 1px 10px; font-size: 15px; line-height: 1.2; }
 .carrusel-etiqueta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
 @media (max-width: 520px) { .carrusel-etiqueta { display: none; } }
+
+/* Pestañas de la celda: originales y duplicadas */
+.panel-vista { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: thin; align-items: center; }
+.panel-vista > button, .panel-vista .pestana-extra { flex: none; white-space: nowrap; }
+.panel-vista .pestana-extra { display: inline-flex; align-items: center; border-radius: 6px; }
+.panel-vista .pestana-extra.on { background: rgba(129, 140, 248, 0.14); box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.26); }
+.panel-vista .pestana-extra > button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; background: transparent; box-shadow: none; }
+.panel-vista .pestana-extra .cerrar-extra { padding: 0 6px; font-size: 14px; line-height: 1; opacity: 0.6; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.panel-vista .pestana-extra .cerrar-extra:hover { opacity: 1; color: var(--error, #f87171); }

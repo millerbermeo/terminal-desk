@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { AvisoEquipo, PendienteClonar } from '@shared/equipos'
+import type { PestanaExtra } from '@shared/ipc'
 import type { BibliotecaAgentes, DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
 import { EstadoVacio } from './components/EstadoVacio'
 import { IconoCerrar, IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, IconoTerminal, IconoVentana } from './components/Iconos'
@@ -19,7 +20,7 @@ import { ModalClonarPendientes } from './components/ModalClonarPendientes'
 import { ModalConfirmar } from './components/ModalConfirmar'
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
 import { transferidas } from './components/TerminalPanel'
-import { puedeDuplicar, tituloDuplicado, type TipoCelda } from './duplicar'
+import { aPayload, extrasSinPty, ptysDeExtras, reducirPestanas, type OperacionPestana } from './duplicar'
 
 const Documentacion = lazy(() => import('./components/Documentacion').then((m) => ({ default: m.Documentacion })))
 
@@ -31,7 +32,8 @@ export interface TerminalInfo {
   proyectoId?: string // proyecto de origen (para no duplicar al hacer clic de nuevo)
   ptyId?: string // proceso real (lo informa el panel al crearlo; también viene así de otra ventana)
   vista?: 'terminal' | 'asistente' | 'archivos' // qué se muestra en la celda; la terminal sigue viva debajo
-  duplicada?: boolean // copia de otra celda del proyecto: su asistente empieza una conversación propia
+  extras?: PestanaExtra[] // pestañas duplicadas (hasta 3 por tipo) además de la original de cada tipo
+  extraActiva?: string // pestaña duplicada a la vista; sin ella se ve la original de `vista`
 }
 
 /** Una pestaña de la app: normalmente un grupo de proyectos con sus terminales. */
@@ -246,18 +248,11 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     agregar(id, 'Terminales', [nuevaTerminal('Terminal')])
   }, [agregar])
 
-  // «Duplicar»: otra celda del mismo proyecto (terminal, asistente o archivos), con máximo 3 por tipo y 12 por pestaña.
-  const duplicarCelda = useCallback(
-    (ventanaId: string, termId: string, tipo: TipoCelda): void => {
-      const v = ventanas.find((x) => x.id === ventanaId)
-      const origen = v?.terminales.find((t) => t.id === termId)
-      if (!v || !origen?.proyectoId) return
-      if (!puedeDuplicar(v.terminales, origen, tipo).ok) return
-      const proyecto = origen.titulo.split(' · ')[0] ?? origen.titulo
-      const titulo = tituloDuplicado(proyecto, tipo, v.terminales.map((t) => t.titulo))
-      agregar(v.id, v.nombre, [{ ...nuevaTerminal(titulo, origen.cwd, undefined, origen.proyectoId), duplicada: true, ...(tipo === 'terminal' ? {} : { vista: tipo }) }])
-    },
-    [agregar, ventanas]
+  // «Duplicar»: pestañas extra dentro de la celda (terminal, asistente o archivos), hasta 3 duplicadas por tipo.
+  const sobrePestanas = useCallback(
+    (ventanaId: string, termId: string, op: OperacionPestana): void =>
+      cambiar(ventanaId, (v) => ({ ...v, terminales: v.terminales.map((t) => (t.id === termId ? reducirPestanas(t, op) : t)) })),
+    [cambiar]
   )
 
   const cerrarTerminal = useCallback(
@@ -309,13 +304,16 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     (v: Ventana, pos?: { x: number; y: number }) => {
       const terminales = v.terminales.filter((t): t is TerminalInfo & { ptyId: string } => !!t.ptyId)
       if (terminales.length === 0) return
-      terminales.forEach((t) => transferidas.add(t.ptyId))
+      terminales.forEach((t) => {
+        transferidas.add(t.ptyId)
+        ptysDeExtras(t).forEach((p) => transferidas.add(p)) // las terminales duplicadas también siguen vivas en la ventana nueva
+      })
       window.api.ventana.separar(
         {
           ventanaId: v.id,
           nombre: v.nombre,
           modo: v.modo,
-          terminales: terminales.map((t) => ({ id: t.id, titulo: t.titulo, ptyId: t.ptyId, cwd: t.cwd, proveedorId: t.proveedorId, proyectoId: t.proyectoId, vista: t.vista }))
+          terminales: terminales.map(aPayload)
         },
         pos
       )
@@ -464,7 +462,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
               <button
                 className="cerrar separar"
                 title="Abrir en una ventana nueva"
-                disabled={v.terminales.length === 0 || v.terminales.some((t) => !t.ptyId)}
+                disabled={v.terminales.length === 0 || v.terminales.some((t) => !t.ptyId || extrasSinPty(t))}
                 onClick={(e) => {
                   e.stopPropagation()
                   separar(v)
@@ -562,8 +560,8 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
               onActivar={(t) => cambiar(v.id, (x) => (x.activa === t ? x : { ...x, activa: t }))}
               onCerrar={(t) => cerrarTerminal(v.id, t)}
               onPty={(t, pty) => alPty(v.id, t, pty)}
-              onVista={(t, vis) => cambiar(v.id, (x) => ({ ...x, terminales: x.terminales.map((y) => (y.id === t ? { ...y, vista: vis } : y)) }))}
-              onDuplicar={(t, tipo) => duplicarCelda(v.id, t, tipo)}
+              onVista={(t, vis) => cambiar(v.id, (x) => ({ ...x, terminales: x.terminales.map((y) => (y.id === t ? { ...y, vista: vis, extraActiva: undefined } : y)) }))}
+              onPestanas={(t, op) => sobrePestanas(v.id, t, op)}
             />
           </section>
         ))}

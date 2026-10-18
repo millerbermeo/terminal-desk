@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, IconoVolver } from './components/Iconos'
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
 import type { TerminalInfo } from './App'
+import { aPayload, reducirPestanas } from './duplicar'
 import { ModalSolicitudGlobal } from './components/ModalSolicitud'
 import { escucharSolicitudes } from './agente/solicitudes'
 
@@ -48,7 +49,7 @@ export function VentanaSeparada({ token }: { token: string }) {
       ventanaId: ventanaId || 'devueltas',
       nombre,
       modo,
-      terminales: lista.map((t) => ({ id: t.id, titulo: t.titulo, ptyId: t.ptyId, cwd: t.cwd, proveedorId: t.proveedorId, proyectoId: t.proyectoId, vista: t.vista }))
+      terminales: lista.map(aPayload)
     })
   }
 
@@ -100,7 +101,8 @@ export function VentanaSeparada({ token }: { token: string }) {
           onActivar={setActiva}
           onCerrar={cerrar}
           onPty={alPty}
-          onVista={(id, vista) => setTerminales((ts) => (ts ?? []).map((t) => (t.id === id ? { ...t, vista } : t)))}
+          onVista={(id, vista) => setTerminales((ts) => (ts ?? []).map((t) => (t.id === id ? { ...t, vista, extraActiva: undefined } : t)))}
+          onPestanas={(id, op) => setTerminales((ts) => (ts ?? []).map((t) => (t.id === id ? reducirPestanas(t, op) : t)))}
         />
         <ModalSolicitudGlobal />
       </main>
