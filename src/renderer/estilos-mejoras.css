@@ -424,3 +424,7 @@ body {
   .hd-mitad { border-right: none; border-bottom: 1px solid var(--borde); }
   .modal-historial { height: 92vh; padding: 12px; }
 }
+
+.config .cfg-subtitulo { margin: 28px 0 8px; font-size: 14px; font-weight: 600; }
+.config .cfg-intro.cfg-intro-sub { margin: 0 0 12px; }
+.cfg-grupo .ag-cuenta { border-bottom: 0; padding: 14px 16px; }

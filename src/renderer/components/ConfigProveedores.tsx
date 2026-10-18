@@ -3,6 +3,7 @@ import type { ProveedorEstado } from '@shared/modelos'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoBasura, IconoChispa, IconoLapiz, IconoMas } from './Iconos'
 import { ModalProveedor } from './ModalProveedor'
+import { BarraCuenta } from './BarraCuenta'
 
 interface Props {
   proveedores: ProveedorEstado[]
@@ -25,6 +26,13 @@ export function ConfigProveedores({ proveedores, onProveedores }: Props) {
         proyecto y pulsa ✦ para abrirlo con el proveedor que elijas.
       </p>
 
+      <h3 className="cfg-subtitulo">Cuenta del Asistente</h3>
+      <p className="cfg-intro cfg-intro-sub">Con qué se paga el modelo del Asistente: tu suscripción de Claude (una o varias cuentas) o una clave de la API. Se aplica a todos los proyectos.</p>
+      <section className="cfg-grupo">
+        <BarraCuenta />
+      </section>
+
+      <h3 className="cfg-subtitulo">Proveedores de terminal</h3>
       <section className="cfg-grupo">
         {proveedores.length === 0 && <EstadoVacio variante="compacto" icono={<IconoChispa />} titulo="Sin proveedores" texto="Agrega uno para lanzar Claude Code, Codex, Gemini u otro CLI desde cada proyecto." />}
         {proveedores.map((p) => (

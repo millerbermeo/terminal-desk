@@ -42,6 +42,8 @@ import { iniciarServidorTareas, type ServidorTareas } from './core/tareas/servid
 
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto')
+// En Wayland, Chromium con Vulkan falla ("'--ozone-platform=wayland' is not compatible with Vulkan"); la app no lo necesita.
+if (process.platform === 'linux') app.commandLine.appendSwitch('disable-features', 'Vulkan')
 app.setName('Odesk Agent')
 // Perfil de Electron (localStorage del renderer): carpeta fija con el nombre actual; si solo existe la de un nombre anterior, se mueve.
 app.setPath('userData', resolverPerfil(app.getPath('appData'), 'Odesk Agent'))

@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import type { CuentaSuscripcion } from '@shared/core/cuenta'
-import type { ModoAutonomia } from '@shared/core/permisos'
 import { useCuenta } from '../agente/cuenta'
 import { confirmar } from '../confirmar'
 
@@ -8,7 +7,7 @@ import { confirmar } from '../confirmar'
 const etiqueta = (c: CuentaSuscripcion): string =>
   `${c.nombre}${c.email ? ` · ${c.email}` : c.sesion ? '' : ' · sin sesión'}${c.limiteHasta ? ' · límite alcanzado' : ''}`
 
-export function BarraCuenta({ autonomia }: { autonomia: ModoAutonomia }) {
+export function BarraCuenta() {
   const { cuenta, ocupado, error, elegir, iniciarSesion, cerrarSesion, activar, agregar, quitar, cambioAutomatico } = useCuenta()
   const [nueva, setNueva] = useState<string | null>(null) // nombre en edición; null = el formulario está cerrado
   if (!cuenta) return null
@@ -91,11 +90,6 @@ export function BarraCuenta({ autonomia }: { autonomia: ModoAutonomia }) {
         cuenta.sesion ? (
           <>
             <span className="ag-cuenta-estado ok">● Sesión iniciada{cuenta.email ? `: ${cuenta.email}` : ''}</span>
-            {autonomia === 'preguntar' && (
-              <span className="ag-cuenta-nota" title="Con la suscripción el CLI no puede pedir confirmación: lo que requiere permiso se deniega.">
-                Solo lectura: elige «Aceptar ediciones» para modificar archivos o tareas
-              </span>
-            )}
             <span className="ag-espacio" />
             <button className="ag-cuenta-btn" disabled={ocupado !== ''} onClick={() => void cerrarSesion()}>
               {ocupado === 'cerrando' ? 'Cerrando…' : 'Cerrar sesión'}

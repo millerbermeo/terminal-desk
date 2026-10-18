@@ -8,7 +8,6 @@ import type { Agente, Turno } from '../agente/useAgente'
 import { useCuenta } from '../agente/cuenta'
 import { useModelos } from '../agente/uso'
 import { AdjuntosAgente } from './AdjuntosAgente'
-import { BarraCuenta } from './BarraCuenta'
 import { BarraRama } from './BarraRama'
 import { confirmar } from '../confirmar'
 import { BarraUso } from './BarraUso'
@@ -379,7 +378,11 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         void subir([...e.dataTransfer.files])
       }}
     >
-      <BarraCuenta autonomia={autonomia} />
+      {cuenta?.proveedor === 'suscripcion' && !cuenta.sesion && (
+        <div className="ag-cuenta sin-sesion">
+          <span className="ag-cuenta-estado">Sin sesión de Claude: configúrala en «Proveedores de IA».</span>
+        </div>
+      )}
       {proyecto && <BarraRama proyectoId={proyecto.id} ocupadoAgente={agente.enCurso} />}
       {arrastrando && <div className="ag-soltar">Suelta para adjuntar (imágenes, PDF o texto)</div>}
       {verHistorial && (
