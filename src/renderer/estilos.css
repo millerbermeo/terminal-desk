@@ -204,8 +204,12 @@ input[type='date'] { color-scheme: dark; }
 .paneles.pestanas .panel.activa { box-shadow: none; }
 .panel.activa .panel-barra { color: var(--texto); }
 .panel-titulo { display: inline-flex; align-items: center; gap: 6px; }
-.terminal .xterm, .terminal .xterm-viewport, .terminal .xterm-scrollable-element { background-color: var(--bg) !important; }
-.terminal { flex: 1; min-height: 0; padding: 8px 6px 6px 12px; }
+.terminal .xterm, .terminal .xterm-viewport, .terminal .xterm-scrollable-element { background-color: transparent !important; }
+
+/* la marca de agua va como <svg> en línea (MarcaAgua.tsx) detrás del xterm transparente */
+.terminal-caja { position: relative; flex: 1; min-height: 0; display: flex; background: var(--bg); }
+.marca-agua { position: absolute; left: 50%; top: 50%; width: min(50%, 380px); aspect-ratio: 1; transform: translate(-50%, -50%); pointer-events: none; }
+.terminal { position: relative; flex: 1; min-width: 0; min-height: 0; padding: 8px 6px 6px 12px; }
 .vacio { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; color: var(--texto-tenue); animation: aparecer 500ms var(--ease) both; max-width: 360px; padding: var(--e5); line-height: 1.6; }
 .vacio strong { color: var(--texto); font-size: 15px; font-weight: 600; letter-spacing: -0.015em; }
 .vacio-icono { width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center; background: linear-gradient(180deg, rgba(129, 140, 248, 0.16), rgba(129, 140, 248, 0.05)); border: 1px solid rgba(129, 140, 248, 0.28); color: var(--acento); margin-bottom: 8px; box-shadow: 0 8px 28px rgba(99, 102, 241, 0.18), var(--brillo); }

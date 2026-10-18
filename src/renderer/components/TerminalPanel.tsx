@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
+import { MarcaAgua } from './MarcaAgua'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -76,8 +77,9 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
       cursorBlink: true,
       scrollback: 5000,
       allowProposedApi: true,
+      allowTransparency: true, // deja ver la marca de agua de `.terminal`
       theme: {
-        background: '#0b0c0f',
+        background: '#00000000',
         foreground: '#e4e4e9',
         cursor: '#818cf8',
         selectionBackground: 'rgba(129, 140, 248, 0.32)',
@@ -209,7 +211,10 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
 
   return (
     <>
-      <div ref={contenedor} className="terminal" onMouseDown={() => onActivar(id)} onContextMenu={alMenuContextual} />
+      <div className="terminal-caja" onMouseDown={() => onActivar(id)} onContextMenu={alMenuContextual}>
+        <MarcaAgua />
+        <div ref={contenedor} className="terminal" />
+      </div>
       {menu &&
         createPortal(
           <div
