@@ -40,6 +40,8 @@ import { abrirEnNavegadorDelSistema, GestorNavegador, rutaPreload } from './nave
 import { esPaginaDeLaApp } from './navegacion'
 import { servidoresLocales } from './puertos'
 import { HistorialComandos } from './historial-comandos'
+import { Registro } from './registro'
+import { cierreAnteriorInesperado, LimitadorRecargas, marcarCierreLimpio, marcarInicio, motivoRecuperable } from './estabilidad'
 import { fijarAjustes, leerAjustes } from './ajustes'
 import { iniciarServidorTareas, type ServidorTareas } from './core/tareas/servidor'
 
@@ -95,6 +97,66 @@ const enviarA = (ptyId: string, canal: string, carga: unknown): void => {
 }
 
 const historialComandos = new HistorialComandos(join(DIR, 'historial-comandos.json'))
+
+// Registro técnico: errores, cierres de la interfaz, ventanas colgadas… Se anota en ~/.odesk-agent/logs y se sube a la cuenta para analizarlo.
+const ARCHIVO_SESION = join(DIR, 'logs', 'sesion.json')
+const registro = new Registro({
+  archivo: join(DIR, 'logs', 'app.log'),
+  archivoPendientes: join(DIR, 'logs', 'pendientes.json'),
+  version: app.getVersion(),
+  plataforma: process.platform,
+  casa: homedir(),
+  contexto: () => ({
+    electron: process.versions.electron,
+    memoriaMb: Math.round(process.memoryUsage().rss / 1048576),
+    ventanas: BrowserWindow.getAllWindows().length,
+    minutosAbierta: Math.round(process.uptime() / 60)
+  }),
+  subir: async (entradas) => {
+    const equipo = await equipos.equipo().catch(() => undefined)
+    await servidor.post('/logs', {
+      ...(equipo?.id ? { deviceId: equipo.id } : {}),
+      entries: entradas.map((e) => ({ level: e.level, source: e.source, kind: e.kind, message: e.message, ...(e.stack ? { stack: e.stack } : {}), appVersion: app.getVersion(), platform: process.platform, ...(e.context ? { context: e.context } : {}), at: e.at }))
+    })
+  }
+})
+const recargas = new LimitadorRecargas()
+process.on('uncaughtException', (err) => registro.registrar({ level: 'error', source: 'main', kind: 'uncaughtException', message: err?.message ?? String(err), stack: err?.stack }))
+process.on('unhandledRejection', (r) => registro.registrar({ level: 'error', source: 'main', kind: 'unhandledRejection', message: r instanceof Error ? r.message : String(r), ...(r instanceof Error ? { stack: r.stack } : {}) }))
+app.on('child-process-gone', (_e, d) => {
+  if (d.reason === 'clean-exit') return
+  registro.registrar({ level: 'error', source: d.type === 'GPU' ? 'gpu' : 'proceso', kind: 'child-process-gone', message: `${d.type}: ${d.reason}`, context: { exitCode: d.exitCode, reason: d.reason } })
+})
+/** Interfaz caída (crash, sin memoria…): se anota y se recarga sola, con tope para no entrar en bucle. */
+app.on('render-process-gone', (_e, wc, d) => {
+  registro.registrar({ level: 'error', source: 'renderer', kind: 'render-process-gone', message: `La interfaz se cerró: ${d.reason}`, context: { reason: d.reason, exitCode: d.exitCode } })
+  if (!motivoRecuperable(d.reason) || wc.isDestroyed()) return
+  if (recargas.permitir(wc.id)) setTimeout(() => !wc.isDestroyed() && wc.reload(), 500)
+  else void dialog.showMessageBox({ type: 'error', title: 'Odesk Agent', message: 'La interfaz se sigue cerrando sola.', detail: 'Se dejó de recargar automáticamente. Cierra y vuelve a abrir la aplicación; el detalle quedó en el registro (~/.odesk-agent/logs/app.log).' })
+})
+/** Ventana que no responde: se anota y, si sigue colgada tras 15 s, se ofrece recargarla. */
+app.on('web-contents-created', (_e, wc) => {
+  if (wc.getType() !== 'window') return
+  let colgada: NodeJS.Timeout | undefined
+  wc.on('unresponsive', () => {
+    registro.registrar({ level: 'warn', source: 'renderer', kind: 'unresponsive', message: 'La ventana dejó de responder' })
+    colgada = setTimeout(() => {
+      if (wc.isDestroyed()) return
+      void dialog.showMessageBox({ type: 'warning', title: 'Odesk Agent', message: 'La ventana no responde.', detail: 'Puedes esperar un poco más o recargarla (las terminales de esa ventana se cerrarán).', buttons: ['Esperar', 'Recargar'], defaultId: 0, cancelId: 0 }).then((r) => {
+        registro.registrar({ level: 'info', source: 'renderer', kind: 'unresponsive-decision', message: r.response === 1 ? 'recargar' : 'esperar' })
+        if (r.response === 1 && !wc.isDestroyed()) wc.reload()
+      })
+    }, 15_000)
+  })
+  wc.on('responsive', () => {
+    if (colgada) clearTimeout(colgada)
+    registro.registrar({ level: 'info', source: 'renderer', kind: 'responsive', message: 'La ventana volvió a responder' })
+  })
+  wc.on('did-fail-load', (_ev, codigo, descripcion, url) => {
+    if (codigo === -3) return // carga cancelada a propósito
+    registro.registrar({ level: 'error', source: 'renderer', kind: 'did-fail-load', message: `No se pudo cargar la interfaz: ${descripcion} (${codigo})`, context: { url: url.startsWith('file:') ? 'file' : url.split('?')[0] ?? '' } })
+  })
+})
 const terminales = new GestorTerminales({
   onDatos: (id, datos, fin) => enviarA(id, Canales.terminalDatos, { id, datos, fin }),
   onSalida: (id, codigo) => {
@@ -475,6 +537,18 @@ function registrarIpc(): void {
     terminales.redimensionar(id, cols, rows)
   )
   ipcMain.on(Canales.terminalCerrar, (_e, id: string) => terminales.cerrar(id))
+  ipcMain.on(Canales.registroEnviar, (_e, e: { level?: unknown; kind?: unknown; message?: unknown; stack?: unknown; context?: unknown }) => {
+    if (!e || typeof e !== 'object') return
+    const nivel = e.level === 'warn' || e.level === 'info' ? e.level : 'error'
+    registro.registrar({
+      level: nivel,
+      source: 'renderer',
+      kind: typeof e.kind === 'string' ? e.kind : 'error',
+      message: e.message,
+      ...(typeof e.stack === 'string' ? { stack: e.stack } : {}),
+      ...(e.context && typeof e.context === 'object' ? { context: e.context as Record<string, unknown> } : {})
+    })
+  })
   ipcMain.handle(Canales.ajustesLeer, (_e, clave: string) => leerAjustes(clave))
   ipcMain.handle(Canales.ajustesFijar, (_e, clave: string, cambios: { modelo?: string | null; autonomia?: string | null }) => fijarAjustes(clave, cambios ?? {}))
   ipcMain.handle(Canales.terminalEnShell, (_e, id: string) => terminales.enShell(String(id)))
@@ -485,6 +559,12 @@ function registrarIpc(): void {
 let servidorTareas: ServidorTareas | undefined
 
 app.whenReady().then(() => {
+  const anterior = cierreAnteriorInesperado(ARCHIVO_SESION)
+  marcarInicio(ARCHIVO_SESION)
+  void registro.iniciar().then(() => {
+    if (anterior) registro.registrar({ level: 'warn', source: 'main', kind: 'cierre-inesperado', message: 'La sesión anterior no terminó bien (se cerró de golpe, se colgó o hubo que matarla)', context: { minutosDesdeEseInicio: Math.round((Date.now() - anterior.inicio) / 60000) } })
+    registro.registrar({ level: 'info', source: 'main', kind: 'app-inicio', message: `Odesk Agent ${app.getVersion()} iniciado` })
+  })
   // Instalada (empaquetada o con install.sh/install.ps1): el servidor de producción; `servidor.json` y ODESK_API_URL mandan sobre él.
   const porDefecto = servidorPorDefecto({ rutaApp: app.getAppPath(), empaquetada: app.isPackaged, produccion: URL_SERVIDOR_PRODUCCION })
   if (porDefecto) servidor.usarPorDefecto(porDefecto)
@@ -545,6 +625,8 @@ app.on('before-quit', (e) => {
   }
   void servidorTareas?.cerrar()
   void nucleo.detener()
+  marcarCierreLimpio(ARCHIVO_SESION)
+  registro.detener()
 })
 app.on('will-quit', () => {
   terminales.cerrarTodas()

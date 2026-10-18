@@ -437,3 +437,25 @@ body {
 /* «Ya la tengo aquí» en la lista de proyectos por clonar */
 .cp-usar { margin-left: auto; padding: 3px 10px; font-size: 12px; white-space: nowrap; }
 .cfg-proyecto { flex-wrap: wrap; }
+
+/* Si algo falla al dibujar, solo cae esa parte */
+.limite-errores { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 32px; min-height: 100%; height: 100%; color: var(--texto-suave); }
+.limite-errores strong { color: var(--texto); font-size: 15px; }
+.limite-errores.compacto { padding: 16px; gap: 6px; font-size: 12px; }
+.limite-acciones { display: flex; gap: 8px; margin-top: 6px; }
+.cargando-app { display: grid; place-items: center; height: 100vh; color: var(--texto-tenue); font-size: 13px; }
+
+/* Duplicar celdas */
+.panel-duplicar { margin-left: auto; }
+.menu-duplicar { min-width: 220px; z-index: 60; }
+.menu-duplicar kbd { margin-left: auto; }
+
+/* Carrusel: cuando las celdas no caben a la vez, una a la vista y un deslizador para ver las demás */
+.paneles.rejilla.carrusel { display: flex; flex-direction: row; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scroll-padding-left: 4px; scrollbar-width: none; }
+.paneles.rejilla.carrusel::-webkit-scrollbar { display: none; }
+.paneles.rejilla.carrusel .panel { position: relative; flex: 0 0 calc(100% - 28px); height: calc(100% - 8px); margin: 4px 4px 4px 4px; scroll-snap-align: start; scroll-snap-stop: always; transition: none; }
+.carrusel-barra { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-top: 1px solid var(--borde); background: var(--bg-sidebar); flex: none; font-size: 12px; color: var(--texto-suave); }
+.carrusel-barra input[type='range'] { flex: 1; min-width: 60px; accent-color: var(--acento); cursor: pointer; }
+.carrusel-barra button { padding: 1px 10px; font-size: 15px; line-height: 1.2; }
+.carrusel-etiqueta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
+@media (max-width: 520px) { .carrusel-etiqueta { display: none; } }

@@ -49,6 +49,7 @@ export const Canales = {
   terminalRedimensionar: 'terminal:redimensionar',
   terminalCerrar: 'terminal:cerrar',
   terminalAdjuntar: 'terminal:adjuntar',
+  registroEnviar: 'registro:enviar',
   ajustesLeer: 'ajustes:leer',
   ajustesFijar: 'ajustes:fijar',
   terminalEnShell: 'terminal:en-shell',
@@ -388,6 +389,10 @@ export interface ApiCentro {
     cambiarCarpeta(id: string, ruta: string, confirmar?: boolean): Promise<{ datos: DatosProyectos; aviso?: string }>
     /** Exige la contraseña del usuario del sistema. */
     eliminarGrupo(id: string, password: string): Promise<ResultadoEliminarGrupo>
+  }
+  /** Anota un suceso técnico (error de la interfaz…) en el registro local y, si hay sesión, en la cuenta. Nunca lanza. */
+  registro: {
+    enviar(e: { level?: 'error' | 'warn' | 'info'; kind: string; message: string; stack?: string; context?: Record<string, unknown> }): void
   }
   /** Modelo y autonomía del Asistente por proyecto (`global` o su UUID): se sincronizan con la cuenta. */
   ajustes: {
