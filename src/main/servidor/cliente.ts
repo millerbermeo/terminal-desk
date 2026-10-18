@@ -61,13 +61,21 @@ export class ClienteServidor {
     this.direccion = limpiarUrl(url)
   }
 
+  /**
+   * Dirección por defecto de esta instalación (la app empaquetada usa el servidor de producción; en desarrollo sigue `localhost`).
+   * Se llama antes de `configurar`: lo que el usuario guardó en `servidor.json` y la variable `ODESK_API_URL` mandan sobre ella.
+   */
+  usarPorDefecto(url: string): void {
+    if (!process.env.ODESK_API_URL) this.direccion = limpiarUrl(url)
+  }
+
   get url(): string {
     return this.direccion
   }
 
   /**
    * `archivo`: dónde se guarda el token; `archivoUrl`: `servidor.json` con `{ "url": "https://…" }`. La variable `ODESK_API_URL`
-   * manda sobre el archivo; sin ninguna de las dos se usa `http://localhost:3000`.
+   * manda sobre el archivo; sin ninguna de las dos se usa la dirección por defecto (`usarPorDefecto`, o `http://localhost:3000`).
    */
   configurar(archivo: string, cifrador: Cifrador, archivoUrl?: string): void {
     this.almacen = new AlmacenToken(archivo, cifrador)
