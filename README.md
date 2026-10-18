@@ -66,8 +66,21 @@ Node.js 20+ y pnpm **no** hacen falta: si no existen, el instalador descarga un 
 2. Clona el repositorio en `~/.local/share/odesk-agent` (Windows: `%LOCALAPPDATA%\odesk-agent`). Si ya tenías la app instalada con el nombre anterior (`centro-proyectos`), se actualiza donde estaba, sin moverla.
 3. Instala dependencias, prepara Electron, compila `node-pty` si procede y construye la app.
 4. Crea el lanzador `~/.local/bin/odesk` y la entrada del menú de aplicaciones.
+5. Deja `servidor-por-defecto.txt` junto a la carpeta `repo/`: la app instalada se conecta a **https://odesk.millerrivera.com** (ver «Servidor» más abajo).
 
-Variables opcionales: `ODESK_DIR` (carpeta de instalación), `ODESK_BIN` (carpeta del lanzador, solo Linux/macOS), `ODESK_REPO` (repositorio) y `ODESK_REF` (rama, etiqueta o commit a instalar). Las antiguas `CENTRO_DIR`, `CENTRO_BIN`, `CENTRO_REPO` y `CENTRO_REF` siguen funcionando.
+Variables opcionales: `ODESK_DIR` (carpeta de instalación), `ODESK_BIN` (carpeta del lanzador, solo Linux/macOS), `ODESK_REPO` (repositorio), `ODESK_REF` (rama, etiqueta o commit a instalar) y `ODESK_SERVIDOR` (servidor al que se conecta la app por defecto; sin ella, `https://odesk.millerrivera.com`). Las antiguas `CENTRO_DIR`, `CENTRO_BIN`, `CENTRO_REPO` y `CENTRO_REF` siguen funcionando.
+
+### Servidor
+
+La app necesita el servidor (`terminal-desk--api`) para las cuentas, los proyectos y la sincronización. La dirección que usa, de mayor a menor prioridad:
+
+1. La variable `ODESK_API_URL` (para forzar un servidor, por ejemplo en pruebas).
+2. La que elijas en la pantalla de acceso con el botón **«cambiar»** (se guarda y se recuerda).
+3. La de por defecto:
+   - **App instalada** con el instalador, o empaquetada (`pnpm package`): `https://odesk.millerrivera.com`.
+   - **Desarrollo** (`pnpm dev`): `http://localhost:3000`, tu backend local.
+
+Se puede cambiar con `ODESK_SERVIDOR_POR_DEFECTO` en el entorno o editando `servidor-por-defecto.txt`.
 
 ## Actualizar
 

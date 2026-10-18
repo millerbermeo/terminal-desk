@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { servidorSeguro, URL_SERVIDOR_PRODUCCION } from '@shared/sesion'
 import { ClienteServidor, ErrorServidor, ErrorSesion } from '../src/main/servidor/cliente'
+import { servidorPorDefecto } from '../src/main/servidor/por-defecto'
 import { avisoDeGit, vincularProyectoLocal } from '../src/main/servidor/vinculo'
 
 const cifradorFalso = { disponible: () => false, cifrar: (t: string) => t, descifrar: (t: string) => t }
@@ -185,5 +186,42 @@ describe('sesión en el servidor', () => {
     } finally {
       delete process.env.ODESK_PERMITIR_HTTP
     }
+  })
+})
+
+describe('servidorPorDefecto (copias hechas con install.sh / install.ps1)', () => {
+  const PROD = 'https://odesk.millerrivera.com'
+  it('el instalador deja servidor-por-defecto.txt junto a repo/: esa copia usa producción aunque no esté empaquetada', async () => {
+    const dir = await carpeta()
+    const repo = join(dir, 'repo')
+    await mkdir(repo)
+    await writeFile(join(dir, 'servidor-por-defecto.txt'), `${PROD}\n`)
+    expect(servidorPorDefecto({ rutaApp: repo, empaquetada: false, produccion: PROD, env: {} })).toBe(PROD)
+  })
+  it('en desarrollo (sin archivo ni empaquetar) no hay valor: queda localhost; empaquetada usa producción', async () => {
+    const dir = await carpeta()
+    const repo = join(dir, 'repo')
+    await mkdir(repo)
+    expect(servidorPorDefecto({ rutaApp: repo, empaquetada: false, produccion: PROD, env: {} })).toBeUndefined()
+    expect(servidorPorDefecto({ rutaApp: repo, empaquetada: true, produccion: PROD, env: {} })).toBe(PROD)
+  })
+  it('la variable ODESK_SERVIDOR_POR_DEFECTO manda sobre el archivo; un valor que no es http(s) se ignora', async () => {
+    const dir = await carpeta()
+    const repo = join(dir, 'repo')
+    await mkdir(repo)
+    await writeFile(join(dir, 'servidor-por-defecto.txt'), 'https://del-archivo.com')
+    expect(servidorPorDefecto({ rutaApp: repo, empaquetada: false, produccion: PROD, env: { ODESK_SERVIDOR_POR_DEFECTO: 'https://del-entorno.com' } })).toBe('https://del-entorno.com')
+    expect(servidorPorDefecto({ rutaApp: repo, empaquetada: false, produccion: PROD, env: { ODESK_SERVIDOR_POR_DEFECTO: 'ftp://raro' } })).toBe('https://del-archivo.com')
+    await writeFile(join(dir, 'servidor-por-defecto.txt'), 'no es una url')
+    expect(servidorPorDefecto({ rutaApp: repo, empaquetada: false, produccion: PROD, env: {} })).toBeUndefined()
+  })
+  it('lo que el usuario guardó en servidor.json y ODESK_API_URL siguen mandando sobre el valor por defecto', async () => {
+    const dir = await carpeta()
+    const archivoUrl = join(dir, 'servidor.json')
+    await writeFile(archivoUrl, JSON.stringify({ url: 'https://mio.com' }))
+    const c = new ClienteServidor()
+    c.usarPorDefecto(PROD)
+    c.configurar(join(dir, 's.json'), cifradorFalso, archivoUrl)
+    expect(c.url).toBe('https://mio.com')
   })
 })

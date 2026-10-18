@@ -3,7 +3,7 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/millerbermeo/terminal-desk/main/install.ps1 | iex"
 #
 # Ejecutarlo de nuevo actualiza a la última versión (solo reconstruye lo que cambió).
-# Variables de entorno: ODESK_REPO, ODESK_REF, ODESK_DIR, CENTRO_UNINSTALL=1 (desinstalar) o CENTRO_UNINSTALL=all (desinstalar y borrar datos).
+# Variables de entorno: ODESK_REPO, ODESK_REF, ODESK_DIR, ODESK_SERVIDOR (servidor por defecto de la app), CENTRO_UNINSTALL=1 (desinstalar) o CENTRO_UNINSTALL=all (desinstalar y borrar datos).
 # (Se siguen aceptando las antiguas CENTRO_REPO, CENTRO_REF y CENTRO_DIR.)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -149,6 +149,10 @@ if ($huella -ne $huellaPrev -or -not (Test-Path 'node_modules\electron')) {
 Paso 'Compilando la aplicación'
 Ejecutar 'pnpm' @('build')
 Set-Content -NoNewline -Path $fCommit -Value $nuevo
+
+# --- Servidor por defecto (la app lo lee de aquí; lo que el usuario elija en la pantalla de acceso manda sobre él) ---
+$Servidor = if ($env:ODESK_SERVIDOR) { $env:ODESK_SERVIDOR } else { 'https://odesk.millerrivera.com' }
+Set-Content -NoNewline -Path (Join-Path $Dir 'servidor-por-defecto.txt') -Value $Servidor -Encoding ASCII
 
 # --- Lanzador, acceso del menú Inicio y PATH ---
 $electron = Join-Path $RepoDir 'node_modules\electron\dist\electron.exe'
