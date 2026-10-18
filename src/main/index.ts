@@ -525,7 +525,11 @@ function registrarIpc(): void {
   ipcMain.on(Canales.ventanaDevolver, (e, payload: PayloadVentana) => {
     const origen = BrowserWindow.fromWebContents(e.sender)
     if (principal && !principal.isDestroyed()) {
-      for (const t of payload.terminales) duenos.set(t.ptyId, principal.webContents.id)
+      for (const t of payload.terminales) {
+        duenos.set(t.ptyId, principal.webContents.id)
+        // las terminales duplicadas de la celda también: si no, cerrar la ventana separada las mataría
+        for (const x of t.extras ?? []) if (x.ptyId) duenos.set(x.ptyId, principal.webContents.id)
+      }
       principal.webContents.send(Canales.ventanaRecibir, payload)
       if (principal.isMinimized()) principal.restore()
       principal.focus()
