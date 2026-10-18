@@ -69,7 +69,8 @@ body {
 .sidebar.compacta footer { padding: 8px; }
 
 /* ---------- barra de la ventana y pestañas ---------- */
-.barra { background: var(--vidrio); backdrop-filter: blur(10px) saturate(130%); }
+/* z-index: el backdrop-filter crea su propio contexto de apilado; sin esto los paneles de terminal (que van después) tapan los menús desplegables de la barra. */
+.barra { position: relative; z-index: 50; background: var(--vidrio); backdrop-filter: blur(10px) saturate(130%); }
 .barra-info { padding: 4px 11px; border: 1px solid var(--borde); border-radius: 999px; background: var(--bg-sutil); font-size: 12px; }
 .barra-acciones button { padding: 5px 12px; }
 .ventanas { background: var(--vidrio); backdrop-filter: blur(10px) saturate(130%); }
@@ -428,3 +429,7 @@ body {
 .config .cfg-subtitulo { margin: 28px 0 8px; font-size: 14px; font-weight: 600; }
 .config .cfg-intro.cfg-intro-sub { margin: 0 0 12px; }
 .cfg-grupo .ag-cuenta { border-bottom: 0; padding: 14px 16px; }
+
+/* Sugerencia de historial en gris tras el cursor de la terminal (decoración de xterm: ella fija posición y tamaño) */
+.terminal-sugerencia { display: flex; pointer-events: none; white-space: pre; overflow: hidden; color: rgba(168, 172, 190, 0.5); font-family: inherit; font-size: inherit; }
+.terminal-sugerencia span { flex: 1 1 0; min-width: 0; text-align: left; overflow: visible; }

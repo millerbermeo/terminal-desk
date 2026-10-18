@@ -1,3 +1,4 @@
+import { basename } from 'node:path'
 import { homedir } from 'node:os'
 import { existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -21,6 +22,7 @@ function shellPorDefecto(): { shell: string; args: string[] } {
 
 export class GestorTerminales {
   private terminales = new Map<string, pty.IPty>()
+  private shells = new Map<string, string>() // nombre del shell de cada terminal
   // Lo último que mostró cada terminal: sirve para repintarla si pasa a otra ventana.
   private historial = new Map<string, { trozos: string[]; largo: number; fin: number }>()
 
@@ -38,6 +40,7 @@ export class GestorTerminales {
       env: { ...process.env, ...extra?.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' } as Record<string, string>
     })
     this.terminales.set(id, proc)
+    this.shells.set(id, basename(shell).toLowerCase().replace(/\.exe$/, ''))
     // Se escribe en el shell interactivo (no se hace spawn directo) para heredar PATH/nvm/etc. y que la terminal siga viva al salir del CLI.
     if (extra?.comando) proc.write(extra.comando + '\r')
     const hist = { trozos: [] as string[], largo: 0, fin: 0 }
@@ -52,6 +55,7 @@ export class GestorTerminales {
     })
     proc.onExit(({ exitCode }) => {
       this.historial.delete(id)
+      this.shells.delete(id)
       if (this.terminales.delete(id)) this.cb.onSalida(id, exitCode)
     })
     return id
@@ -60,6 +64,17 @@ export class GestorTerminales {
   historialDe(id: string): { texto: string; fin: number } {
     const h = this.historial.get(id)
     return { texto: h?.trozos.join('') ?? '', fin: h?.fin ?? 0 }
+  }
+
+  /** ¿Lo que está en primer plano en esa terminal es el propio shell (esperando una orden), y no un programa que la ocupa? Solo en Linux y macOS. */
+  enShell(id: string): boolean {
+    const proc = this.terminales.get(id)
+    if (!proc || process.platform === 'win32') return false
+    try {
+      return basename(proc.process).toLowerCase().replace(/^-/, '') === this.shells.get(id)
+    } catch {
+      return false
+    }
   }
 
   escribir(id: string, datos: string): void {
@@ -80,6 +95,7 @@ export class GestorTerminales {
     if (!proc) return
     this.terminales.delete(id)
     this.historial.delete(id)
+    this.shells.delete(id)
     this.matar(proc)
   }
 
@@ -87,6 +103,7 @@ export class GestorTerminales {
     for (const proc of this.terminales.values()) this.matar(proc)
     this.terminales.clear()
     this.historial.clear()
+    this.shells.clear()
   }
 
   private matar(proc: pty.IPty): void {

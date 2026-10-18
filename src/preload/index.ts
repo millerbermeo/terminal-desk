@@ -142,6 +142,9 @@ const api: ApiCentro = {
     escribir: (id, datos) => ipcRenderer.send(Canales.terminalEscribir, id, datos),
     redimensionar: (id, cols, rows) => ipcRenderer.send(Canales.terminalRedimensionar, id, cols, rows),
     cerrar: (id) => ipcRenderer.send(Canales.terminalCerrar, id),
+    enShell: (id) => ipcRenderer.invoke(Canales.terminalEnShell, id),
+    historialComandos: () => ipcRenderer.invoke(Canales.terminalHistorialComandos),
+    registrarComando: (comando) => ipcRenderer.send(Canales.terminalRegistrarComando, comando),
     onDatos: (cb) => suscribir<DatosTerminal>(Canales.terminalDatos, cb),
     onSalida: (cb) => suscribir<SalidaTerminal>(Canales.terminalSalida, cb)
   }

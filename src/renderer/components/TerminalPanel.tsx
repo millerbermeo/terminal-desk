@@ -6,7 +6,8 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
-import { IconoCopiar, IconoPegar, IconoSeleccionar, IconoLimpiar } from './Iconos'
+import { IconoChispa, IconoCopiar, IconoPegar, IconoSeleccionar, IconoLimpiar } from './Iconos'
+import { fijarSugerencias, SugerenciasTerminal, sugerenciasActivadas } from '../terminal/sugerencias'
 
 interface Props {
   id: string
@@ -102,8 +103,31 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
       // sin WebGL: xterm usa el renderer DOM
     }
 
-    // Ctrl+Shift+C / Ctrl+Shift+V; Ctrl+C copia solo si hay selección.
+    let ptyActual: string | null = null
+    const sugerencias = new SugerenciasTerminal(t, () => ptyActual)
+
+        // Ctrl+Shift+C / Ctrl+Shift+V; Ctrl+C copia solo si hay selección.
+    // Pulsar y soltar Mayús solo (sin otra tecla en medio: las mayúsculas al escribir no cuentan) acepta la sugerencia entera.
+    let mayusSola = false
     t.attachCustomKeyEventHandler((e) => {
+      if (e.key === 'Shift') {
+        if (e.type === 'keydown') mayusSola = !e.repeat && !e.ctrlKey && !e.altKey && !e.metaKey
+        else if (e.type === 'keyup' && mayusSola) {
+          mayusSola = false
+          sugerencias.aceptar(false)
+        }
+        return true
+      }
+      if (e.type === 'keydown') mayusSola = false
+      if (e.type === 'keydown' && !e.shiftKey && !e.altKey && !e.metaKey) {
+        // Tab, → o End aceptan todo; Ctrl+→ una palabra; Ctrl+E (fin de línea en readline) también acepta todo. Sin sugerencia visible la tecla sigue su camino
+        // (Tab vuelve a ser el autocompletado normal del shell).
+        const aceptada = (e.key === 'Tab' && !e.ctrlKey && sugerencias.aceptar(false)) || (e.key === 'ArrowRight' && sugerencias.aceptar(e.ctrlKey)) || (e.key === 'End' && !e.ctrlKey && sugerencias.aceptar(false)) || (e.ctrlKey && e.key.toLowerCase() === 'e' && sugerencias.aceptar(false))
+        if (aceptada) {
+          e.preventDefault() // sin esto, Tab movería el foco fuera de la terminal
+          return false
+        }
+      }
       if (e.type !== 'keydown' || !e.ctrlKey || e.altKey || e.metaKey) return true
       const k = e.key.toLowerCase()
       if (k === 'c' && (e.shiftKey || t.hasSelection())) {
@@ -150,6 +174,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
     let enviado = { cols: t.cols, rows: t.rows } // tamaño con el que nace el pty
     const conectar = (pid: string): void => {
       ptyId = pid
+      ptyActual = pid
       const entrada = t.onData((d) => window.api.terminal.escribir(pid, d))
       bajas.push(() => entrada.dispose())
     }
@@ -200,6 +225,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
       ro.disconnect()
       clearTimeout(temporizador)
       bajas.forEach((b) => b())
+      sugerencias.destruir()
       if (ptyId && !transferidas.delete(ptyId)) window.api.terminal.cerrar(ptyId)
       t.dispose()
     }
@@ -220,7 +246,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
           <div
             className="menu-ia menu-terminal"
             role="menu"
-            style={{ left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 190) }}
+            style={{ left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 240) }}
             onMouseDown={(e) => e.stopPropagation()}
             onContextMenu={(e) => e.preventDefault()}
           >
@@ -242,6 +268,11 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
             <button role="menuitem" onClick={() => accion((t) => t.clear())}>
               <IconoLimpiar />
               <span>Limpiar pantalla</span>
+            </button>
+            <div className="menu-sep" />
+            <button role="menuitem" onClick={() => accion(() => fijarSugerencias(!sugerenciasActivadas()))} title="Sugiere en gris comandos que ya escribiste; Tab, Mayús (pulsar y soltar) o → los aceptan, Ctrl+→ una palabra">
+              <IconoChispa />
+              <span>Sugerencias del historial: {sugerenciasActivadas() ? 'activadas' : 'desactivadas'}</span>
             </button>
           </div>,
           document.body

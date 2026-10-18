@@ -47,6 +47,9 @@ export const Canales = {
   terminalRedimensionar: 'terminal:redimensionar',
   terminalCerrar: 'terminal:cerrar',
   terminalAdjuntar: 'terminal:adjuntar',
+  terminalEnShell: 'terminal:en-shell',
+  terminalHistorialComandos: 'terminal:historial-comandos',
+  terminalRegistrarComando: 'terminal:registrar-comando',
   ventanaSeparar: 'ventana:separar',
   ventanaTomar: 'ventana:tomar',
   ventanaDevolver: 'ventana:devolver',
@@ -387,6 +390,12 @@ export interface ApiCentro {
     escribir(id: string, datos: string): void
     redimensionar(id: string, cols: number, rows: number): void
     cerrar(id: string): void
+    /** ¿Está el shell esperando una orden (y no un programa en primer plano)? Base de las sugerencias de historial. */
+    enShell(id: string): Promise<boolean>
+    /** Comandos escritos antes en las terminales, del más reciente al más antiguo. */
+    historialComandos(): Promise<string[]>
+    /** Guarda un comando recién ejecutado para sugerirlo después. */
+    registrarComando(comando: string): void
     onDatos(cb: (e: DatosTerminal) => void): () => void
     onSalida(cb: (e: SalidaTerminal) => void): () => void
   }

@@ -38,6 +38,7 @@ import { ejecutarOperacionApi } from './api/operaciones'
 import { abrirEnNavegadorDelSistema, GestorNavegador, rutaPreload } from './navegador'
 import { esPaginaDeLaApp } from './navegacion'
 import { servidoresLocales } from './puertos'
+import { HistorialComandos } from './historial-comandos'
 import { iniciarServidorTareas, type ServidorTareas } from './core/tareas/servidor'
 
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
@@ -91,6 +92,7 @@ const enviarA = (ptyId: string, canal: string, carga: unknown): void => {
   if (wc && !wc.isDestroyed()) wc.send(canal, carga)
 }
 
+const historialComandos = new HistorialComandos(join(DIR, 'historial-comandos.json'))
 const terminales = new GestorTerminales({
   onDatos: (id, datos, fin) => enviarA(id, Canales.terminalDatos, { id, datos, fin }),
   onSalida: (id, codigo) => {
@@ -466,6 +468,9 @@ function registrarIpc(): void {
     terminales.redimensionar(id, cols, rows)
   )
   ipcMain.on(Canales.terminalCerrar, (_e, id: string) => terminales.cerrar(id))
+  ipcMain.handle(Canales.terminalEnShell, (_e, id: string) => terminales.enShell(String(id)))
+  ipcMain.handle(Canales.terminalHistorialComandos, () => historialComandos.lista())
+  ipcMain.on(Canales.terminalRegistrarComando, (_e, comando: string) => void historialComandos.agregar(comando))
 }
 
 let servidorTareas: ServidorTareas | undefined
