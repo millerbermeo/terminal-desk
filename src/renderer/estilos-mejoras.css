@@ -433,3 +433,6 @@ body {
 /* Sugerencia de historial en gris tras el cursor de la terminal (decoración de xterm: ella fija posición y tamaño) */
 .terminal-sugerencia { display: flex; pointer-events: none; white-space: pre; overflow: hidden; color: rgba(168, 172, 190, 0.5); font-family: inherit; font-size: inherit; }
 .terminal-sugerencia span { flex: 1 1 0; min-width: 0; text-align: left; overflow: visible; }
+
+/* «Ya la tengo aquí» en la lista de proyectos por clonar */
+.cp-usar { margin-left: auto; padding: 3px 10px; font-size: 12px; white-space: nowrap; }

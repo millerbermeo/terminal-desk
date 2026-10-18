@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { PendienteClonar } from '@shared/equipos'
 import { mensajeDe } from '../tareas/useTareas'
 import { IconoCarpeta } from './Iconos'
+import { confirmar } from '../confirmar'
 
 interface Props {
   pendientes: PendienteClonar[]
@@ -12,7 +13,9 @@ interface Props {
   onTerminado: () => void
 }
 
-type Estado = { fase: 'espera' } | { fase: 'clonando' } | { fase: 'ok'; ruta: string } | { fase: 'error'; mensaje: string }
+type Estado = { fase: 'espera' } | { fase: 'clonando' } | { fase: 'enlazando' } | { fase: 'ok'; ruta: string; enlazado?: boolean } | { fase: 'error'; mensaje: string }
+
+const REPO_DISTINTO = 'REPO_DISTINTO:'
 
 const CLAVE_PADRE = 'odesk.clonar.padre'
 const eq = window.api.equipos.operar
@@ -52,6 +55,46 @@ export function ModalClonarPendientes({ pendientes, inicial, onCerrar, onTermina
       return n
     })
   const examinar = (): void => void window.api.proyectos.elegirCarpetas().then((r) => r[0] && setCarpeta(r[0]))
+
+  /** El proyecto ya está en este equipo: se elige su carpeta y se enlaza al mismo proyecto de la cuenta, sin clonar. */
+  const usarCarpeta = async (p: PendienteClonar): Promise<void> => {
+    if (trabajando) return
+    const elegida = (await window.api.proyectos.elegirCarpetas())[0]
+    if (!elegida) return
+    setTrabajando(true)
+    setEstados((e) => ({ ...e, [p.id]: { fase: 'enlazando' } }))
+    try {
+      let r: { ruta: string }
+      try {
+        r = await eq('enlazarPendiente', { proyectoId: p.id, ruta: elegida })
+      } catch (err) {
+        const m = mensajeDe(err)
+        if (!m.includes(REPO_DISTINTO)) throw err
+        const sigue = await confirmar({
+          titulo: 'La carpeta apunta a otro repositorio',
+          tono: 'aviso',
+          etiqueta: 'Enlazar de todos modos',
+          texto: `${m.slice(m.indexOf(REPO_DISTINTO) + REPO_DISTINTO.length).trim()}\n\n¿Enlazarla a «${p.nombre}» igualmente?`
+        })
+        if (!sigue) {
+          setEstados((e) => ({ ...e, [p.id]: { fase: 'espera' } }))
+          return
+        }
+        r = await eq('enlazarPendiente', { proyectoId: p.id, ruta: elegida, confirmar: true })
+      }
+      setEstados((e) => ({ ...e, [p.id]: { fase: 'ok', ruta: r.ruta, enlazado: true } }))
+      setMarcados((m) => {
+        const n = new Set(m)
+        n.delete(p.id)
+        return n
+      })
+      onTerminado()
+    } catch (err) {
+      setEstados((e) => ({ ...e, [p.id]: { fase: 'error', mensaje: mensajeDe(err) } }))
+    } finally {
+      setTrabajando(false)
+    }
+  }
 
   const clonar = async (): Promise<void> => {
     if (trabajando || marcados.size === 0 || !carpeta.trim()) return
@@ -97,7 +140,10 @@ export function ModalClonarPendientes({ pendientes, inicial, onCerrar, onTermina
             ✕
           </button>
         </div>
-        <p className="modal-texto">Estos proyectos están en otros equipos de tu cuenta y aún no tienen carpeta aquí. Al clonarlos conservan su tablero, conversaciones y trazas.</p>
+        <p className="modal-texto">
+          Estos proyectos están en otros equipos de tu cuenta y aún no tienen carpeta aquí. Clónalos, o, si ya los tienes en este equipo, usa «Ya la tengo aquí» para
+          enlazar su carpeta sin clonar. En los dos casos conservan su tablero, conversaciones y trazas.
+        </p>
 
         <ul className="cp-lista" aria-label="Proyectos por clonar">
           {pendientes.map((p) => {
@@ -109,8 +155,13 @@ export function ModalClonarPendientes({ pendientes, inicial, onCerrar, onTermina
                   <span className="cp-nombre">{p.nombre}</span>
                 </label>
                 <span className="mono cp-repo" title={p.repo}>{p.repo.replace(/^(https?:\/\/|git@)/, '').replace(/\.git$/, '')}</span>
-                {e?.fase === 'clonando' && <span className="spinner" aria-label="Clonando" />}
-                {e?.fase === 'ok' && <span className="chip chip-ok" title={e.ruta}>✓ clonado</span>}
+                {(e?.fase === 'clonando' || e?.fase === 'enlazando') && <span className="spinner" aria-label={e.fase === 'clonando' ? 'Clonando' : 'Enlazando'} />}
+                {e?.fase === 'ok' && <span className="chip chip-ok" title={e.ruta}>{e.enlazado ? '✓ enlazado' : '✓ clonado'}</span>}
+                {e?.fase !== 'ok' && (
+                  <button type="button" className="cp-usar" onClick={() => void usarCarpeta(p)} disabled={trabajando} title="Ya tienes este proyecto en este equipo: elige su carpeta y se enlaza, sin clonar">
+                    <IconoCarpeta /> Ya la tengo aquí
+                  </button>
+                )}
                 {e?.fase === 'error' && <span className="chip api-estado-servidor" title={e.mensaje}>falló</span>}
                 {e?.fase === 'error' && <span className="cp-error">{e.mensaje}</span>}
               </li>

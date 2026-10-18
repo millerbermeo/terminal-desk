@@ -268,7 +268,7 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
             <ul>
               {pendientes.map((p) => (
                 <li key={p.id}>
-                  <button className="item item-pendiente" title={`${p.nombre}: está en otro equipo de tu cuenta. Clic para clonarlo aquí.`} onClick={() => onClonarPendientes(p.id)}>
+                  <button className="item item-pendiente" title={`${p.nombre}: está en otro equipo de tu cuenta. Clic para clonarlo aquí o, si ya lo tienes en este equipo, enlazar su carpeta.`} onClick={() => onClonarPendientes(p.id)}>
                     <IconoNube />
                     <span className="item-nombre">{p.nombre}</span>
                     <span className="chip item-clonar">clonar</span>

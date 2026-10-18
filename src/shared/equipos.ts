@@ -104,6 +104,8 @@ export interface OperacionesEquipos {
   pendientes: { entrada: Record<string, never>; salida: PendienteClonar[] }
   /** Clona el repositorio de un proyecto de la cuenta y lo deja enlazado a ese mismo proyecto (conserva su tablero y conversaciones). */
   clonarPendiente: { entrada: { proyectoId: string; carpetaPadre: string; protocolo?: 'https' | 'ssh' }; salida: { ruta: string } }
+  /** Enlaza una carpeta que ya tienes en este equipo (sin clonar) a un proyecto de la cuenta. Con `confirmar`, aunque su remoto sea otro. */
+  enlazarPendiente: { entrada: { proyectoId: string; ruta: string; confirmar?: boolean }; salida: { ruta: string } }
 }
 
 export type NombreOperacionEquipos = keyof OperacionesEquipos
