@@ -25,6 +25,7 @@ import {
   FORMATO_RAMAS,
   analizarArchivosCommit,
   analizarEstado,
+  analizarNumstat,
   analizarEtiquetas,
   analizarLog,
   analizarRamas,
@@ -62,6 +63,11 @@ const sinSalto = (t: string, campo: string, max: number): string => {
  */
 /** Credenciales para un remoto (variables de entorno para git): solo las da para los servidores que la aplicación conoce. */
 export type ProveedorCredenciales = (urlRemoto: string) => Promise<Record<string, string> | undefined>
+
+export type ModoEstado = 'completo' | 'agrupado' | 'ligero'
+
+/** Repositorios cuyo `status` completo no cabe en memoria: se consultan agrupando los archivos sin seguimiento. */
+const GRANDES = new Set<string>()
 
 export class Repositorio {
   private raiz?: string
@@ -164,12 +170,26 @@ export class Repositorio {
 
   // ---------------------------------------------------------------- estado
 
-  async estado(): Promise<EstadoGit> {
+  /**
+   * `git status`. Lista los archivos sin seguimiento uno a uno (`all`); si el repositorio tiene tantos que la salida no cabe (una carpeta
+   * personal convertida en repo, `node_modules` sin ignorar…), recuerda esa carpeta y pasa a agruparlos por directorio (`normal`).
+   * `agrupado`: los sin seguimiento por carpeta (más barato). `ligero`: sin archivos sin seguimiento (solo lo versionado): para consultas
+   * frecuentes en segundo plano.
+   */
+  async estado(modoPedido: ModoEstado = 'completo'): Promise<EstadoGit> {
     const raiz = await this.resolverRaiz()
     if (!raiz) return { repo: false, sinCommits: true, adelante: 0, atras: 0, archivos: [], remotos: [] }
-    const st = await this.g(['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all'], { env: { GIT_OPTIONAL_LOCKS: '0' } })
+    const consultar = (modo: 'all' | 'normal' | 'no'): Promise<ResultadoGit> => this.g(['status', '--porcelain=v2', '--branch', '-z', `--untracked-files=${modo}`], { env: { GIT_OPTIONAL_LOCKS: '0' } })
+    let modo: 'all' | 'normal' | 'no' = modoPedido === 'ligero' ? 'no' : modoPedido === 'agrupado' || GRANDES.has(raiz) ? 'normal' : 'all'
+    let st = await consultar(modo)
+    if (!st.ok && st.desbordado && modo === 'all') {
+      GRANDES.add(raiz)
+      modo = 'normal'
+      st = await consultar(modo)
+    }
     if (!st.ok) throw new Error(explicarError(st.stderr, 'status'))
     const a = analizarEstado(st.stdout)
+    if (modo === 'normal' && modoPedido === 'completo') a.truncado = true // los sin seguimiento salen agrupados por carpeta
     const remotos = (await this.g(['remote'])).stdout.split('\n').map((x) => x.trim()).filter(Boolean)
     const operacion = await this.operacionEnCurso()
     return {
@@ -186,6 +206,12 @@ export class Repositorio {
       ...(a.truncado ? { truncado: true } : {}),
       remotos
     }
+  }
+
+  /** Líneas añadidas y quitadas de lo versionado respecto al último commit, por archivo (vacío si no hay commits o tarda demasiado). */
+  async lineasCambiadas(): Promise<Map<string, { mas: number; menos: number }>> {
+    const r = await this.g(['diff', '--numstat', '-z', 'HEAD', '--'], { timeoutMs: 8000, env: { GIT_OPTIONAL_LOCKS: '0' } })
+    return r.ok ? analizarNumstat(r.stdout) : new Map()
   }
 
   iniciar(rama?: string): Promise<EstadoGit> {

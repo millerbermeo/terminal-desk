@@ -9,6 +9,7 @@ import { AnfitrionConfirmar } from './confirmar'
 import { VentanaNavegador } from './VentanaNavegador'
 import { VentanaSeparada } from './VentanaSeparada'
 import './estilos.css'
+import './estilos-mejoras.css'
 
 // ?ventana=<token> => ventana separada (solo terminales); sin parámetro => ventana principal
 const parametros = new URLSearchParams(location.search)

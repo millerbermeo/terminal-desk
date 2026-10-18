@@ -43,7 +43,7 @@ export function seccionesSecretas(dir: string, github: AlmacenToken, alAplicar?:
       if (datosApi) s.api = datosApi
       const t = await github.leer()
       // Solo si está guardado en disco: un token solo en memoria (sin llavero) no se sube.
-      if (t?.persistente) s.github = { token: t.token, ...(t.usuario ? { usuario: t.usuario } : {}) }
+      if (t?.persistente) s.github = { token: t.token, ...(t.usuario ? { usuario: t.usuario } : {}), ...(t.refresh ? { refresh: t.refresh } : {}), ...(t.expira !== undefined ? { expira: t.expira } : {}), ...(t.refrescaHasta !== undefined ? { refrescaHasta: t.refrescaHasta } : {}) }
       return s
     },
 
@@ -63,8 +63,14 @@ export function seccionesSecretas(dir: string, github: AlmacenToken, alAplicar?:
       } else if (seccion === 'api' && data && typeof data === 'object') {
         await escribirJson(api, data)
       } else if (seccion === 'github' && data && typeof data === 'object') {
-        const g = data as { token?: unknown; usuario?: unknown }
-        if (typeof g.token === 'string') await github.guardar(g.token, typeof g.usuario === 'string' ? g.usuario : undefined)
+        const g = data as { token?: unknown; usuario?: unknown; refresh?: unknown; expira?: unknown; refrescaHasta?: unknown }
+        if (typeof g.token === 'string') {
+          await github.guardar(g.token, typeof g.usuario === 'string' ? g.usuario : undefined, {
+            ...(typeof g.refresh === 'string' ? { refresh: g.refresh } : {}),
+            ...(typeof g.expira === 'number' ? { expira: g.expira } : {}),
+            ...(typeof g.refrescaHasta === 'number' ? { refrescaHasta: g.refrescaHasta } : {})
+          })
+        }
       } else return
       alAplicar?.(seccion)
     }

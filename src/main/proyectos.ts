@@ -214,3 +214,21 @@ export async function registrarProyecto(ruta: string, nombre: string, grupoId?: 
   if (!registrado) throw new Error('No se pudo registrar el proyecto.')
   return { id: registrado.id }
 }
+
+/** Proyectos de la cuenta que tienen repositorio y aún no tienen carpeta en este equipo (candidatos a clonar). */
+export async function proyectosSinCarpeta(): Promise<{ id: string; nombre: string; repo: string; grupoId?: string }[]> {
+  const r = await servidor.get<{ groups: GrupoApi[]; projects: ProyectoApi[] }>('/projects')
+  const locales = await rutasLocales.todas()
+  return r.projects.flatMap((p) => (!locales[p.id] && p.repo ? [{ id: p.id, nombre: p.name, repo: p.repo, ...(p.groupId ? { grupoId: p.groupId } : {}) }] : []))
+}
+
+/**
+ * Deja una carpeta (por ejemplo, un repositorio recién clonado) enlazada a un proyecto que ya existe en la cuenta: mismo id, así se
+ * recupera su contexto (tablero, conversaciones, trazas). Si el repositorio ya trae `.odesk/project.json` con ese id no se toca.
+ */
+export async function vincularCarpetaAProyecto(ruta: string, proyectoId: string): Promise<void> {
+  await servidor.get(`/projects/${encodeURIComponent(proyectoId)}`) // falla (404) si no es de esta cuenta
+  if ((await leerVinculo(ruta)) !== proyectoId) await vincularProyectoLocal(ruta, proyectoId)
+  await rutasLocales.fijar(proyectoId, ruta)
+  olvidarProyectos()
+}

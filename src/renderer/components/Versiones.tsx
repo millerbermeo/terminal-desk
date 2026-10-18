@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { AvisoEquipo } from '@shared/equipos'
 import type { DatosProyectos } from '@shared/modelos'
 import { enConflicto, type EstadoGit, type OperacionEnCurso } from '@shared/versiones'
 import { git, useGit, type ContextoGit } from '../versiones/useGit'
@@ -7,19 +8,24 @@ import { IconoMas, IconoRama, IconoReiniciar } from './Iconos'
 import { VersionesCambios } from './VersionesCambios'
 import { ModalClonar } from './ModalClonar'
 import { VersionesEtiquetas } from './VersionesEtiquetas'
+import { AvisoEquipos } from './AvisoEquipos'
+import { HistorialLocal } from './HistorialLocal'
+import { VersionesEquipos } from './VersionesEquipos'
 import { VersionesGitHub } from './VersionesGitHub'
 import { VersionesHistorial } from './VersionesHistorial'
 import { VersionesRamas } from './VersionesRamas'
 import { VersionesStash } from './VersionesStash'
 
-type Pestana = 'cambios' | 'historial' | 'ramas' | 'versiones' | 'stash' | 'github'
+type Pestana = 'cambios' | 'historial' | 'ramas' | 'versiones' | 'stash' | 'github' | 'equipos' | 'historial-local'
 const PESTANAS: { id: Pestana; nombre: string }[] = [
   { id: 'cambios', nombre: 'Cambios' },
   { id: 'historial', nombre: 'Historial' },
   { id: 'ramas', nombre: 'Ramas' },
   { id: 'versiones', nombre: 'Versiones' },
   { id: 'stash', nombre: 'Stash' },
-  { id: 'github', nombre: 'GitHub' }
+  { id: 'github', nombre: 'GitHub' },
+  { id: 'equipos', nombre: 'Equipos' },
+  { id: 'historial-local', nombre: 'Historial local' }
 ]
 const NOMBRE_OPERACION: Record<OperacionEnCurso, string> = { fusion: 'Fusión en curso', revert: 'Revert en curso', 'cherry-pick': 'Cherry-pick en curso', rebase: 'Rebase en curso' }
 const CLAVE = 'versiones:proyecto'
@@ -37,10 +43,12 @@ interface Props {
   visible: boolean
   /** Se agregó un proyecto (p. ej. al clonar): la aplicación refresca su lista. */
   onDatos: (d: DatosProyectos) => void
+  /** Otros equipos con trabajo pendiente en los proyectos de este equipo. */
+  avisos?: AvisoEquipo[]
 }
 
 /** Control de versiones con git de cada proyecto: cambios, historial, ramas, versiones (etiquetas) y stash. */
-export function Versiones({ datos, visible, onDatos }: Props) {
+export function Versiones({ datos, visible, onDatos, avisos = [] }: Props) {
   const [proyectoId, setProyectoId] = useState(guardado)
   const [pestana, setPestana] = useState<Pestana>('cambios')
   const [aviso, setAviso] = useState('')
@@ -111,8 +119,12 @@ export function Versiones({ datos, visible, onDatos }: Props) {
   }
   const sincro = (e: EstadoGit): { puedeEnviar: boolean; puedeTraer: boolean } => ({ puedeEnviar: e.remotos.length > 0 && !e.sinCommits && Boolean(e.rama), puedeTraer: Boolean(e.upstream) })
 
+  // El historial local no depende de git: se puede ver aunque la carpeta no sea un repositorio (o git no responda).
+  const local = pestana === 'historial-local' && Boolean(proyecto)
   let cuerpo: React.ReactNode
-  if (!proyecto) {
+  if (local) {
+    cuerpo = <HistorialLocal proyectoId={proyectoId} tick={tick} avisar={avisar} />
+  } else if (!proyecto) {
     cuerpo = <EstadoVacio icono={<IconoRama />} titulo="Aún no hay proyectos" texto="Agrega un proyecto desde la barra lateral para gestionar sus versiones con git." />
   } else if (!estado) {
     cuerpo = error ? <EstadoVacio icono={<IconoRama />} titulo="No se pudo leer el repositorio" texto={<span style={{ whiteSpace: 'pre-wrap' }}>{error}</span>} accion={<button onClick={() => void recargar()}>Reintentar</button>} /> : <p className="tareas-vacio">Cargando…</p>
@@ -141,10 +153,12 @@ export function Versiones({ datos, visible, onDatos }: Props) {
         {pestana === 'versiones' && <VersionesEtiquetas c={contexto} />}
         {pestana === 'stash' && <VersionesStash c={contexto} />}
         {pestana === 'github' && <VersionesGitHub c={contexto} />}
+        {pestana === 'equipos' && <VersionesEquipos c={contexto} />}
       </>
     )
   }
 
+  const pestanaVisible = estado?.repo || pestana === 'historial-local' ? pestana : 'cambios'
   const s = estado?.repo ? sincro(estado) : undefined
   return (
     <main className="versiones" style={{ display: visible ? 'flex' : 'none' }}>
@@ -196,19 +210,21 @@ export function Versiones({ datos, visible, onDatos }: Props) {
         </button>
       </header>
 
-      {estado?.repo && (
+      {proyecto && (
         <nav className="vc-tabs" aria-label="Control de versiones">
           <div className="segmentado" role="tablist">
-            {PESTANAS.map((p) => (
-              <button key={p.id} role="tab" aria-selected={pestana === p.id} className={pestana === p.id ? 'on' : ''} onClick={() => setPestana(p.id)}>
+            {(estado?.repo ? PESTANAS : [{ id: 'cambios' as Pestana, nombre: 'Git' }, PESTANAS.at(-1)!]).map((p) => (
+              <button key={p.id} role="tab" aria-selected={pestanaVisible === p.id} className={pestanaVisible === p.id ? 'on' : ''} onClick={() => setPestana(p.id)}>
                 {p.nombre}
-                {p.id === 'cambios' && estado.archivos.length > 0 && <span className="vc-cuenta">{estado.archivos.length}</span>}
+                {p.id === 'cambios' && estado?.repo && estado.archivos.length > 0 && <span className="vc-cuenta">{estado.archivos.length}</span>}
               </button>
             ))}
           </div>
           {ocupado && <span className="vc-ocupado"><span className="spinner" /> {ocupado}</span>}
         </nav>
       )}
+
+      <AvisoEquipos key={proyectoId} avisos={avisos.filter((a) => a.proyectoId === proyectoId)} onVerEquipos={() => setPestana('equipos')} />
 
       {estado?.operacion && (
         <div className="vc-banner aviso" role="status">

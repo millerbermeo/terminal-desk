@@ -45,6 +45,18 @@ export interface EstadoGitHub {
   repo?: RepoGitHub
   /** Por qué no se pudo leer el repositorio (sin acceso, no existe…). */
   errorRepo?: string
+  /** La sesión se renueva sola (OAuth con «Expire user access tokens»): no hay que volver a iniciar sesión cada pocas horas. */
+  renovable?: boolean
+  /** Hay un «Client ID» de OAuth configurado: se puede entrar con «Iniciar sesión con GitHub» (código en el navegador). */
+  oauth: boolean
+}
+
+/** Lo que se muestra al usuario para autorizar la app en el navegador (flujo de dispositivo de GitHub). */
+export interface CodigoDispositivo {
+  codigoUsuario: string
+  urlVerificacion: string
+  /** Segundos que dura el código. */
+  expiraEn: number
 }
 
 export type EstadoCI = 'exito' | 'fallo' | 'pendiente' | 'ninguno'
@@ -96,6 +108,13 @@ export type MetodoFusion = 'merge' | 'squash' | 'rebase'
 export interface OperacionesGitHub {
   estado: { entrada: Partial<P>; salida: EstadoGitHub }
   conectar: { entrada: { token: string }; salida: EstadoGitHub }
+  /** Guarda el «Client ID» de una OAuth App de GitHub (con el flujo de dispositivo activado) para poder iniciar sesión sin token. */
+  configurarOauth: { entrada: { clientId: string }; salida: EstadoGitHub }
+  /** Pide el código de autorización: el usuario lo escribe en la página de GitHub. */
+  dispositivoIniciar: { entrada: Record<string, never>; salida: CodigoDispositivo }
+  /** Espera (consultando a GitHub) a que el usuario autorice el código y guarda el token cifrado. Se cancela con `dispositivoCancelar`. */
+  dispositivoEsperar: { entrada: Record<string, never>; salida: EstadoGitHub }
+  dispositivoCancelar: { entrada: Record<string, never>; salida: { ok: true } }
   desconectar: { entrada: Record<string, never>; salida: EstadoGitHub }
   repos: { entrada: { texto?: string }; salida: RepoGitHub[] }
   /** Clona un repositorio (URL o `propietario/repo`) en una carpeta y lo agrega como proyecto. */
@@ -121,6 +140,9 @@ export type NombreOperacionGitHub = keyof OperacionesGitHub
 export const HOST_GITHUB = 'github.com'
 
 /** Página de GitHub para crear un token (clásico) con los permisos que usa la aplicación ya marcados. */
+/** Página de GitHub para crear la OAuth App del inicio de sesión por código (hay que marcar «Enable Device Flow»). */
+export const URL_CREAR_OAUTH = 'https://github.com/settings/applications/new'
+
 export const URL_CREAR_TOKEN = 'https://github.com/settings/tokens/new?description=Odesk%20Agent&scopes=repo,workflow'
 
 export interface RemotoAnalizado {

@@ -1,12 +1,14 @@
 import { app, BrowserWindow, dialog, ipcMain, session, shell, webContents } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { homedir } from 'node:os'
+import { homedir, hostname } from 'node:os'
 import { join } from 'node:path'
 import icono from '../../resources/icon.png?asset'
 import type { Proveedor, Recurso } from '@shared/modelos'
 import type { AccionNavegador } from '@shared/navegador'
 import { Canales, type DestinoActivacion, type OpcionesTerminal, type PayloadVentana, type ResultadoEliminarGrupo, type SolicitudAgregar } from '@shared/ipc'
 import { registrarIpcArchivos } from './archivos-ipc'
+import { ServicioHistorial } from './historial/servicio'
+import { ejecutarOperacionHistorial } from './historial/operaciones'
 import { Nucleo, registrarIpcCore } from './core'
 import { GestorTerminales } from './terminales'
 import { eliminarProveedor, guardarProveedor, listarProveedores, obtenerProveedor } from './proveedores'
@@ -15,6 +17,8 @@ import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, lee
 import { resolverPerfil } from './migracion'
 import { repararWorktrees } from './core/git/reparar'
 import { ejecutarOperacionGitHub } from './github/operaciones'
+import { ServicioEquipos, ejecutarOperacionEquipos, type DepsEquipos } from './servidor/equipos'
+import { Repositorio } from './core/git/repositorio'
 import { importarProyectosLocales } from './servidor/importar'
 import { iniciarSesionGoogle } from './servidor/google'
 import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
@@ -24,7 +28,7 @@ import { cambiarPerfil } from './perfiles'
 import { Boveda } from './servidor/boveda'
 import { seccionesSecretas } from './servidor/secretos'
 import { FuenteArchivos, FuenteTareas, SincronizadorCuenta } from './servidor/sync-cuenta'
-import { DIR, MIGRACION_DATOS, agregarProyectos, carpetaDeProyecto, eliminarGrupo, eliminarProyecto, leerProyectos, sugerirRutas, validarRuta } from './proyectos'
+import { DIR, MIGRACION_DATOS, rutasLocales, agregarProyectos, carpetaDeProyecto, eliminarGrupo, eliminarProyecto, leerProyectos, proyectosSinCarpeta, sugerirRutas, validarRuta } from './proyectos'
 import { configurarMcpTareas } from './core/tareas/mcp-config'
 import { ejecutarOperacionGit } from './core/git/operaciones'
 import { writeFile } from 'node:fs/promises'
@@ -152,6 +156,43 @@ const syncCuenta = new SincronizadorCuenta(servidor, join(DIR, 'sync-cuenta.json
 /** Claves (proveedores, MCP, cliente API, GitHub), cifradas en este equipo. */
 const boveda = new Boveda(servidor, join(DIR, 'boveda-clave.json'), join(DIR, 'boveda-estado.json'), cifradorDelSistema(), seccionesSecretas(DIR, nucleo.tokenGitHub))
 
+/** Estado de git de cada proyecto en cada PC de la cuenta, y proyectos de la cuenta que faltan clonar aquí. */
+const depsEquipos: DepsEquipos = {
+  servidor,
+  archivo: join(DIR, 'equipo.json'),
+  nombreSistema: hostname() || 'Este equipo',
+  proyectos: async () => (await leerProyectos()).proyectos.map((p) => ({ id: p.id, ruta: p.ruta })),
+  repositorio: (ruta) => new Repositorio(ruta, nucleo.github.credencialesPara),
+  pendientes: proyectosSinCarpeta,
+  clonarProyecto: (e) => nucleo.github.clonarProyecto(e),
+  alClonar: async (id) => void (await nucleo.hidratar(id))
+}
+const equipos = new ServicioEquipos(depsEquipos)
+
+/**
+ * Historial local de versiones de los archivos de cada proyecto (independiente de git). Cada versión lleva quién (usuario de GitHub, cuenta)
+ * y desde qué equipo. Funciona sin conexión: solo necesita saber qué carpeta tiene cada proyecto en este equipo.
+ */
+const historial = new ServicioHistorial({
+  dir: join(DIR, 'historial'),
+  identidad: async () => {
+    const [sesion, github, yo] = await Promise.all([servidor.estado().catch(() => undefined), nucleo.tokenGitHub.leer().catch(() => undefined), equipos.equipo().catch(() => undefined)])
+    return { ...(github?.usuario ? { usuario: github.usuario } : {}), ...(sesion?.email ? { cuenta: sesion.email } : {}), ...(yo ? { equipoId: yo.id, equipo: yo.nombre } : {}) }
+  }
+})
+depsEquipos.historial = (proyectoId) => historial.resumen(proyectoId)
+nucleo.alEscribirIA = (momento, proyectoId, ruta, meta) => {
+  const hecho = momento === 'antes' ? historial.antesDeEscribir(proyectoId, ruta) : historial.despuesDeEscribir(proyectoId, ruta, 'ia', meta)
+  void hecho.catch(() => undefined)
+}
+async function sincronizarHistorial(): Promise<void> {
+  try {
+    await historial.sincronizarProyectos(Object.entries(await rutasLocales.todas()).map(([id, ruta]) => ({ id, ruta })))
+  } catch (err) {
+    console.warn('No se pudo preparar el historial local:', (err as Error).message)
+  }
+}
+
 let bucleCuenta: NodeJS.Timeout | undefined
 const CADA_MS = 30_000
 
@@ -161,6 +202,7 @@ async function sincronizarCuenta(): Promise<{ ok: boolean; mensaje: string }> {
     const r = await syncCuenta.sincronizar()
     const b = await boveda.sincronizar()
     await nucleo.sync.vaciar() // lo que esperaba para subirse (tareas, conversaciones…)
+    await equipos.informar(true).catch((err) => console.warn('No se pudo informar el estado de git:', (err as Error).message)) // rama y commit de este equipo
     const p = await nucleo.hidratarTodos(true) // y lo que cambió en los proyectos desde otros equipos
     const bajados = r.bajados + b.bajadas + p.tareas + p.chats + p.trazas
     return { ok: true, mensaje: `Sincronizado: ${r.subidos + b.subidas} subido(s), ${bajados} bajado(s), ${r.borrados + p.borrados} borrado(s).` }
@@ -275,9 +317,11 @@ function operarCuenta(op: NombreOperacionCuenta, e: Record<string, unknown>): Pr
 
 function registrarIpc(): void {
   registrarIpcCore(nucleo)
-  registrarIpcArchivos()
+  registrarIpcArchivos(historial)
   ipcMain.handle(Canales.gitOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGit(carpetaDeProyecto, op, entrada, nucleo.github.credencialesPara))
   ipcMain.handle(Canales.githubOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGitHub(nucleo.github, op, entrada))
+  ipcMain.handle(Canales.historialOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionHistorial(historial, op, entrada))
+  ipcMain.handle(Canales.equiposOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionEquipos(equipos, depsEquipos, op, entrada))
   ipcMain.handle(Canales.apiOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionApi(servicioApi, op, entrada))
   ipcMain.handle(Canales.navegadorAbrir, (_e, url: string) => navegador.abrir(String(url)))
   ipcMain.handle(Canales.navegadorAccion, (e, id: number, accion: AccionNavegador) => navegador.accion(Number(id), accion, e.sender))
@@ -404,7 +448,14 @@ app.whenReady().then(() => {
   // Se movieron los datos desde ~/.centro-proyectos: los worktrees de los agentes guardan rutas absolutas y hay que rehacerlas.
   if (MIGRACION_DATOS.migrado) void leerProyectos().then((d) => repararWorktrees(DIR, d.proyectos)).catch(() => undefined)
   // Socket local para que la IA (servidor MCP, en otro proceso) use las tareas; solo este proceso las escribe.
-  void iniciarServidorTareas(DIR, nucleo.ejecutarHerramienta)
+  void sincronizarHistorial()
+  setInterval(() => void sincronizarHistorial(), 15_000).unref() // proyectos nuevos o quitados
+  void iniciarServidorTareas(DIR, nucleo.ejecutarHerramienta, async (p, proyectoId) => {
+    // Claude Code escribió (o va a escribir) un archivo en una terminal: el gancho del plugin avisa por aquí.
+    await (p.momento === 'antes'
+      ? historial.antesDeEscribir(proyectoId, p.ruta)
+      : historial.despuesDeEscribir(proyectoId, p.ruta, 'ia', { herramienta: p.herramienta, ...(p.sesion ? { ejecucionId: p.sesion } : {}) }))
+  })
     .then((s) => (servidorTareas = s))
     .catch((err) => console.error('Servidor de tareas no iniciado:', err))
   registrarIpc()
@@ -438,7 +489,10 @@ app.on('before-quit', (e) => {
   void servidorTareas?.cerrar()
   void nucleo.detener()
 })
-app.on('will-quit', () => terminales.cerrarTodas())
+app.on('will-quit', () => {
+  terminales.cerrarTodas()
+  historial.detener()
+})
 
 for (const senal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
   process.on(senal, () => {

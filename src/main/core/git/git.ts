@@ -8,6 +8,8 @@ export interface ResultadoGit {
   codigo?: number
   /** git no está instalado o no se encuentra en el PATH. */
   sinGit?: boolean
+  /** La salida superó el límite de memoria y se cortó (p. ej. `status` de un repositorio con millones de archivos sin seguimiento). */
+  desbordado?: boolean
 }
 
 export interface OpcionesGit {
@@ -40,8 +42,9 @@ export function git(cwd: string, args: readonly string[], o: OpcionesGit = {}): 
       (err, stdout, stderr) => {
         const codigo = typeof (err as { code?: unknown } | null)?.code === 'number' ? ((err as { code: number }).code) : err ? undefined : 0
         const sinGit = (err as NodeJS.ErrnoException | null)?.code === 'ENOENT'
+        const desbordado = (err as NodeJS.ErrnoException | null)?.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
         const ok = !err || (codigo !== undefined && (o.okCodigos?.includes(codigo) ?? false))
-        resolver({ ok, stdout: stdout.toString(), stderr: stderr.toString() || (err && !ok ? err.message : ''), ...(codigo !== undefined ? { codigo } : {}), ...(sinGit ? { sinGit } : {}) })
+        resolver({ ok, stdout: stdout.toString(), stderr: stderr.toString() || (err && !ok ? err.message : ''), ...(codigo !== undefined ? { codigo } : {}), ...(sinGit ? { sinGit } : {}), ...(desbordado ? { desbordado } : {}) })
       }
     )
     if (o.entrada !== undefined) {

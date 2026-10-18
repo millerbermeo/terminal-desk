@@ -23,6 +23,11 @@ export interface OpcionesGestor {
   raiz: (proyectoId: string) => Promise<string>
   /** Manda un archivo o carpeta a la papelera del sistema. */
   papelera: (rutaAbsoluta: string) => Promise<void>
+  /** Historial local: se avisa antes y después de cada cambio que hace el editor (los errores del historial nunca impiden guardar). */
+  historial?: {
+    antes: (proyectoId: string, ruta: string) => Promise<unknown>
+    despues: (proyectoId: string, ruta: string) => Promise<unknown>
+  }
 }
 
 /**
@@ -31,6 +36,14 @@ export interface OpcionesGestor {
  */
 export class GestorArchivos {
   constructor(private readonly o: OpcionesGestor) {}
+
+  private async anotar(momento: 'antes' | 'despues', proyectoId: string, ruta: string): Promise<void> {
+    try {
+      await this.o.historial?.[momento](proyectoId, ruta)
+    } catch {
+      // el historial es un extra: si falla, el editor sigue funcionando
+    }
+  }
 
   private async abs(proyectoId: string, ruta: string): Promise<{ raiz: string; abs: string }> {
     const raiz = await this.o.raiz(proyectoId)
@@ -81,11 +94,13 @@ export class GestorArchivos {
     const actual = await stat(abs).catch(() => undefined)
     if (actual && mtimeEsperado !== undefined && actual.mtimeMs > mtimeEsperado + 1) return { ok: false, motivo: 'conflicto', mtimeMs: actual.mtimeMs }
     if (actual && !actual.isFile()) return { ok: false, motivo: 'no-existe', mensaje: 'No es un archivo' }
+    await this.anotar('antes', proyectoId, ruta) // por si el archivo cambió fuera de la app y aún no se había visto
     await mkdir(dirname(abs), { recursive: true })
     const tmp = join(dirname(abs), `.${basename(abs)}.${process.pid}.tmp`)
     await writeFile(tmp, contenido, 'utf8')
     if (actual) await chmod(tmp, actual.mode & 0o777).catch(() => undefined) // conserva los permisos (p. ej. ejecutable)
     await rename(tmp, abs)
+    await this.anotar('despues', proyectoId, ruta)
     return { ok: true, mtimeMs: (await stat(abs)).mtimeMs }
   }
 
@@ -99,6 +114,7 @@ export class GestorArchivos {
     else {
       await mkdir(dirname(abs), { recursive: true })
       await writeFile(abs, '', { flag: 'wx' })
+      await this.anotar('despues', proyectoId, ruta)
     }
   }
 
@@ -110,8 +126,11 @@ export class GestorArchivos {
     const b = await this.abs(proyectoId, hasta)
     if (a.abs === a.raiz) throw new Error('No se puede renombrar la raíz del proyecto')
     if (await stat(b.abs).then(() => true, () => false)) throw new Error(`«${basename(b.abs)}» ya existe`)
+    await this.anotar('antes', proyectoId, desde)
     await mkdir(dirname(b.abs), { recursive: true })
     await rename(a.abs, b.abs)
+    await this.anotar('despues', proyectoId, desde) // el archivo ya no está ahí
+    await this.anotar('despues', proyectoId, hasta)
   }
 
   /** Manda a la papelera (recuperable). */
@@ -120,7 +139,9 @@ export class GestorArchivos {
     if (motivo) throw new Error(`No se borra en ${motivo}`)
     const { raiz, abs } = await this.abs(proyectoId, ruta)
     if (abs === raiz) throw new Error('No se puede borrar la raíz del proyecto')
+    await this.anotar('antes', proyectoId, ruta)
     await this.o.papelera(abs)
+    await this.anotar('despues', proyectoId, ruta)
   }
 
   /** Marcas de git por ruta relativa (las carpetas sin seguimiento llevan la marca de la carpeta). Vacío si no es un repositorio. */

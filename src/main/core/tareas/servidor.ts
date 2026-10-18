@@ -3,6 +3,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, type Socket } from 'node:net'
 import { archivoTokenTareas, rutaSocketTareas, type PeticionTareas, type RespuestaTareas } from './cliente'
 import type { EjecutorOdesk } from '../herramientas-odesk'
+import { HERRAMIENTA_HOOK_HISTORIAL, type PeticionHookHistorial } from '../../historial/hook'
 
 const MAX_PETICION = 2_000_000
 
@@ -36,7 +37,12 @@ const igual = (a: string, b: string): boolean => {
  * Servidor local por el que la IA (a través del servidor MCP) usa las herramientas de la aplicación (tareas, git y GitHub). Solo este
  * proceso escribe los datos y toca los repositorios: las reglas son las mismas que para la interfaz. Todo lo que llega aquí es de la IA.
  */
-export async function iniciarServidorTareas(dir: string, ejecutar: EjecutorOdesk): Promise<ServidorTareas> {
+export async function iniciarServidorTareas(
+  dir: string,
+  ejecutar: EjecutorOdesk,
+  /** Escrituras de Claude Code en una terminal (gancho del plugin): las atiende el historial local. */
+  alHistorial?: (p: PeticionHookHistorial, proyectoId: string) => Promise<void>
+): Promise<ServidorTareas> {
   const token = await leerOCrearToken(dir)
   const ruta = rutaSocketTareas(dir)
   if (process.platform !== 'win32') await rm(ruta, { force: true }) // restos de una ejecución anterior
@@ -64,6 +70,14 @@ export async function iniciarServidorTareas(dir: string, ejecutar: EjecutorOdesk
         const p = JSON.parse(linea) as Partial<PeticionTareas>
         id = String(p.id ?? '')
         if (typeof p.token !== 'string' || !igual(p.token, token)) return void socket.destroy()
+        if (p.herramienta === HERRAMIENTA_HOOK_HISTORIAL) {
+          const h = p.entrada as Partial<PeticionHookHistorial> | undefined
+          if (alHistorial && p.proyectoId && h && (h.momento === 'antes' || h.momento === 'despues') && typeof h.ruta === 'string' && typeof h.herramienta === 'string') {
+            await alHistorial({ momento: h.momento, ruta: h.ruta, herramienta: h.herramienta, ...(typeof h.sesion === 'string' ? { sesion: h.sesion } : {}) }, p.proyectoId).catch(() => undefined)
+          }
+          if (!socket.destroyed) socket.write(JSON.stringify({ id, texto: 'ok' } satisfies RespuestaTareas) + '\n')
+          return
+        }
         const r = await ejecutar(String(p.herramienta ?? ''), p.entrada, { proyectoId: p.proyectoId })
         const respuesta: RespuestaTareas = { id, ...r }
         if (!socket.destroyed) socket.write(JSON.stringify(respuesta) + '\n')

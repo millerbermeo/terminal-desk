@@ -186,15 +186,30 @@ export function analizarArchivosCommit(nombreEstado: string, numstat: string): A
 /**
  * Traduce los errores habituales de git a un mensaje que diga qué hacer. El texto original va detrás, por si hace falta.
  */
+/** Quita lo que no ayuda: los avisos «could not open directory» (carpetas sin permiso de lectura, p. ej. datos de otro usuario) se resumen. */
+export function limpiarStderr(stderr: string, max = 1200): string {
+  let omitidas = 0
+  const lineas = stderr.split('\n').filter((l) => {
+    if (/^warning: could not open directory /i.test(l.trim())) {
+      omitidas++
+      return false
+    }
+    return true
+  })
+  if (omitidas) lineas.push(`(${omitidas} carpeta${omitidas === 1 ? '' : 's'} sin permiso de lectura omitida${omitidas === 1 ? '' : 's'})`)
+  const t = lineas.join('\n').trim()
+  return t.length > max ? `${t.slice(0, max)}…` : t
+}
+
 export function explicarError(stderr: string, operacion = 'git'): string {
-  const t = stderr.trim()
+  const t = limpiarStderr(stderr)
   const con = (titulo: string): string => (t ? `${titulo}\n${t}` : titulo)
   if (/Please tell me who you are|unable to auto-detect email|empty ident name/i.test(t)) return con('Git no sabe quién eres: configura tu nombre y correo para poder confirmar.')
   if (/not a git repository/i.test(t)) return con('Esta carpeta no es un repositorio git.')
   if (/dubious ownership|safe\.directory/i.test(t)) return con('Git no confía en esta carpeta (pertenece a otro usuario). Márcala como segura con: git config --global --add safe.directory <ruta>')
   if (/would be overwritten by (checkout|merge)|Your local changes to the following files would be overwritten|Please commit your changes or stash them/i.test(t))
     return con('Tienes cambios locales que se perderían. Confírmalos, descártalos o guárdalos en el stash antes de continuar.')
-  if (/Authentication failed|Permission denied|could not read Username|could not read Password|terminal prompts disabled|Host key verification failed|publickey/i.test(t))
+  if (/Authentication failed|Permission denied \(|Permission denied, please try again|could not read Username|could not read Password|terminal prompts disabled|Host key verification failed|publickey/i.test(t))
     return con('No se pudo autenticar con el remoto. La aplicación no puede pedir contraseñas: usa una clave SSH (con ssh-agent) o un «credential helper» de git.')
   if (/non-fast-forward|\(fetch first\)|failed to push some refs|Updates were rejected|rejected/i.test(t) && /push/.test(operacion + t))
     return con('El remoto tiene cambios que aún no tienes. Trae (pull) los cambios y vuelve a enviar.')
@@ -207,4 +222,21 @@ export function explicarError(stderr: string, operacion = 'git'): string {
   if (/not fully merged/i.test(t)) return con('La rama tiene commits que no están en otra: si estás seguro, elimínala forzando.')
   if (/index\.lock/i.test(t)) return con('Hay otra operación de git en curso (index.lock). Espera a que termine o borra el archivo si quedó huérfano.')
   return con(`git ${operacion} falló.`)
+}
+
+/** `git diff --numstat -z`: líneas añadidas y quitadas por archivo (los binarios salen con `-`: cuentan 0). */
+export function analizarNumstat(salida: string): Map<string, { mas: number; menos: number }> {
+  const r = new Map<string, { mas: number; menos: number }>()
+  const partes = salida.split('\0')
+  for (let i = 0; i < partes.length; i++) {
+    const m = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/.exec(partes[i]!)
+    if (!m) continue
+    let ruta = m[3]!
+    if (ruta === '') {
+      i++ // renombrado: siguen la ruta anterior y la nueva
+      ruta = partes[++i] ?? ''
+    }
+    if (ruta) r.set(ruta, { mas: m[1] === '-' ? 0 : Number(m[1]), menos: m[2] === '-' ? 0 : Number(m[2]) })
+  }
+  return r
 }

@@ -10,7 +10,9 @@ import type { EstadoCuenta, ProveedorModelo } from './core/cuenta'
 import type { NombreOperacionTareas, OperacionesTareas } from './tareas'
 import type { NombreOperacionGit, OperacionesGit } from './versiones'
 import type { NombreOperacionApi, OperacionesApi } from './api'
+import type { NombreOperacionEquipos, OperacionesEquipos } from './equipos'
 import type { NombreOperacionGitHub, OperacionesGitHub } from './github'
+import type { NombreOperacionHistorial, OperacionesHistorial } from './historial'
 import type { AccionNavegador, EstadoNavegador, ServidorLocal } from './navegador'
 import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion'
 import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
@@ -72,6 +74,8 @@ export const Canales = {
   gitOperar: 'git:operar',
   apiOperar: 'api:operar',
   githubOperar: 'github:operar',
+  equiposOperar: 'equipos:operar',
+  historialOperar: 'historial:operar',
   navegadorAbrir: 'navegador:abrir',
   navegadorAccion: 'navegador:accion',
   navegadorObtener: 'navegador:obtener',
@@ -295,6 +299,14 @@ export interface ApiCentro {
   /** Control de versiones con git: una sola operación tipada (`OperacionesGit`); main resuelve la carpeta del proyecto. */
   git: {
     operar<K extends NombreOperacionGit>(op: K, entrada: OperacionesGit[K]['entrada']): Promise<OperacionesGit[K]['salida']>
+  }
+  /** Historial local de versiones de los archivos de cada proyecto (independiente de git): consultar, comparar y restaurar. */
+  historial: {
+    operar<K extends NombreOperacionHistorial>(op: K, entrada: OperacionesHistorial[K]['entrada']): Promise<OperacionesHistorial[K]['salida']>
+  }
+  /** Mis equipos: estado de git de cada proyecto en cada PC de la cuenta y proyectos de la cuenta que faltan clonar aquí. */
+  equipos: {
+    operar<K extends NombreOperacionEquipos>(op: K, entrada: OperacionesEquipos[K]['entrada']): Promise<OperacionesEquipos[K]['salida']>
   }
   /** GitHub: cuenta (token cifrado), repositorios, clonar, publicar, pull requests, incidencias y CI. El token nunca llega al renderer. */
   github: {

@@ -343,6 +343,8 @@ describe('socket local y servidor MCP', () => {
       enviar({ jsonrpc: '2.0', method: 'notifications/initialized' })
       enviar({ jsonrpc: '2.0', id: 2, method: 'tools/list' })
       enviar({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'crear_tarea', arguments: { titulo: 'Vía MCP' } } })
+      // El servidor atiende las peticiones a la vez: la 4 usa la tarea que crea la 3, así que se envía cuando ya hay respuesta (si no, a veces llegaba antes).
+      while (!respuestas.some((r) => r.id === 3)) await new Promise((r) => setTimeout(r, 5))
       enviar({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'cambiar_estado_tarea', arguments: { tarea: '1', estado: 'bloqueada' } } })
       enviar({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'no_existe', arguments: {} } })
       enviar({ jsonrpc: '2.0', id: 6, method: 'otra/cosa' })

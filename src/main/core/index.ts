@@ -15,7 +15,7 @@ import type { BloqueContenido, DecisionHumana, EstadoFlujo, EjecucionIniciada, E
 import type { NuevaEntradaMemoria } from '@shared/core/memoria'
 import { Canales } from '@shared/ipc'
 import { leerProveedores } from '../proveedores'
-import { DIR, carpetaDeProyecto, leerProyectos, registrarProyecto } from '../proyectos'
+import { DIR, carpetaDeProyecto, leerProyectos, registrarProyecto, vincularCarpetaAProyecto } from '../proyectos'
 import { Agente } from './agents/agente'
 import { Harness, type Aprobador, type Validador } from './agents/harness'
 import { MODELO_POR_DEFECTO, ProveedorAnthropic } from './agents/llm/anthropic'
@@ -163,6 +163,7 @@ export class Nucleo {
       token: this.tokenGitHub,
       carpetaDe: carpetaDeProyecto,
       agregarProyecto: registrarProyecto,
+      vincular: vincularCarpetaAProyecto,
       dirDatos: DIR
     })
     // Todas las herramientas de la aplicación (tareas, git y GitHub) salen de un único ejecutor: el registro del núcleo las usa en modo
@@ -841,12 +842,25 @@ export class Nucleo {
     return total
   }
 
+  /**
+   * Historial local: se avisa antes y después de que la IA escriba un archivo (con el estado de antes y la versión nueva). Lo conecta
+   * la aplicación; sin él, la IA funciona igual.
+   */
+  alEscribirIA?: (momento: 'antes' | 'despues', proyectoId: string, ruta: string, meta: { herramienta: string; ejecucionId?: string }) => void
+
   /** Anota en el servidor qué archivos modificó la IA (herramientas propias y las de Claude Code). */
   registrarArchivoTocado(proyectoId: string | undefined, ev: EventoAgente): void {
-    if (ev.tipo !== 'herramienta_fin' || ev.resultado.error || !HERRAMIENTAS_ESCRITURA.has(ev.llamada.nombre)) return
+    if ((ev.tipo !== 'herramienta_inicio' && ev.tipo !== 'herramienta_fin') || !HERRAMIENTAS_ESCRITURA.has(ev.llamada.nombre)) return
     const e = ev.llamada.entrada
     const cruda = [e.ruta, e.file_path, e.path, e.notebook_path].find((v): v is string => typeof v === 'string' && v !== '')
     if (!cruda || !proyectoId) return
+    const ejecucionId = 'ejecucionId' in ev ? ev.ejecucionId : undefined
+    if (ev.tipo === 'herramienta_inicio') {
+      this.alEscribirIA?.('antes', proyectoId, cruda, { herramienta: ev.llamada.nombre, ...(ejecucionId ? { ejecucionId } : {}) })
+      return
+    }
+    if (ev.resultado.error) return
+    this.alEscribirIA?.('despues', proyectoId, cruda, { herramienta: ev.llamada.nombre, ...(ejecucionId ? { ejecucionId } : {}) })
     void leerProyectos()
       .then((d) => {
         const raiz = d.proyectos.find((p) => p.id === proyectoId)?.ruta

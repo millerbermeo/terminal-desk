@@ -18,6 +18,7 @@ import {
   type Medidas,
   type Nodo
 } from '../arbol'
+import { cargarLayout, guardarLayout, olvidarLayout } from '../layoutGuardado'
 
 export type Modo = 'rejilla' | 'pestanas'
 
@@ -26,6 +27,8 @@ interface Props {
   activa: string | null
   modo: Modo
   reiniciarLayout: number // cambia para volver a la cuadrícula automática
+  /** Clave de la pestaña: con ella se guarda la distribución y se recupera al reabrir el grupo. */
+  claveLayout?: string
   onPersonalizado: (v: boolean) => void
   onActivar: (id: string) => void
   onCerrar: (id: string) => void
@@ -55,7 +58,7 @@ function AsistenteCelda({ proyecto }: { proyecto: { id: string; nombre: string }
   return <ChatAgente agente={agente} proyectoFijo={proyecto} />
 }
 
-export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPersonalizado, onActivar, onCerrar, onPty, onVista }: Props) {
+export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveLayout, onPersonalizado, onActivar, onCerrar, onPty, onVista }: Props) {
   // El asistente y el editor de una celda se montan la primera vez que se muestran y ya no se desmontan (conservan la conversación
   // y los archivos abiertos con su historial de deshacer).
   const [montados, setMontados] = useState<Set<string>>(new Set())
@@ -66,7 +69,10 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPers
 
   const ids = terminales.map((t) => t.id)
   const contenedor = useRef<HTMLDivElement>(null)
-  const [estado, setEstado] = useState<{ arbol: Nodo | null; personalizado: boolean }>({ arbol: null, personalizado: false })
+  const [estado, setEstado] = useState<{ arbol: Nodo | null; personalizado: boolean }>(() => {
+    const guardado = claveLayout ? cargarLayout(claveLayout, terminales) : null
+    return { arbol: guardado, personalizado: guardado !== null }
+  })
   const arrastre = useRef<Arrastre | null>(null)
   const [arrastrando, setArrastrando] = useState<'divisor' | 'mover' | null>(null)
   const [moviendo, setMoviendo] = useState<string | null>(null)
@@ -90,6 +96,14 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, onPers
   }, [reiniciarLayout])
 
   useEffect(() => onPersonalizado(efectivo.personalizado), [efectivo.personalizado, onPersonalizado])
+
+  // la distribución a mano se recuerda por pestaña; «Reorganizar» la olvida
+  useEffect(() => {
+    if (!claveLayout) return
+    if (efectivo.personalizado && efectivo.arbol) guardarLayout(claveLayout, efectivo.arbol, terminales)
+    else if (!efectivo.personalizado && reiniciarLayout > 0) olvidarLayout(claveLayout)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [efectivo.arbol, efectivo.personalizado])
 
   // lo que se dibuja respeta los mínimos aunque el árbol guardado no (ventana pequeña, subárbol comprimido)
   const med = medidas()

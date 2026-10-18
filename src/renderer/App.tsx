@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { AvisoEquipo, PendienteClonar } from '@shared/equipos'
 import type { BibliotecaAgentes, DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
 import { EstadoVacio } from './components/EstadoVacio'
 import { IconoCerrar, IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, IconoTerminal, IconoVentana } from './components/Iconos'
@@ -15,6 +16,7 @@ import { ConfigAgentes } from './components/ConfigAgentes'
 import { ConfigProveedores } from './components/ConfigProveedores'
 import { ConfigProyectos } from './components/ConfigProyectos'
 import { ModalAgregar } from './components/ModalAgregar'
+import { ModalClonarPendientes } from './components/ModalClonarPendientes'
 import { ModalConfirmar } from './components/ModalConfirmar'
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
 import { transferidas } from './components/TerminalPanel'
@@ -78,6 +80,9 @@ interface PropsApp {
 
 export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   const [datos, setDatos] = useState<DatosProyectos>({ grupos: [], proyectos: [] })
+  const [pendientes, setPendientes] = useState<PendienteClonar[]>([])
+  const [clonarPend, setClonarPend] = useState<{ inicial?: string } | null>(null)
+  const [avisosEquipos, setAvisosEquipos] = useState<AvisoEquipo[]>([])
   const [modalAgregar, setModalAgregar] = useState<{ rutas: string[] } | null>(null)
 
   /** «Abrir carpeta»: explorador nativo y, con lo elegido, el formulario ya relleno (grupo y nombre editables). */
@@ -96,6 +101,46 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   const [separando, setSeparando] = useState<{ id: string; x: number; y: number } | null>(null) // pestaña arrastrada fuera de la barra
   const drag = useRef<{ id: string; x0: number; y0: number; movido: boolean } | null>(null)
   const [menuNueva, setMenuNueva] = useState<string | null>(null) // id de la pestaña con el menú «+ Terminal» abierto
+
+  // Proyectos de la cuenta con repositorio que aún no están en este equipo (se ofrecen para clonar).
+  const cargarPendientes = useCallback(async (): Promise<void> => {
+    try {
+      setPendientes(await window.api.equipos.operar('pendientes', {}))
+    } catch {
+      // sin conexión o sin sesión: se vuelve a intentar en la próxima pasada
+    }
+  }, [])
+  // Otros equipos con trabajo sin subir en los proyectos de este equipo: se revisa cada 30 s y al volver a la ventana.
+  const cargarAvisos = useCallback(async (): Promise<void> => {
+    try {
+      setAvisosEquipos(await window.api.equipos.operar('resumen', {}))
+    } catch {
+      // sin conexión o sin sesión: se queda lo último que se supo
+    }
+  }, [])
+  useEffect(() => {
+    void cargarAvisos()
+    const t = setInterval(() => void cargarAvisos(), 30_000)
+    window.addEventListener('focus', cargarAvisos)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('focus', cargarAvisos)
+    }
+  }, [cargarAvisos, datos.proyectos.length])
+  const avisosPorProyecto = avisosEquipos.reduce<Record<string, AvisoEquipo[]>>((m, a) => ((m[a.proyectoId] ??= []).push(a), m), {})
+
+  // En un equipo recién estrenado (sin ningún proyecto) y con proyectos esperando en la cuenta, se ofrece clonarlos de entrada.
+  const ofrecido = useRef(false)
+  useEffect(() => {
+    if (ofrecido.current || pendientes.length === 0 || datos.proyectos.length > 0) return
+    ofrecido.current = true
+    setClonarPend({})
+  }, [pendientes, datos.proyectos.length])
+  useEffect(() => {
+    void cargarPendientes()
+    const t = setInterval(() => void cargarPendientes(), 60_000)
+    return () => clearInterval(t)
+  }, [cargarPendientes, datos.proyectos.length])
 
   useEffect(() => {
     void window.api.proyectos.listar().then(setDatos).catch(onSesionPerdida)
@@ -329,7 +374,21 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
         onAbrirAsistente={abrirAsistente}
         email={email}
         onCuenta={onCuenta}
+        pendientes={pendientes}
+        avisosPorProyecto={avisosPorProyecto}
+        onClonarPendientes={(inicial) => setClonarPend({ ...(inicial ? { inicial } : {}) })}
       />
+      {clonarPend && (
+        <ModalClonarPendientes
+          pendientes={pendientes}
+          {...(clonarPend.inicial ? { inicial: clonarPend.inicial } : {})}
+          onCerrar={() => setClonarPend(null)}
+          onTerminado={() => {
+            void window.api.proyectos.listar().then(setDatos).catch(onSesionPerdida)
+            void cargarPendientes()
+          }}
+        />
+      )}
       {modalAgregar && (
         <ModalAgregar
           datos={datos}
@@ -346,7 +405,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
       {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}
       <Asistente datos={datos} visible={vista === 'asistente'} />
       <Tareas datos={datos} visible={vista === 'tareas'} />
-      <Versiones datos={datos} visible={vista === 'versiones'} onDatos={setDatos} />
+      <Versiones datos={datos} visible={vista === 'versiones'} onDatos={setDatos} avisos={avisosEquipos} />
       <Api visible={vista === 'api'} />
       <Navegador visible={vista === 'navegador'} />
       <Documentacion visible={vista === 'guia'} />
@@ -475,6 +534,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
               activa={v.activa}
               modo={v.modo}
               reiniciarLayout={v.reiniciarLayout}
+              claveLayout={v.id}
               onPersonalizado={(p) => cambiar(v.id, (x) => (x.personalizado === p ? x : { ...x, personalizado: p }))}
               onActivar={(t) => cambiar(v.id, (x) => (x.activa === t ? x : { ...x, activa: t }))}
               onCerrar={(t) => cerrarTerminal(v.id, t)}

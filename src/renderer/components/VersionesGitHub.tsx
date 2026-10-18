@@ -4,6 +4,7 @@ import { fechaRelativa } from '@shared/versiones'
 import { mensajeDe } from '../tareas/useTareas'
 import { git, type ContextoGit } from '../versiones/useGit'
 import { EstadoVacio } from './EstadoVacio'
+import { GitHubOauth } from './GitHubOauth'
 import { IconoGlobo, IconoMas, IconoRama } from './Iconos'
 import { ModalConfirmar } from './ModalConfirmar'
 import { ModalFormulario } from './ModalFormulario'
@@ -100,6 +101,19 @@ export function VersionesGitHub({ c }: { c: ContextoGit }) {
         />
         <section className="cfg-grupo" style={{ maxWidth: 620, margin: '0 auto' }}>
           <div className="vc-form">
+            {fallo && <p className="vc-nota error" role="alert">{fallo}</p>}
+            <GitHubOauth
+              gha={gha}
+              onError={setFallo}
+              onEstado={(e, conectado) => {
+                setGha(e)
+                if (conectado) {
+                  avisar(`Conectado como ${e.usuario?.usuario ?? 'tu cuenta'}.`)
+                  actualizar()
+                }
+              }}
+            />
+            <p className="oa-o">o con un token</p>
             <ol className="gh-pasos">
               <li>
                 Crea un token en GitHub (se abre con los permisos <code>repo</code> y <code>workflow</code> ya marcados).
@@ -156,6 +170,11 @@ export function VersionesGitHub({ c }: { c: ContextoGit }) {
           <span className={`chip ${gha.persistente ? 'chip-ok' : 'chip-aviso'}`} title={gha.persistente ? 'Guardado cifrado con el llavero del sistema' : 'Tu sistema no ofrece un llavero seguro: el token solo se mantiene mientras la aplicación esté abierta'}>
             {gha.persistente ? 'token guardado' : 'solo en esta sesión'}
           </span>
+          {gha.renovable && (
+            <span className="chip chip-ok" title="La sesión caduca cada pocas horas y la app la renueva sola; no tienes que volver a iniciar sesión">
+              se renueva sola
+            </span>
+          )}
         </div>
       </section>
 

@@ -122,6 +122,31 @@ const esClaude = (comando: string): boolean => {
 const citar = (ruta: string): string =>
   process.platform === 'win32' ? `"${ruta}"` : `'${ruta.replace(/'/g, `'\\''`)}'`
 
+/** Herramientas de Claude Code que escriben archivos (las que el historial local quiere ver). */
+const HERRAMIENTAS_QUE_ESCRIBEN = 'Write|Edit|MultiEdit|NotebookEdit'
+
+/**
+ * Cómo lanza Claude Code el gancho del historial: el mismo programa que el servidor MCP (el propio Electron como Node) en modo
+ * `hook-historial`, con el proyecto y la carpeta de datos en el entorno. Usa la sintaxis del shell de cada sistema.
+ */
+export function comandoGancho(mcp: NonNullable<ReturnType<typeof configMcpTareas>>, momento: 'pre' | 'post'): string | undefined {
+  const m = Object.values(mcp.mcpServers)[0]
+  if (!m) return undefined
+  const base = [m.command, ...m.args, 'hook-historial', momento].map(citar).join(' ')
+  const env = Object.entries(m.env)
+  if (process.platform === 'win32') return `cmd /c "${env.map(([k, v]) => `set ${k}=${v}`).join('&& ')}&& ${base}"`
+  return `${env.map(([k, v]) => `${k}=${citar(v)}`).join(' ')} ${base}`
+}
+
+/** `hooks/hooks.json` del plugin: avisa a la app antes y después de que Claude Code escriba un archivo del proyecto. */
+export function configGanchosHistorial(mcp: NonNullable<ReturnType<typeof configMcpTareas>>): string | undefined {
+  const pre = comandoGancho(mcp, 'pre')
+  const post = comandoGancho(mcp, 'post')
+  if (!pre || !post) return undefined
+  const grupo = (command: string) => [{ matcher: HERRAMIENTAS_QUE_ESCRIBEN, hooks: [{ type: 'command', command, timeout: 10 }] }]
+  return JSON.stringify({ description: 'Historial local de versiones de Odesk Agent', hooks: { PreToolUse: grupo(pre), PostToolUse: grupo(post) } }, null, 2) + '\n'
+}
+
 /** Los valores van como cadenas JSON (YAML válido): sin problemas con comillas, dos puntos ni saltos de línea. */
 const campo = (clave: string, valor: string): string => `${clave}: ${JSON.stringify(valor)}`
 
@@ -164,7 +189,11 @@ async function construirPlugin(proyectoId: string): Promise<string | null> {
         2
       ) + '\n'
   }
-  if (mcp) archivos['.mcp.json'] = JSON.stringify(mcp, null, 2) + '\n'
+  if (mcp) {
+    archivos['.mcp.json'] = JSON.stringify(mcp, null, 2) + '\n'
+    const ganchos = configGanchosHistorial(mcp)
+    if (ganchos) archivos['hooks/hooks.json'] = ganchos
+  }
   for (const a of agentes) {
     const cabecera = [campo('name', nombres.get(a.id)!), campo('description', a.descripcion)]
     if (a.herramientas?.length) cabecera.push(campo('tools', a.herramientas.join(', ')))

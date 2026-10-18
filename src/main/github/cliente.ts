@@ -42,12 +42,16 @@ export function explicarErrorGitHub(estado: number, cuerpo: unknown, cab: { get(
 
 /** Cliente de la API REST de GitHub. El token solo viaja en la cabecera Authorization hacia el servidor configurado. */
 export class ClienteGitHub {
+  /**
+   * `renovar`: pide un token nuevo cuando GitHub responde 401 (token caducado); si devuelve uno distinto, la petición se repite una vez.
+   */
   constructor(
-    private readonly token: string,
-    private readonly base: string = API_GITHUB
+    private token: string,
+    private readonly base: string = API_GITHUB,
+    private readonly renovar?: () => Promise<string | undefined>
   ) {}
 
-  async pedir<T>(metodo: 'GET' | 'POST' | 'PUT' | 'PATCH', ruta: string, o: { cuerpo?: unknown; consulta?: Record<string, string | number | undefined> } = {}): Promise<T> {
+  async pedir<T>(metodo: 'GET' | 'POST' | 'PUT' | 'PATCH', ruta: string, o: { cuerpo?: unknown; consulta?: Record<string, string | number | undefined> } = {}, reintento = false): Promise<T> {
     const url = new URL(this.base.replace(/\/$/, '') + ruta)
     for (const [k, v] of Object.entries(o.consulta ?? {})) if (v !== undefined) url.searchParams.set(k, String(v))
     let r: Response
@@ -76,6 +80,13 @@ export class ClienteGitHub {
       cuerpo = texto ? JSON.parse(texto) : undefined
     } catch {
       /* respuesta que no es JSON */
+    }
+    if (r.status === 401 && this.renovar && !reintento) {
+      const nuevo = await this.renovar().catch(() => undefined)
+      if (nuevo && nuevo !== this.token) {
+        this.token = nuevo
+        return this.pedir<T>(metodo, ruta, o, true)
+      }
     }
     if (!r.ok) throw new ErrorGitHub(explicarErrorGitHub(r.status, cuerpo, r.headers), r.status)
     return cuerpo as T

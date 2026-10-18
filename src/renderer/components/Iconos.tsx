@@ -124,3 +124,15 @@ export const IconoInfo = () => (
 export const IconoLibro = () => (
   <Icono><path d="M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 1-2-2zM11 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7" /></Icono>
 )
+export const IconoUsuario = () => (
+  <Icono><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></Icono>
+)
+export const IconoPanelLateral = () => (
+  <Icono><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></Icono>
+)
+export const IconoNube = () => (
+  <Icono><path d="M7 18a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 9.5a4.5 4.5 0 0 1-.5 8.5z" /><path d="M12 11v6m0 0-2.5-2.5M12 17l2.5-2.5" /></Icono>
+)
+export const IconoMonitor = () => (
+  <Icono><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></Icono>
+)

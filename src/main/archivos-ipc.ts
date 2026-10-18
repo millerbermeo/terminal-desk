@@ -2,6 +2,7 @@ import { ipcMain, shell } from 'electron'
 import type { CambioArchivo } from '@shared/archivos'
 import { CanalesArchivos } from '@shared/ipc'
 import { GestorArchivos, Vigilante } from './archivos'
+import type { ServicioHistorial } from './historial/servicio'
 import { leerProyectos } from './proyectos'
 
 async function raizDe(proyectoId: string): Promise<string> {
@@ -11,8 +12,12 @@ async function raizDe(proyectoId: string): Promise<string> {
 }
 
 /** IPC del editor de archivos integrado. */
-export function registrarIpcArchivos(): void {
-  const gestor = new GestorArchivos({ raiz: raizDe, papelera: (ruta) => shell.trashItem(ruta) })
+export function registrarIpcArchivos(historial?: ServicioHistorial): void {
+  const gestor = new GestorArchivos({
+    raiz: raizDe,
+    papelera: (ruta) => shell.trashItem(ruta),
+    ...(historial ? { historial: { antes: (id, ruta) => historial.antesDeEscribir(id, ruta), despues: (id, ruta) => historial.despuesDeEscribir(id, ruta, 'usuario') } } : {})
+  })
   const vigilante = new Vigilante(raizDe)
   const suscritos = new Set<number>()
   const c = CanalesArchivos

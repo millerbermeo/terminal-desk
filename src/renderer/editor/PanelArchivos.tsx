@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CambioArchivo, EntradaArchivo, MarcaGit } from '@shared/archivos'
 import { EstadoVacio } from '../components/EstadoVacio'
+import { ModalHistorialArchivo } from '../components/ModalHistorialArchivo'
 import { IconoArchivo } from '../components/Iconos'
 import { ArbolArchivos, type CreandoEn } from './ArbolArchivos'
 import { EditorCodigo, type ManejoEditor } from './EditorCodigo'
@@ -50,6 +51,7 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
   const [creando, setCreando] = useState<CreandoEn | null>(null)
   const [renombrando, setRenombrando] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; entrada: EntradaArchivo | null } | null>(null)
+  const [historialDe, setHistorialDe] = useState<string | null>(null) // archivo cuyo historial de versiones está abierto
   const [errorArbol, setErrorArbol] = useState('')
   const [arbolVisible, setArbolVisible] = useState(false) // en paneles estrechos el árbol es un cajón
   const [cursor, setCursor] = useState({ l: 1, c: 1 })
@@ -461,6 +463,18 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
               <button className="icono" aria-label={`Cerrar ${base(a.ruta)}`} onClick={(e) => (e.stopPropagation(), void cerrar(a.ruta))}>✕</button>
             </div>
           ))}
+          <span className="ag-espacio" />
+          <button
+            className="ed-historial"
+            disabled={!activa}
+            title="Ver las versiones guardadas de este archivo (a mano, de la IA, de otros programas), compararlas y restaurar"
+            onClick={() => void (async () => {
+              if (actual?.sucio) await guardarYa(actual.ruta) // que lo último que se escribió también esté en el historial
+              if (activa) setHistorialDe(activa)
+            })()}
+          >
+            🕘 Historial
+          </button>
         </div>
 
         {actual?.externo && (
@@ -505,6 +519,8 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
           {actual && !actual.noEditable && !auto && actual.sucio && <button onClick={() => void guardarYa(actual.ruta)}>Guardar</button>}
         </div>
       </section>
+
+      {historialDe && <ModalHistorialArchivo proyectoId={proyectoId} ruta={historialDe} onCerrar={() => setHistorialDe(null)} onCambio={() => void refrescarTodo()} />}
 
       {menu && (
         <div className="menu-ia ed-menu" style={{ top: menu.y, left: menu.x }} role="menu" onMouseDown={(e) => e.stopPropagation()}>

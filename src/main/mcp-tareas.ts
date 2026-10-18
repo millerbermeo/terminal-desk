@@ -6,8 +6,16 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { llamarTareas } from './core/tareas/cliente'
 import { servirMcpTareas } from './core/tareas/mcp-servidor'
+import { ejecutarHookHistorial } from './historial/hook'
 
 const dir = process.env.ODESK_DIR || join(homedir(), '.odesk-agent')
 const proyectoId = process.env.ODESK_PROYECTO_ID || undefined
 
-void servirMcpTareas(process.stdin, process.stdout, (herramienta, entrada) => llamarTareas(dir, herramienta, entrada, proyectoId)).then(() => process.exit(0))
+if (process.argv[2] === 'hook-historial') {
+  // Gancho de Claude Code: el mismo programa, con otro modo (no es el servidor MCP).
+  void ejecutarHookHistorial(process.argv[3] === 'pre' ? 'antes' : 'despues', process.stdin, dir, proyectoId)
+    .catch(() => undefined)
+    .finally(() => process.exit(0))
+} else {
+  void servirMcpTareas(process.stdin, process.stdout, (herramienta, entrada) => llamarTareas(dir, herramienta, entrada, proyectoId)).then(() => process.exit(0))
+}

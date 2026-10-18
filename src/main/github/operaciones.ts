@@ -7,6 +7,10 @@ type Implementaciones = { [K in NombreOperacionGitHub]: (s: ServicioGitHub, e: E
 const OPERACIONES: Implementaciones = {
   estado: (s, e) => s.estado(typeof e.proyectoId === 'string' ? e.proyectoId : undefined),
   conectar: (s, e) => s.conectar(e.token),
+  configurarOauth: (s, e) => s.configurarOauth(e.clientId),
+  dispositivoIniciar: (s) => s.dispositivoIniciar(),
+  dispositivoEsperar: (s) => s.dispositivoEsperar(),
+  dispositivoCancelar: async (s) => s.dispositivoCancelar(),
   desconectar: (s) => s.desconectar(),
   repos: (s, e) => s.repos(e.texto),
   clonar: (s, e) => s.clonar(e),

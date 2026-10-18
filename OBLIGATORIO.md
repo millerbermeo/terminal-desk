@@ -1,82 +1,87 @@
-# ⚠️ Cosas obligatorias (no olvidar)
+# CLAUDE.md
 
-Lista corta de lo que **hay que hacer a mano** para que Odesk Agent funcione entre varias computadoras. Si algo falla "raro", empieza por aquí.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 1. Subir `.odesk/project.json` a git — en CADA proyecto
+> **Cosas que el usuario debe hacer a mano (subir `.odesk/project.json` a git, API en marcha, migraciones, copias, secretos): ver `OBLIGATORIO.md`. Menciónalo si tocas el enlace local o el servidor.**
 
-Es el archivo que dice a qué proyecto del servidor corresponde una carpeta. Contiene solo un `projectId`; sin él, la otra computadora **no sabe qué proyecto es**, no baja las tareas ni las conversaciones y crea uno nuevo vacío.
+**Odesk Agent** (antes «ODESK AI» y «Centro de Proyectos»; el icono está en `resources/`): app de escritorio (Electron + Vite + React + TypeScript) que gestiona proyectos con varias terminales reales (xterm.js + node-pty) y lanza CLIs de IA (hoy, Claude Code) dentro de ellas. Todo el código, los identificadores y la UI están en español; mantenlo así.
 
-```bash
-cd <carpeta-del-proyecto>
-git add .odesk/project.json
-git commit -m "chore: enlace con Odesk Agent"
-git push
-```
+## Comandos
 
-- La app te lo recuerda al agregar un proyecto nuevo si el archivo aún no está en git (y avisa con más fuerza si un `.gitignore` lo excluye).
-- **No lo metas en `.gitignore`.** Comprobación rápida: `git ls-files .odesk/project.json` debe devolver la ruta.
-- Un proyecto = un archivo. Si copias una carpeta con su `.odesk/` para hacer otro proyecto distinto, bórrala antes en la copia o ambos compartirán tareas y chats.
-- En la computadora 2: `git pull` → *Abrir carpeta* en la app. El proyecto se retoma solo.
-
-## 2. El servidor (API) tiene que estar en marcha
-
-La app ya no guarda proyectos ni agentes en local: sin API no hay sesión ni proyectos.
-
-- Local: en `terminal-desk-api` → `pnpm dev` (`http://localhost:3000`).
-- Servidor propio (VPS): ver la sección *Despliegue* del README de `terminal-desk-api`. Para apuntar la app a él: pantalla de acceso → **cambiar** servidor, o `servidor.json` en `~/.odesk-agent/`, o la variable `ODESK_API_URL`. **Usa https**: con http viajan las contraseñas sin cifrar.
-
-## 3. Migraciones antes de arrancar una versión nueva del API
+Usa **pnpm** (el repo tiene `pnpm-lock.yaml`; `pnpm-workspace.yaml` autoriza con `allowBuilds` los scripts de `electron` y `node-pty`).
 
 ```bash
-cd terminal-desk-api
-pnpm migration:estado     # qué falta aplicar
-pnpm migration:ejecutar   # aplica las pendientes
+pnpm install        # el postinstall recompila node-pty para Electron; si falla: pnpm exec electron-rebuild -f -w node-pty
+pnpm dev            # electron-vite dev (HMR solo en el renderer)
+pnpm build          # electron-vite build -> out/
+pnpm typecheck      # tsc --noEmit
+pnpm lint           # eslint (typescript-eslint corre sobre la API de TS 6 vía .pnpmfile.cjs; TS 7 aún no está soportado)
+pnpm test           # vitest run (tests/ — LLM falso, git real en temporales, servidor MCP de prueba por stdio)
+pnpm evals          # evals contra el modelo real (evals/; necesita ANTHROPIC_API_KEY, consume tokens; sin clave se omite)
+pnpm package        # build + electron-builder (node-pty va en asarUnpack)
 ```
 
-Una migración ya aplicada **no se edita**: el cambio va en una migración nueva (`pnpm migration:crear <nombre>`).
+- **Cambios en `src/main` o `src/preload` requieren reiniciar `pnpm dev` por completo**; el renderer se recarga solo (Ctrl+R).
+- Si el entorno tiene `ELECTRON_RUN_AS_NODE=1` (p. ej. dentro de VSCode), Electron arranca como Node y falla con `Cannot read properties of undefined (reading 'commandLine')`: lanza con `env -u ELECTRON_RUN_AS_NODE pnpm dev`.
+- Para probar la app real sin ver la ventana: lanzar `electron . --remote-debugging-port=9222` (con `HOME` apuntando a una carpeta temporal para no tocar `~/.odesk-agent`) y manejarla por CDP. Hay que enviar `Page.bringToFront` y `Emulation.setFocusEmulationEnabled` o los eventos de ratón tardan ~5 s cada uno. Los ptys se miden con `ps` (hijos del proceso principal).
+- La lógica pura (`src/renderer/arbol.ts`, `src/shared/*`, y `src/main/*.ts` con un loader de alias para `@shared/*`) se puede probar con `node --experimental-strip-types`.
 
-## 4. Copias de seguridad de Postgres
+## Arquitectura
 
-Todo (proyectos, tareas, conversaciones, trazas, agentes) vive ahora en la base de datos del servidor. Programa un `pg_dump` periódico y guarda las copias fuera del servidor:
+Tres procesos con un contrato IPC tipado. **Añadir una operación IPC toca siempre tres sitios**: `src/shared/ipc.ts` (canal en `Canales` + método en `ApiCentro`), `src/preload/index.ts` (implementa `ApiCentro` con `ipcRenderer`) y `registrarIpc()` en `src/main/index.ts`. El renderer solo ve `window.api`; `contextIsolation`, `sandbox` y CSP están activos, así que el preload solo puede importar `electron` y `@shared/*`. Alias `@shared` -> `src/shared` (configurado en `electron.vite.config.ts` y `tsconfig.json`).
 
-```bash
-pg_dump -h localhost -U postgres -Fc desk > desk-$(date +%F).dump
-```
+### Terminales y ventanas (lo menos obvio)
+- `GestorTerminales` (`src/main/terminales.ts`) es dueño de los ptys y guarda un historial por terminal (512 KB) con un contador acumulado `fin`. Cada trozo de salida viaja con su `fin`.
+- `duenos` (`src/main/index.ts`) mapea `ptyId -> webContents.id`: la salida va solo a la ventana dueña. Al recargar o cerrar una ventana (`cerrarDe`) se matan sus ptys; cerrar la ventana principal cierra toda la app.
+- **Separar/devolver pestañas** reutiliza los mismos procesos: `ventana:separar` abre una `BrowserWindow` con `?ventana=<token>` (renderer `VentanaSeparada`, que recoge el payload con `ventana:tomar`); `ventana:devolver` reasigna los ptys a la principal y cierra la separada. El panel receptor usa `terminal:adjuntar`, repinta el historial y descarta los trozos en cola con `fin <= histórico` (evita duplicados). En el emisor, `transferidas` (`TerminalPanel.tsx`) evita que desmontar el panel mate el pty.
+- Un proveedor de IA no se lanza con `spawn` directo: su comando se **escribe en el shell interactivo** (hereda PATH/nvm; al salir del CLI la terminal sigue viva). El renderer solo manda `proveedorId`; el comando se resuelve en main.
+- Las terminales de la UI tienen dos ids: `TerminalInfo.id` (renderer) y `ptyId` (proceso real, lo informa `TerminalPanel` con `onPty`).
 
-## 5. Correo (SMTP) para los códigos
+### Renderer
+- `App.tsx` mantiene `ventanas` (pestañas, normalmente una por grupo; id = id del grupo, `__sin-grupo__` o `__libre__`). **Todas las pestañas y la vista principal permanecen montadas** (`display: none`) para no matar los ptys: nunca desmontes condicionalmente `TerminalPanel`/`TerminalGrid`. Un clic en un proyecto enfoca su terminal si ya existe (`proyectoId`); duplicar solo es posible a propósito (✦ con proveedor, «+ Terminal»).
+- `TerminalGrid` pinta un **árbol de divisiones** (`arbol.ts`, funciones puras): siempre cubre el área sin huecos; cada divisor mueve una línea completa; mover una terminal = intercambiar hojas. El árbol guardado conserva las proporciones y `normalizar()` aplica los mínimos (260×150 px) solo al dibujar. `reconciliar()` ajusta el árbol al abrir/cerrar terminales. Los ajustes de tamaño de xterm se limitan a uno cada 50 ms.
 
-Crear cuenta y recuperar la contraseña funcionan con un código que llega por correo. En el `.env` del API rellena `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` y `SMTP_FROM` (Gmail con contraseña de aplicación, Resend, Brevo, Amazon SES…). Sin SMTP, en desarrollo el código aparece en la consola del API; **en producción el API no arranca sin SMTP**.
+### Servidor (proyectos y agentes)
+Proyectos, grupos y la biblioteca de agentes/skills **ya no están en JSON local**: viven en el backend `../terminal-desk-api` (NestJS + Drizzle + Postgres, repo aparte; ver su README). `src/main/servidor/cliente.ts` (`servidor`) es el único cliente HTTP: guarda el JWT cifrado con `safeStorage` (`sesion.json`; sin llavero seguro solo en memoria), lo envía en cada petición y lanza `ErrorSesion` si falta o venció. `ODESK_API_URL` (por defecto `http://localhost:3000`) elige el servidor. `proyectos.ts#leerProyectos` y `agentes.ts#leerBiblioteca` mantienen su firma pero leen del servidor (caché de 2 s, `olvidarProyectos()` tras cada cambio). Los ids de proyecto/grupo/recurso son ahora UUID del servidor. La ventana principal muestra `components/Acceso.tsx` hasta que hay sesión (`Raiz` en `renderer/main.tsx`); al iniciar sesión, `servidor/importar.ts` sube los proyectos del antiguo `proyectos.json` si la cuenta está vacía. Los tests que usan `Nucleo` levantan `tests/servidor-falso.ts` (`ServidorFalso`: `apuntar()` antes de importar, `entrar()` después).
 
-## 6. Secretos del API (`terminal-desk-api/.env`)
+**Enlace local y contexto compartido entre equipos**: el servidor no guarda rutas (tabla `projects`: nombre, `repo`, grupo). `servidor/vinculo.ts` escribe `<carpeta>/.odesk/project.json` (solo `{projectId}`, pensado para subirse a git) y `servidor/rutas.ts` (`rutas.json`, local) guarda dónde está cada proyecto **en este equipo**; `leerProyectos` solo devuelve los de la cuenta que tienen carpeta aquí. `agregarProyectos` → `resolverProyecto`: si la carpeta trae `.odesk/project.json` de un proyecto de la cuenta lo **reanuda** (mismo id, `reanudados` en el resultado → `Nucleo.hidratar` baja tablero, conversaciones y trazas; si no, registra uno nuevo y escribe el archivo. «Quitar» un proyecto solo lo suelta de este equipo. `servidor/sincronizador.ts` sube en segundo plano (agrupa 1,5 s, reintenta, nunca bloquea) lo que cambia: `AlmacenJson` acepta un 3.º argumento `alGuardar(id, nuevo, previo)` que usan tareas, sesiones y trazas; `Nucleo.registrarArchivoTocado` anota como eventos los archivos que toca la IA. Resolución de conflictos: gana el `updatedAt`/`actualizada` más reciente (`ServicioTareas.fusionar`, `MemoriaCortoPlazo.fusionar`, `AlmacenTrazas.fusionar`). Los borrados de conversaciones/trazas no se propagan. Solo se sincronizan ids de proyecto que son UUID del servidor.
 
-- `JWT_SECRET`: propio, aleatorio y de al menos 32 caracteres (`openssl rand -hex 32`). El API no arranca con el valor de ejemplo. Cambiarlo cierra todas las sesiones.
-- `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`: solo si quieres «Continuar con Google» (cómo obtenerlos: README del API). En producción cambia también `GOOGLE_CALLBACK_URL` a tu dominio y regístralo en Google.
-- El `.env` nunca se sube a git.
+**Cuentas y seguridad (escritorio)**: el acceso (`components/Acceso.tsx`) tiene los pasos entrar · crear cuenta → código del correo · olvido → código + nueva contraseña; el panel `components/Cuenta.tsx` cambia la contraseña y cierra sesión (aquí o en todos los equipos). Las operaciones van por un canal tipado `sesion:cuenta` (`OperacionesCuenta` en `shared/sesion.ts`). `ClienteServidor` revoca la sesión en el servidor al cerrar (`/auth/logout`), y **se niega a mandar nada por http a otra máquina** (`servidorSeguro`; `ODESK_PERMITIR_HTTP=1` solo para pruebas). **Datos locales por cuenta**: `src/main/perfiles.ts#cambiarPerfil` se llama tras cada login (`conSesion` en `index.ts`); si la cuenta es otra, aparta lo personal de `~/.odesk-agent` a `perfiles/<id>/`, recupera lo de la nueva, limpia el almacenamiento del navegador integrado y de la interfaz, y **reinicia la app** (`app.relaunch`). Lo compartido está en `COMPARTIDOS` (token, servidor, worktrees, plugins generados, socket); todo lo nuevo que se guarde en la carpeta de datos es personal por defecto. Prueba real: `API_LOG=/tmp/api.log pnpm e2e:equipos` (API sin SMTP con su salida en ese archivo; lee de ahí los códigos).
 
-## 7. Varias cuentas en el mismo equipo
+**Datos de cuenta en la nube**: `servidor/sync-cuenta.ts` (`SincronizadorCuenta` con fuentes `FuenteArchivos` —memoria, permisos, preferencias, proveedores y `mcp.json`, estos dos sin `env`— y `FuenteTareas` —tareas sin proyecto y columnas—) compara cada documento con lo último sincronizado (`sync-cuenta.json`: hash + updatedAt + cursor) contra `/me/docs`; la primera vez de un equipo manda el servidor. `servidor/boveda.ts` + `servidor/secretos.ts`: bóveda E2E (scrypt + AES-256-GCM, la clave local cifrada con `safeStorage` en `boveda-clave.json`) con las secciones `proveedores`, `mcp` (por nombre: se suman), `api` y `github`; concurrencia optimista con `base` (409 → reintenta). Bucle de 30 s en `index.ts` (`sincronizarCuenta`: cuenta → bóveda → `nucleo.sync.vaciar()` → `nucleo.hidratarTodos(true)` incremental con `?since=` cursor del servidor). Borrados hechos por el usuario (`Nucleo.borrarSesion`, `eliminarTraza`, tareas) dejan marca en el servidor (`deleted`); la poda automática no se propaga.
 
-Los datos locales (tareas, conversaciones, memoria, token de GitHub, proveedores con sus claves, historial del navegador integrado…) son de la cuenta que entró. Al entrar con **otra** cuenta, la app los aparta en `~/.odesk-agent/perfiles/` y **se reinicia sola** una vez; al volver la primera, recupera lo suyo. La primera cuenta que entra tras actualizar adopta lo que ya había.
+### Persistencia (`~/.odesk-agent/`)
+Antes era `~/.centro-proyectos/`: `src/main/migracion.ts` la mueve sola al arrancar (se ejecuta al evaluar `proyectos.ts`, antes de que nada lea `DIR`; renombra, y si no puede copia y borra el origen solo si la copia terminó; si falla se sigue usando la antigua para no parecer «vacía»). Tras mover, `core/git/reparar.ts` rehace con `git worktree repair` los worktrees de agentes (guardan rutas absolutas). El perfil de Electron (`userData`) también se mueve (`resolverPerfil`).
+`proveedores.json` (0600; `env` en texto plano) y `sesiones/`; tareas, memoria, etc. siguen locales. `proyectos.json` y `agentes.json` quedaron como legado: ya no se escriben. Los módulos de `src/main` serializan sus escrituras con una cola `enCola`.
 
-Lo que **no** se separa por cuenta: el login de Claude Code (`~/.claude`, es del usuario del sistema), los worktrees y el propio código de tus carpetas. Para separación total, usa un usuario del sistema operativo por persona.
+### Agentes y skills de Claude Code
+Biblioteca de recursos (compartidos o individuales de un proyecto) con activación por grupo/proyecto (`src/shared/agentes.ts#activosDe`, usado por main y renderer). Al crear una terminal con un proveedor cuyo binario es `claude` y con `proyectoId`, `comandoConAgentes` (`src/main/agentes.ts`) genera un plugin de Claude Code en `sesiones/<proyecto>-<hash>/` (carpeta inmutable por contenido) y añade `--plugin-dir`. Una terminal normal o un `claude` escrito a mano no los carga. Nada se escribe en el repo del proyecto.
 
-## 8. Frase de la bóveda de claves (si la activas)
+## Notas
+- `src/main/core/` = núcleo de agentes propio, hablado directamente con la API de Anthropic (no envuelve un CLI). **No confundir** con `src/main/agentes.ts` (biblioteca de plugins para Claude Code). Dos proveedores (`preferencias.json`, por defecto **suscripción**): `suscripcion.ts` ejecuta `claude -p --output-format stream-json` y traduce su salida a `EventoAgente` (sesión con `claude auth login`, `ANTHROPIC_API_KEY` se elimina del entorno del hijo; flujos y grupos no disponibles); `api` usa el núcleo propio y necesita `ANTHROPIC_API_KEY` (entorno o `env` del proveedor `claude`). Los tests que usan `LlmFalso` deben fijar `await nucleo.preferencias.fijar('api')`. Documentado por fases en `docs/`:
+  - `fase-1.md`: agente, bucle, harness, subagentes, registro de herramientas, cliente MCP.
+  - `fase-2.md`: monitor de contexto (poda/resumen automático), memoria corta (`conversaciones/`) y larga (`memoria/`).
+  - `fase-3.md`: grafo de estados (`modo: 'flujo'`), router de modelos, A2A por `grupoId`.
+  - `fase-4.md`: flujos en git worktrees (`worktrees/`), guardrails (credenciales, rutas, destructivo) y confirmación humana (`solicitud_humana` + `core.responder`).
+  - `interfaz.md`: editor de archivos de cada celda (`src/main/archivos.ts` confinado al proyecto, `src/renderer/editor/` con CodeMirror 6) y pestaña **Asistente** del renderer (`components/Asistente.tsx`, estado en `agente/useAgente.ts`, alojado en `App`): conversación con streaming, trazas, memoria, ramas, evals y el modal de confirmaciones.
+  - `permisos-autonomia-comandos.md`: reglas de permisos persistentes (`permisos/`), modos de autonomía (Preguntar/Ediciones/Autónomo, presupuesto de tokens) y comandos propios con `/`, que viven en el servidor (tabla `commands`, `/comandos`; `core/comandos/store.ts` es su cliente, globales o por UUID de proyecto; los JSON antiguos de `comandos/` se suben una vez y quedan como `.migrado`).
+  - `fase-5.md`: trazas (`trazas/`, spans con AsyncLocalStorage, credenciales redactadas) y evals (`evals/`, aserciones + juez LLM + comparación de informes).
+- **Varias cuentas de suscripción** (`src/main/core/cuentas.ts`, `cuentas.json` + `cuentas/<id>/`): la principal es el `~/.claude` de siempre; las demás usan `CLAUDE_CONFIG_DIR` y guardan su propio login. La cuenta activa se elige a mano; con «cambiar sola», un `rate_limit_event` rechazado (o 429/texto de límite) en `ejecutarSuscripcion` hace que `ejecutarPorSuscripcion` (`core/index.ts`) reintente con otra cuenta con sesión, solo si aún no ejecutó herramientas (evita duplicar cambios). La conversación se lleva copiando su `projects/*/<sesión>.jsonl` (`llevarSesion`), sin reenviar historial. No se guarda el id de sesión de una ejecución rechazada.
+- **Tareas** (`src/main/core/tareas/`, `src/shared/tareas.ts`, pantalla `components/Tareas.tsx`): `ServicioTareas` es el único que escribe `tareas/tareas.json`; las reglas (terminar exige criterios/subtareas/dependencias, motivo al bloquear/descartar/reabrir, sin ciclos) son funciones puras compartidas. La interfaz usa un solo canal IPC (`tareas:operar`, autor «usuario»); la IA usa las herramientas de `shared/tareas-herramientas.ts` (autor «ia»): por el registro del núcleo en modo API, y por un **servidor MCP** (`src/main/mcp-tareas.ts`, segundo entry de `electron.vite.config.ts`, lanzado con `ELECTRON_RUN_AS_NODE=1`) en suscripción (`--mcp-config`) y en las terminales ✦ (`.mcp.json` del plugin). El MCP no tiene datos: llama por un socket local (`tareas.sock` + `tareas.token`) al proceso principal. La IA no puede borrar tareas. Ver `docs/tareas.md`.
+- **Control de versiones (git)** (`src/main/core/git/`, `src/shared/versiones.ts`, pantalla `components/Versiones.tsx`): un solo canal IPC `git:operar` (`OperacionesGit`) con el **id del proyecto** (main resuelve la carpeta; el renderer nunca manda rutas de repo). `repositorio.ts` ejecuta git con `execFile`, rutas tras `--` y `GIT_LITERAL_PATHSPECS=1` (opt-in en `git()`; `stash -u` necesita desactivarlo), desde la raíz del repo, con las escrituras en cola por repositorio. `analisis.ts` analiza `status --porcelain=v2`, `log`, `for-each-ref` y traduce errores. Sin push forzado ni reset duro. Ver `docs/versiones.md`.
+- **Navegador integrado y cliente API**: `src/main/navegador.ts` (ventana con la barra de direcciones de la app, `?navegador=<id>`, más una `WebContentsView` aislada: sandbox, sin preload, sesión `persist:navegador`, solo http/https, permisos denegados; `session` se configura al abrir la primera ventana porque antes de `ready` no existe) y `src/main/puertos.ts` (detección de servidores locales). Cliente API: `src/main/api/` (ejecutor `http`/`https` con redirecciones, compresión, límite y cancelación; `servicio.ts` guarda colecciones/entornos/historial en `api/datos.json` 0600) y un canal `api:operar` tipado (`OperacionesApi`); la lógica pura (variables, cURL, `normalizarUrl`) está en `src/shared/api.ts` y `navegador.ts`. Ver `docs/navegador-api.md`.
+- **GitHub y herramientas de git/GitHub para la IA**: `src/main/github/` (cliente REST con errores traducidos, `AlmacenToken` con `safeStorage`: nunca en claro, `servicio.ts`, `askpass.ts`) y un canal `github:operar` (`OperacionesGitHub`). Sin el CLI `gh` (no hace falta instalarlo): API REST + token; el repositorio se deduce del remoto, resolviendo alias SSH con `ssh -G` (`ssh.github.com` = GitHub). A git se le dan credenciales por `GIT_ASKPASS` solo para https del servidor de GitHub (`Repositorio` recibe un `ProveedorCredenciales`). **Un único servidor MCP `odesk`** (`shared/herramientas-odesk.ts`) con tareas + git + GitHub; `core/herramientas-odesk.ts` es el ejecutor común (registro del núcleo en modo API y socket/MCP). `permisosCli`: lectura siempre, escritura desde «ediciones», `ejecucion` (enviar/publicar) solo «autónomo»; `destructivo.ts` marca lo que publica para que siempre pida confirmación. Sin herramientas de borrar/descartar/forzar/fusionar PRs. Ver `docs/versiones.md`.
+- **Inicio de sesión de GitHub con código (OAuth, flujo de dispositivo)**: `github/dispositivo.ts` (puro: `pedirCodigo`/`esperarToken`, maneja `authorization_pending`, `slow_down`, caducidad y cancelación) y `ServicioGitHub.dispositivoIniciar/Esperar/Cancelar`; el token acaba en el mismo `AlmacenToken` cifrado. Hace falta el **Client ID** de una OAuth App propia con «Device Flow» activado (`ODESK_GITHUB_CLIENT_ID` o `github-oauth.json`, que se guarda desde `components/GitHubOauth.tsx`); sin él solo está el token pegado. No hay secreto de cliente. Revocar: en GitHub → Settings → Applications. **Renovación**: si la OAuth App tiene «Expire user access tokens» (acceso de 8 h + `refresh_token` de 6 meses que rota en cada uso), `AlmacenToken` guarda el refresh cifrado y sus fechas; `ServicioGitHub.tokenVigente()` renueva 5 min antes de caducar o tras un 401 (`ClienteGitHub` repite la petición una vez), con una sola renovación en vuelo; un refresh inválido desconecta salvo que otro equipo ya haya dejado uno nuevo por la bóveda (que también lleva el refresh); sin red se sigue con el token actual. `ODESK_GITHUB_CLIENT_SECRET` solo si GitHub lo exigiera para renovar.
+- **Mis equipos** (`shared/equipos.ts`, `servidor/equipos.ts`, pestaña «Equipos» de Versiones, canal `equipos:operar`): cada escritorio sube a la API (`PUT /projects/:id/devices/:deviceId`, tabla `project_devices`) su rama, commit, adelante/atrás de su remoto (consulta el remoto cada 5 min) y cambios sin guardar; el id del equipo vive en `equipo.json`. Se informa en el bucle de `sincronizarCuenta` (30 s, solo si cambió o por latido). Sin rutas. Ver `situacionDe`. Además de rama/commit informa **qué cambió** (hasta 50 archivos con estado M/A/D/R/N/U y líneas +/−, `git diff --numstat`; **nunca contenido**), la **última actividad** (mtime más reciente de esos archivos) y la fecha del commit; con eso la interfaz marca «trabajando ahora» (archivo tocado hace <3 min) y `resumen` avisa (banner en Versiones y punto en el sidebar) de otros equipos con cambios sin guardar o commits sin enviar. Consulta barata: `estado('agrupado')` (sin archivos sin seguimiento uno a uno) y, si tarda >1 s, solo `ligero` y con espera (`lentos`/`noAntesDe`).
+- **Clonar automático**: `proyectosSinCarpeta()` (proyectos de la cuenta con `repo` y sin ruta en `rutas.json`) alimenta la sección «En tu cuenta» del sidebar y `ModalClonarPendientes`; `ServicioGitHub.clonarProyecto` clona (el remoto guardado puede ser un alias SSH de otro equipo: `repoParaClonar` lo pasa a `propietario/repo`) y `vincularCarpetaAProyecto` lo deja enlazado al MISMO proyecto (no crea uno nuevo), tras lo cual se hidrata su contexto.
+- **Historial local de versiones** (`src/main/historial/`, `src/shared/historial.ts` + `diff.ts`, pestaña «Historial local» de Versiones, botón «🕘 Historial» del editor, canal `historial:operar`): independiente de git y 100 % local. `AlmacenHistorial` guarda por proyecto (`~/.odesk-agent/historial/<id>/`) los contenidos comprimidos y deduplicados por sha256 (`objetos/`) y un `indice/<sha1 ruta>.jsonl` por archivo; `limpiar` conserva todo 30 días, luego una por día (90 d) y una por semana (365 d), siempre la última, y recorta lo más viejo al pasar 500 MB. **Todo entra por `ServicioHistorial.registrarRuta`** (una cola por proyecto, dedup por hash, ids monótonos): editor (`GestorArchivos`, origen *usuario*, con `antes`/`después`), IA (`Nucleo.registrarArchivoTocado` → `alEscribirIA`, origen *ia*: eventos `herramienta_inicio`/`fin` de las herramientas propias y de `claude -p`), `claude` en terminales ✦ (gancho `PreToolUse`/`PostToolUse` del plugin, `agentes.ts#configGanchosHistorial` → `mcp-tareas.js hook-historial` → socket de tareas, petición `__historial`) y `VigilanteProyecto` (un `fs.watch` por carpeta, sin `node_modules`/ocultas/generadas/`.gitignore`, tope de carpetas → vigilancia «limitada»; origen *externo*, o *git* si cambió `HEAD` o hay ≥25 archivos en 1,5 s). La primera vez que se ve un archivo versionado se guarda su `HEAD` de git como *base* (así el primer cambio ya tiene diff). `shared/diff.ts` es un Myers propio (agregadas/quitadas/modificadas, bloques con contexto, `aplicarBloques` para restaurar solo algunos). Restaurar guarda antes el estado actual (red de seguridad), escribe atómico y registra una versión *restauración*. Reglas (`reglas.ts`): solo texto ≤1 MB, sin secretos (`esArchivoSensible`), binarios ni lockfiles. Cada versión lleva usuario de GitHub, cuenta y equipo (`identidad` en `main/index.ts`): el mismo usuario en varios PCs, o varias personas en uno, se distinguen. Un resumen (solo nombres, nº de versiones y fecha, nunca contenido) viaja a «Mis equipos» (`project_devices.history`). Apagable por proyecto (`historial/ajustes.json`).
+- **Distribución de las terminales por pestaña**: `layoutGuardado.ts` guarda en `localStorage` el árbol de divisiones por clave de grupo (hojas = proyecto + orden, no ids de sesión); «Reorganizar» lo olvida.
+- Eliminar un grupo exige la contraseña del usuario del sistema (`src/main/autenticacion.ts`: `sudo -S -k -v` en Linux/macOS, PowerShell en Windows); la contraseña solo viaja por stdin al proceso hijo.
+- Wayland: `--ozone-platform-hint=auto` se añade en `src/main/index.ts`; ver el README para portapapeles y escalado.
 
-Las claves de API (proveedores de IA, servidores MCP), el cliente API y el token de GitHub viajan a tus otros equipos **cifrados en tu equipo** con una frase que solo tú conoces (panel **Cuenta → Claves en la nube**). El servidor no puede leerlas. **Si olvidas la frase, lo guardado en la bóveda no se puede recuperar**: guárdala en tu gestor de contraseñas. En cada equipo nuevo: Cuenta → Desbloquear con la frase.
+## 9. Historial local de versiones
 
-## Qué se guarda en la nube y qué no
+- **Migraciones 0008 y 0009** del API (`project_devices`: archivos cambiados, actividad e historial) y reiniciar el API.
+- El historial vive en `~/.odesk-agent/historial/` (por proyecto, comprimido, con límite de 500 MB y recorte automático). **No sale del equipo**: a «Mis equipos» solo viajan nombres de archivo, número de versiones y fecha. Se puede apagar por proyecto o borrar desde Versiones → Historial local.
+- Los ganchos de `claude` en terminales ✦ funcionan con Linux/macOS; en Windows usan `cmd /c` (sin probar).
 
-| Se guarda en tu cuenta (servidor) | Cómo |
-|---|---|
-| Proyectos, grupos, agentes y skills | Solo en el servidor |
-| Tareas (de proyecto y sueltas), columnas del tablero | Copia local + sincronización |
-| Conversaciones y trazas del asistente (y sus borrados) | Copia local + sincronización |
-| Memoria, permisos, preferencias | Copia local + sincronización |
-| Comandos `/` | Solo en el servidor (tabla `commands`; migración 0006) |
-| Proveedores de IA y servidores MCP (sin claves) | Copia local + sincronización |
-| Claves de proveedores y MCP, cliente API, token de GitHub | Bóveda cifrada con tu frase (opcional) |
-
-Se sincroniza solo cada 30 segundos (y al entrar y al cerrar la app); también hay **Cuenta → Sincronizar ahora**. Si cambias lo mismo en dos equipos, gana el cambio más reciente. Sin conexión la app sigue funcionando con su copia local y sube los cambios al volver la red.
-
-**Se queda en cada equipo** (a propósito): las rutas de tus carpetas, la sesión, los worktrees, las terminales, el login de Claude Code (`~/.claude`), el uso de tokens, los informes de evals y los adjuntos.
-
-«Quitar» un proyecto solo lo suelta de ese equipo; en el servidor se conserva.

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { readdir, stat } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import {
@@ -9,6 +9,7 @@ import {
   nombreRepoValido,
   urlHttps,
   urlSsh,
+  type CodigoDispositivo,
   type EstadoGitHub,
   type Issue,
   type MetodoFusion,
@@ -22,7 +23,8 @@ import { Repositorio, type ProveedorCredenciales } from '../core/git/repositorio
 import { explicarError } from '../core/git/analisis'
 import { asegurarAskpass } from './askpass'
 import { API_GITHUB, ClienteGitHub, ErrorGitHub, aIssue, aPr, aRepo, resumirCI } from './cliente'
-import type { AlmacenToken } from './token'
+import { ErrorDispositivo, esperarToken, pedirCodigo, refrescarToken, type CodigoPedido, type ConcesionToken } from './dispositivo'
+import type { AlmacenToken, RenovacionToken, TokenGuardado } from './token'
 
 export interface DepsGitHub {
   token: AlmacenToken
@@ -38,6 +40,12 @@ export interface DepsGitHub {
   host?: string
   /** Resuelve un alias de `~/.ssh/config` al servidor real. */
   resolverHost?: (host: string) => Promise<string>
+  /** Servidor del inicio de sesión por código (OAuth); por defecto `https://<host de GitHub>`. */
+  oauth?: string
+  /** Deja una carpeta ya clonada enlazada a un proyecto que ya existe en la cuenta (escribe `.odesk/project.json` y la ruta de este equipo). */
+  vincular?(ruta: string, proyectoId: string): Promise<void>
+  /** Pausa entre consultas del inicio de sesión por código (pruebas). */
+  esperar?: (ms: number) => Promise<void>
 }
 
 const SIN_CONEXION = 'Conecta tu cuenta de GitHub primero (Versiones → GitHub).'
@@ -67,6 +75,8 @@ const textoLargo = (v: unknown, max = 60_000): string => (typeof v === 'string' 
  */
 export class ServicioGitHub {
   private readonly hosts = new Map<string, string>()
+  private dispositivo?: { codigo: CodigoPedido; clientId: string; abortar: AbortController }
+  private refrescando?: Promise<TokenGuardado | undefined>
   private readonly api: string
   private readonly hostGitHub: string
 
@@ -88,9 +98,54 @@ export class ServicioGitHub {
   }
 
   private async cliente(): Promise<ClienteGitHub> {
-    const t = await this.d.token.leer()
+    const t = await this.tokenVigente()
     if (!t) throw new Error(SIN_CONEXION)
-    return new ClienteGitHub(t.token, this.api)
+    return new ClienteGitHub(t.token, this.api, async () => (await this.tokenVigente(true))?.token)
+  }
+
+  /** Lo que se guarda de la concesión de GitHub: el token y, si caduca, con qué renovarlo y cuándo. */
+  private renovacionDe(c: ConcesionToken): RenovacionToken {
+    const ahora = Date.now()
+    return {
+      ...(c.refresh ? { refresh: c.refresh } : {}),
+      ...(c.expiraEn ? { expira: ahora + c.expiraEn * 1000 } : {}),
+      ...(c.refrescaEn ? { refrescaHasta: ahora + c.refrescaEn * 1000 } : {})
+    }
+  }
+
+  /**
+   * El token guardado, renovado si hace falta: con «Expire user access tokens» el de acceso dura 8 horas y se cambia por uno nuevo con el
+   * `refresh` (poco antes de caducar, o ya, con `forzar`, cuando GitHub respondió 401). Varias peticiones a la vez comparten una sola
+   * renovación (cada `refresh` sirve una vez). Sin red se sigue con el token que hay; si el `refresh` ya no vale, se desconecta.
+   */
+  async tokenVigente(forzar = false): Promise<TokenGuardado | undefined> {
+    const t = await this.d.token.leer()
+    if (!t?.refresh) return t
+    if (!forzar && !(t.expira !== undefined && t.expira - Date.now() < 5 * 60_000)) return t
+    this.refrescando ??= this.renovar(t).finally(() => {
+      this.refrescando = undefined
+    })
+    return this.refrescando
+  }
+
+  private async renovar(t: TokenGuardado): Promise<TokenGuardado | undefined> {
+    const clientId = await this.clientId()
+    if (!clientId || !t.refresh) return t
+    try {
+      const c = await refrescarToken(this.baseOauth, clientId, t.refresh, { ...(process.env.ODESK_GITHUB_CLIENT_SECRET ? { secreto: process.env.ODESK_GITHUB_CLIENT_SECRET } : {}) })
+      const extra = this.renovacionDe(c)
+      await this.d.token.guardar(c.token, t.usuario, extra)
+      return { token: c.token, ...(t.usuario ? { usuario: t.usuario } : {}), ...extra, persistente: t.persistente }
+    } catch (err) {
+      if (err instanceof ErrorDispositivo && err.motivo === 'expirado') {
+        // Otro equipo pudo renovar antes (cada `refresh` sirve una vez) y dejarlo en la bóveda: se mira de nuevo antes de rendirse.
+        const ahora = await this.d.token.leer()
+        if (ahora && ahora.token !== t.token) return ahora
+        await this.d.token.borrar()
+        return undefined
+      }
+      return t // sin red u otro fallo pasajero: se sigue con el token actual
+    }
   }
 
   private async repositorio(proyectoId: string): Promise<Repositorio> {
@@ -105,7 +160,7 @@ export class ServicioGitHub {
     if (!/^https:\/\//i.test(urlRemoto)) return undefined
     const a = analizarRemoto(urlRemoto)
     if (!a || a.host !== this.hostGitHub) return undefined
-    const t = await this.d.token.leer()
+    const t = await this.tokenVigente()
     if (!t) return undefined
     return { GIT_ASKPASS: await asegurarAskpass(this.d.dirDatos), ODESK_GITHUB_TOKEN: t.token }
   }
@@ -139,15 +194,15 @@ export class ServicioGitHub {
   // ---------------------------------------------------------------- cuenta
 
   async estado(proyectoId?: string): Promise<EstadoGitHub> {
-    const t = await this.d.token.leer()
-    const base: EstadoGitHub = { conectado: Boolean(t), persistente: t?.persistente ?? false, host: this.hostGitHub, ...(t?.usuario ? { usuario: { usuario: t.usuario } } : {}) }
+    const t = await this.tokenVigente()
+    const base: EstadoGitHub = { conectado: Boolean(t), persistente: t?.persistente ?? false, host: this.hostGitHub, oauth: Boolean(await this.clientId()), ...(t?.refresh ? { renovable: true } : {}), ...(t?.usuario ? { usuario: { usuario: t.usuario } } : {}) }
     if (!proyectoId) return base
     const remoto = await this.remoto(await this.repositorio(proyectoId)).catch(() => undefined)
     if (!remoto) return base
     const e: EstadoGitHub = { ...base, remoto }
     if (t && remoto.esGitHub) {
       try {
-        e.repo = aRepo(await new ClienteGitHub(t.token, this.api).pedir('GET', `/repos/${encodeURIComponent(remoto.propietario)}/${encodeURIComponent(remoto.repo)}`))
+        e.repo = aRepo(await new ClienteGitHub(t.token, this.api, async () => (await this.tokenVigente(true))?.token).pedir('GET', `/repos/${encodeURIComponent(remoto.propietario)}/${encodeURIComponent(remoto.repo)}`))
       } catch (err) {
         e.errorRepo = (err as Error).message
       }
@@ -164,6 +219,80 @@ export class ServicioGitHub {
     return { ...(await this.estado()), usuario: { usuario: u.login, ...(u.name ? { nombre: u.name } : {}) } }
   }
 
+  // ---------------------------------------------------------------- inicio de sesión con código (OAuth, flujo de dispositivo)
+
+  private get archivoOauth(): string {
+    return join(this.d.dirDatos, 'github-oauth.json')
+  }
+
+  /** Client ID de la OAuth App: variable de entorno o lo guardado desde la interfaz. No es un secreto. */
+  private async clientId(): Promise<string | undefined> {
+    const env = process.env.ODESK_GITHUB_CLIENT_ID?.trim()
+    if (env) return env
+    try {
+      const j = JSON.parse(await readFile(this.archivoOauth, 'utf8')) as { clientId?: unknown }
+      return typeof j.clientId === 'string' && j.clientId ? j.clientId : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  async configurarOauth(clientId: unknown): Promise<EstadoGitHub> {
+    const id = typeof clientId === 'string' ? clientId.trim() : ''
+    if (id === '') {
+      await rm(this.archivoOauth, { force: true })
+      return this.estado()
+    }
+    if (!/^[\w.-]{8,60}$/.test(id)) throw new Error('El Client ID no es válido: es el texto de la página de tu OAuth App (por ejemplo «Iv1.abc123…» o «Ov23li…»).')
+    await mkdir(this.d.dirDatos, { recursive: true })
+    const tmp = `${this.archivoOauth}.${process.pid}.tmp`
+    await writeFile(tmp, JSON.stringify({ clientId: id }), { mode: 0o600 })
+    await rename(tmp, this.archivoOauth)
+    return this.estado()
+  }
+
+  private get baseOauth(): string {
+    return this.d.oauth ?? process.env.ODESK_GITHUB_OAUTH ?? `https://${this.hostGitHub}`
+  }
+
+  async dispositivoIniciar(): Promise<CodigoDispositivo> {
+    const clientId = await this.clientId()
+    if (!clientId) throw new Error('Falta el Client ID de una OAuth App de GitHub. Configúralo primero (o conecta con un token).')
+    this.dispositivoCancelar()
+    let codigo: CodigoPedido
+    try {
+      codigo = await pedirCodigo(this.baseOauth, clientId)
+    } catch (err) {
+      if (err instanceof ErrorDispositivo) throw new Error(err.message, { cause: err })
+      throw err
+    }
+    this.dispositivo = { codigo, clientId, abortar: new AbortController() }
+    return { codigoUsuario: codigo.codigoUsuario, urlVerificacion: codigo.urlVerificacion, expiraEn: codigo.expiraEn }
+  }
+
+  async dispositivoEsperar(): Promise<EstadoGitHub> {
+    const d = this.dispositivo
+    if (!d) throw new Error('No hay un inicio de sesión en curso: pide el código primero.')
+    try {
+      const concesion = await esperarToken(this.baseOauth, d.clientId, d.codigo, { señal: d.abortar.signal, ...(this.d.esperar ? { esperar: this.d.esperar } : {}) })
+      const u = await new ClienteGitHub(concesion.token, this.api).pedir<{ login?: string; name?: string }>('GET', '/user')
+      if (!u?.login) throw new Error('GitHub no devolvió el usuario de esa autorización.')
+      await this.d.token.guardar(concesion.token, u.login, this.renovacionDe(concesion))
+      return { ...(await this.estado()), usuario: { usuario: u.login, ...(u.name ? { nombre: u.name } : {}) } }
+    } catch (err) {
+      if (err instanceof ErrorDispositivo) throw new Error(err.message, { cause: err })
+      throw err
+    } finally {
+      if (this.dispositivo === d) this.dispositivo = undefined
+    }
+  }
+
+  dispositivoCancelar(): { ok: true } {
+    this.dispositivo?.abortar.abort()
+    this.dispositivo = undefined
+    return { ok: true }
+  }
+
   async desconectar(): Promise<EstadoGitHub> {
     await this.d.token.borrar()
     return this.estado()
@@ -178,7 +307,8 @@ export class ServicioGitHub {
     return lista.map(aRepo).filter((r) => !t || r.completo.toLowerCase().includes(t) || r.descripcion.toLowerCase().includes(t))
   }
 
-  async clonar(entrada: { repo: unknown; carpetaPadre: unknown; protocolo?: unknown; grupoId?: unknown }): Promise<{ proyectoId: string; ruta: string }> {
+  /** Clona en `<carpetaPadre>/<nombre del repo>` y devuelve la carpeta y el nombre; no registra ningún proyecto. */
+  private async clonarEnCarpeta(entrada: { repo: unknown; carpetaPadre: unknown; protocolo?: unknown }): Promise<{ destino: string; nombre: string }> {
     const escrito = sinSalto(entrada.repo, 'el repositorio', 500)
     const local = /^(file:\/\/|\/|[a-zA-Z]:[\\/])/.test(escrito) // un repositorio de esta misma máquina
     const a = local ? undefined : analizarRepoEscrito(escrito)
@@ -200,8 +330,34 @@ export class ServicioGitHub {
     const r = await git(padre, ['clone', '--', url, destino], { timeoutMs: 15 * 60_000, env })
     if (r.sinGit) throw new Error('Git no está instalado o no está en el PATH.')
     if (!r.ok) throw new Error(explicarError(r.stderr, 'clone'))
+    return { destino, nombre }
+  }
+
+  async clonar(entrada: { repo: unknown; carpetaPadre: unknown; protocolo?: unknown; grupoId?: unknown }): Promise<{ proyectoId: string; ruta: string }> {
+    const { destino, nombre } = await this.clonarEnCarpeta(entrada)
     const p = await this.d.agregarProyecto(destino, nombre, typeof entrada.grupoId === 'string' && entrada.grupoId ? entrada.grupoId : undefined)
     return { proyectoId: p.id, ruta: destino }
+  }
+
+  /**
+   * El remoto de un proyecto como lo guardó el equipo que lo creó puede ser un alias de SSH que aquí no existe (`git@github-trabajo:x/y`):
+   * si es GitHub (o un alias sin resolver, sin punto), se clona por `propietario/repo` con el protocolo elegido; el resto, tal cual.
+   */
+  async repoParaClonar(repo: string): Promise<string> {
+    const a = analizarRemoto(repo)
+    if (!a) return repo
+    const host = await this.hostReal(a.host)
+    return host === this.hostGitHub || !host.includes('.') ? `${a.propietario}/${a.repo}` : repo
+  }
+
+  /** Clona el repositorio de un proyecto que ya está en la cuenta y lo enlaza a ese mismo proyecto (no crea uno nuevo). */
+  async clonarProyecto(entrada: { proyectoId: unknown; repo: unknown; carpetaPadre: unknown; protocolo?: unknown }): Promise<{ ruta: string }> {
+    const id = sinSalto(entrada.proyectoId, 'el proyecto', 80)
+    if (!this.d.vincular) throw new Error('Este equipo no puede enlazar proyectos de la cuenta.')
+    const repo = await this.repoParaClonar(sinSalto(entrada.repo, 'el repositorio', 500))
+    const { destino } = await this.clonarEnCarpeta({ repo, carpetaPadre: entrada.carpetaPadre, protocolo: entrada.protocolo })
+    await this.d.vincular(destino, id)
+    return { ruta: destino }
   }
 
   async crearRepo(entrada: { proyectoId: string; nombre: unknown; descripcion?: unknown; privado?: unknown; organizacion?: unknown; protocolo?: unknown }): Promise<EstadoGitHub> {
