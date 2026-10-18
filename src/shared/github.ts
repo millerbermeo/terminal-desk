@@ -18,6 +18,14 @@ export interface RemotoGitHub {
 export interface RepoGitHub {
   id: number
   nombre: string
+  /** Usuario u organización dueña. */
+  propietario: string
+  lenguaje?: string
+  estrellas: number
+  forks: number
+  incidenciasAbiertas: number
+  fork: boolean
+  archivado: boolean
   /** `propietario/repo`. */
   completo: string
   descripcion: string
@@ -27,6 +35,89 @@ export interface RepoGitHub {
   urlSsh: string
   ramaPorDefecto: string
   actualizado: string
+}
+
+/** Perfil público de la cuenta conectada (lo que GitHub devuelve de `/user`). */
+export interface PerfilGitHub {
+  usuario: string
+  nombre?: string
+  avatar: string
+  correo?: string
+  bio?: string
+  empresa?: string
+  ubicacion?: string
+  sitio?: string
+  /** Página del perfil en GitHub. */
+  url: string
+  seguidores: number
+  siguiendo: number
+  reposPublicos: number
+  /** Solo lo informa GitHub con permisos de repositorios privados. */
+  reposPrivados?: number
+  /** ISO 8601: cuándo se creó la cuenta. */
+  creada: string
+  /** `User` u `Organization` (la cuenta de un token siempre es de usuario). */
+  tipoCuenta: string
+}
+
+/** Cómo está conectada la cuenta: método, permisos del token, caducidad y cuántas peticiones quedan. Nunca incluye el token. */
+export interface ConexionGitHub {
+  /** oauth: inicio de sesión por código · token-clasico (ghp_) · token-fino (github_pat_) · app (ghu_) · desconocido. */
+  metodo: 'oauth' | 'token-clasico' | 'token-fino' | 'app' | 'desconocido'
+  host: string
+  persistente: boolean
+  /** La sesión se renueva sola. */
+  renovable: boolean
+  /** ISO 8601: cuándo caduca el token de acceso y, si se renueva, el refresh. */
+  expira?: string
+  refrescaHasta?: string
+  /** Permisos del token (`repo`, `workflow`…). `null` si GitHub no los informa (tokens de acceso fino). */
+  permisos: string[] | null
+  limite?: { restantes: number; total: number; reinicia: string }
+  /** Hay un Client ID de OAuth configurado. */
+  oauth: boolean
+}
+
+export interface CuentaGitHub {
+  perfil: PerfilGitHub
+  conexion: ConexionGitHub
+}
+
+export interface OrgGitHub {
+  login: string
+  descripcion?: string
+  avatar: string
+  url: string
+}
+
+/** Un pull request o una incidencia de la lista de pendientes de la cuenta. */
+export interface ItemActividad {
+  numero: number
+  titulo: string
+  /** `propietario/repo`. */
+  repo: string
+  url: string
+  actualizada: string
+  borrador: boolean
+  comentarios: number
+  etiquetas: string[]
+}
+
+export interface ActividadGitHub {
+  /** Tus pull requests abiertos. */
+  misPrs: ItemActividad[]
+  /** Pull requests donde te piden revisión. */
+  revisiones: ItemActividad[]
+  /** Incidencias abiertas asignadas a ti. */
+  incidencias: ItemActividad[]
+}
+
+/** Un repositorio de GitHub que ya está en este equipo como proyecto. */
+export interface RepoLocal {
+  /** `propietario/repo` en minúsculas (comparar con `RepoGitHub.completo.toLowerCase()`). */
+  completo: string
+  proyectoId: string
+  proyecto: string
 }
 
 export interface UsuarioGitHub {
@@ -116,7 +207,15 @@ export interface OperacionesGitHub {
   dispositivoEsperar: { entrada: Record<string, never>; salida: EstadoGitHub }
   dispositivoCancelar: { entrada: Record<string, never>; salida: { ok: true } }
   desconectar: { entrada: Record<string, never>; salida: EstadoGitHub }
-  repos: { entrada: { texto?: string }; salida: RepoGitHub[] }
+  /** Tus repositorios (100 por página, los más recientes primero). */
+  repos: { entrada: { texto?: string; pagina?: number }; salida: RepoGitHub[] }
+  /** Perfil, método de conexión, permisos del token, caducidad y límite de peticiones de la cuenta conectada. */
+  cuenta: { entrada: Record<string, never>; salida: CuentaGitHub }
+  orgs: { entrada: Record<string, never>; salida: OrgGitHub[] }
+  /** Lo pendiente en tu cuenta: tus pull requests abiertos, revisiones que te piden e incidencias asignadas. */
+  actividad: { entrada: Record<string, never>; salida: ActividadGitHub }
+  /** Qué repositorios de GitHub ya están en este equipo como proyecto (por el remoto de cada carpeta). */
+  reposLocales: { entrada: Record<string, never>; salida: RepoLocal[] }
   /** Clona un repositorio (URL o `propietario/repo`) en una carpeta y lo agrega como proyecto. */
   clonar: { entrada: { repo: string; carpetaPadre: string; protocolo?: 'https' | 'ssh'; grupoId?: string }; salida: { proyectoId: string; ruta: string } }
   /** Crea el repositorio en GitHub, lo enlaza como `origin` y envía la rama actual. */

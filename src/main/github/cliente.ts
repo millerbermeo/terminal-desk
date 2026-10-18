@@ -1,4 +1,4 @@
-import type { CheckCI, Issue, PullRequest, RepoGitHub, ResumenCI } from '@shared/github'
+import type { CheckCI, ConexionGitHub, Issue, ItemActividad, OrgGitHub, PerfilGitHub, PullRequest, RepoGitHub, ResumenCI } from '@shared/github'
 
 export const API_GITHUB = 'https://api.github.com'
 
@@ -51,7 +51,7 @@ export class ClienteGitHub {
     private readonly renovar?: () => Promise<string | undefined>
   ) {}
 
-  async pedir<T>(metodo: 'GET' | 'POST' | 'PUT' | 'PATCH', ruta: string, o: { cuerpo?: unknown; consulta?: Record<string, string | number | undefined> } = {}, reintento = false): Promise<T> {
+  async pedir<T>(metodo: 'GET' | 'POST' | 'PUT' | 'PATCH', ruta: string, o: { cuerpo?: unknown; consulta?: Record<string, string | number | undefined>; cabeceras?: (h: Headers) => void } = {}, reintento = false): Promise<T> {
     const url = new URL(this.base.replace(/\/$/, '') + ruta)
     for (const [k, v] of Object.entries(o.consulta ?? {})) if (v !== undefined) url.searchParams.set(k, String(v))
     let r: Response
@@ -89,6 +89,7 @@ export class ClienteGitHub {
       }
     }
     if (!r.ok) throw new ErrorGitHub(explicarErrorGitHub(r.status, cuerpo, r.headers), r.status)
+    o.cabeceras?.(r.headers)
     return cuerpo as T
   }
 }
@@ -101,6 +102,13 @@ export function aRepo(j: unknown): RepoGitHub {
   return {
     id: numero(r.id),
     nombre: cadena(r.name),
+    propietario: cadena(obj(r.owner).login) || completo.split('/')[0] || '',
+    ...(cadena(r.language) ? { lenguaje: cadena(r.language) } : {}),
+    estrellas: numero(r.stargazers_count),
+    forks: numero(r.forks_count),
+    incidenciasAbiertas: numero(r.open_issues_count),
+    fork: r.fork === true,
+    archivado: r.archived === true,
     completo,
     descripcion: cadena(r.description),
     privado: r.private === true,
@@ -161,4 +169,56 @@ export function resumirCI(checkRuns: unknown, estadoCombinado: unknown): Resumen
   }
   const estado = checks.some((c) => c.estado === 'fallo') ? 'fallo' : checks.some((c) => c.estado === 'pendiente') ? 'pendiente' : checks.some((c) => c.estado === 'exito') ? 'exito' : 'ninguno'
   return { estado, checks }
+}
+
+export function aPerfil(j: unknown): PerfilGitHub {
+  const u = obj(j)
+  const texto = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
+  return {
+    usuario: cadena(u.login),
+    ...(texto(u.name) ? { nombre: texto(u.name) } : {}),
+    avatar: cadena(u.avatar_url),
+    ...(texto(u.email) ? { correo: texto(u.email) } : {}),
+    ...(texto(u.bio) ? { bio: texto(u.bio) } : {}),
+    ...(texto(u.company) ? { empresa: texto(u.company) } : {}),
+    ...(texto(u.location) ? { ubicacion: texto(u.location) } : {}),
+    ...(texto(u.blog) ? { sitio: texto(u.blog) } : {}),
+    url: cadena(u.html_url),
+    seguidores: numero(u.followers),
+    siguiendo: numero(u.following),
+    reposPublicos: numero(u.public_repos),
+    ...(typeof u.owned_private_repos === 'number' ? { reposPrivados: u.owned_private_repos } : typeof u.total_private_repos === 'number' ? { reposPrivados: u.total_private_repos } : {}),
+    creada: cadena(u.created_at),
+    tipoCuenta: cadena(u.type, 'User')
+  }
+}
+
+export function aOrg(j: unknown): OrgGitHub {
+  const o = obj(j)
+  return { login: cadena(o.login), ...(cadena(o.description) ? { descripcion: cadena(o.description) } : {}), avatar: cadena(o.avatar_url), url: `https://github.com/${cadena(o.login)}` }
+}
+
+/** Un resultado de la búsqueda de GitHub (`/search/issues`) como elemento de la lista de pendientes. */
+export function aItemActividad(j: unknown): ItemActividad {
+  const i = obj(j)
+  const repo = cadena(i.repository_url).replace(/^.*\/repos\//, '')
+  return {
+    numero: numero(i.number),
+    titulo: cadena(i.title),
+    repo,
+    url: cadena(i.html_url),
+    actualizada: cadena(i.updated_at),
+    borrador: i.draft === true,
+    comentarios: numero(i.comments),
+    etiquetas: (Array.isArray(i.labels) ? i.labels : []).map((l) => (typeof l === 'string' ? l : cadena(obj(l).name))).filter(Boolean)
+  }
+}
+
+/** El método de conexión según el prefijo del token (los de GitHub son reconocibles); el token en sí nunca sale de aquí. */
+export function metodoDeToken(token: string): ConexionGitHub['metodo'] {
+  if (token.startsWith('gho_')) return 'oauth'
+  if (token.startsWith('ghp_')) return 'token-clasico'
+  if (token.startsWith('github_pat_')) return 'token-fino'
+  if (token.startsWith('ghu_')) return 'app'
+  return 'desconocido'
 }
