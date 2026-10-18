@@ -52,7 +52,7 @@ export function ComandosAgente({ proyectoId, visible = true }: Props) {
   const fila = (x: ComandoUsuario, ambito: string | undefined, editable: boolean) => (
     <div className="cfg-proyecto" key={`${ambito ?? 'g'}-${x.nombre}`}>
       <strong>/{x.nombre}</strong>
-      <span className="chip">{x.tipo}</span>
+      <span className={`chip ${x.tipo === 'prompt' ? 'chip-ok' : ''}`} title={x.tipo === 'prompt' ? 'Lo resuelve la IA' : 'Ejecuta un programa, sin IA'}>{x.tipo === 'prompt' ? 'prompt · IA' : 'manual'}</span>
       {x.permitido && <span className="chip chip-ok" title="Se ejecuta sin pedir confirmación">permitido</span>}
       <code title={x.tipo === 'prompt' ? x.plantilla : lineaDe(x)}>{x.descripcion}</code>
       {editable && (
@@ -67,13 +67,13 @@ export function ComandosAgente({ proyectoId, visible = true }: Props) {
   return (
     <div className="permisos">
       <p className="cfg-intro">
-        Escríbelos en el chat como <code>/nombre</code>. Un comando <strong>ejecutable</strong> lanza un programa fijo (sin shell) y su salida se muestra en el chat; el agente la ve en tu siguiente
-        mensaje. Uno de <strong>prompt</strong> se convierte en una petición al agente (<code>$ARGUMENTOS</code> se sustituye por lo que escribas detrás). Los ejecutables piden confirmación salvo que los
-        marques como «permitidos»; los destructivos (<code>rm</code>, <code>git push</code>…) siempre la piden.
+        Escríbelos en el chat como <code>/nombre</code>. Hay dos tipos. Un comando <strong>manual</strong> hace una tarea por ti, sin IA: lanza un programa fijo (sin shell), como <code>pnpm test</code>, y su
+        salida se muestra en el chat (la IA la ve en tu siguiente mensaje). Uno de <strong>prompt</strong> es una petición reutilizable para la IA (<code>$ARGUMENTOS</code> se sustituye por lo que escribas
+        detrás). Los manuales piden confirmación salvo que los marques como «permitidos»; los destructivos (<code>rm</code>, <code>git push</code>…) siempre la piden.
       </p>
       <section className="cfg-grupo">
         <div className="cfg-grupo-cab"><h3>{proyectoId ? 'Comandos de este proyecto' : 'Comandos globales'}</h3></div>
-        {propios.length === 0 && <EstadoVacio variante="compacto" icono={<IconoRayo />} titulo="Aún no hay comandos" texto="Crea atajos que se escriben con / en el chat: una petición reutilizable o un programa fijo." />}
+        {propios.length === 0 && <EstadoVacio variante="compacto" icono={<IconoRayo />} titulo="Aún no hay comandos" texto="Crea atajos que se escriben con / en el chat: manuales (ejecutan una tarea, sin IA) o prompts (una petición para la IA)." />}
         {propios.map((x) => fila(x, proyectoId, true))}
       </section>
       {proyectoId && globales.length > 0 && (
@@ -91,8 +91,8 @@ export function ComandosAgente({ proyectoId, visible = true }: Props) {
           <div className="ag-opciones">
             <input placeholder="nombre (sin /)" value={c.nombre} onChange={(e) => setC({ ...c, nombre: e.target.value.toLowerCase() })} style={{ maxWidth: 180 }} />
             <select value={c.tipo} onChange={(e) => setC({ ...c, tipo: e.target.value as ComandoUsuario['tipo'] })} aria-label="Tipo">
-              <option value="ejecutable">Ejecutable (programa fijo)</option>
-              <option value="prompt">Prompt (petición al agente)</option>
+              <option value="ejecutable">Manual (ejecuta una tarea, sin IA)</option>
+              <option value="prompt">Prompt (petición para la IA)</option>
             </select>
             <input placeholder="Descripción" value={c.descripcion} onChange={(e) => setC({ ...c, descripcion: e.target.value })} />
           </div>
