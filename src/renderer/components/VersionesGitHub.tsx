@@ -4,7 +4,7 @@ import { fechaRelativa } from '@shared/versiones'
 import { mensajeDe } from '../tareas/useTareas'
 import { git, type ContextoGit } from '../versiones/useGit'
 import { EstadoVacio } from './EstadoVacio'
-import { GitHubOauth } from './GitHubOauth'
+import { ConectarGitHub } from './ConectarGitHub'
 import { IconoGlobo, IconoMas, IconoRama } from './Iconos'
 import { ModalConfirmar } from './ModalConfirmar'
 import { ModalFormulario } from './ModalFormulario'
@@ -102,8 +102,9 @@ export function VersionesGitHub({ c }: { c: ContextoGit }) {
         <section className="cfg-grupo" style={{ maxWidth: 620, margin: '0 auto' }}>
           <div className="vc-form">
             {fallo && <p className="vc-nota error" role="alert">{fallo}</p>}
-            <GitHubOauth
+            <ConectarGitHub
               gha={gha}
+              bloqueado={bloqueado}
               onError={setFallo}
               onEstado={(e, conectado) => {
                 setGha(e)
@@ -113,35 +114,6 @@ export function VersionesGitHub({ c }: { c: ContextoGit }) {
                 }
               }}
             />
-            <p className="oa-o">o con un token</p>
-            <ol className="gh-pasos">
-              <li>
-                Crea un token en GitHub (se abre con los permisos <code>repo</code> y <code>workflow</code> ya marcados).
-                <div>
-                  <button onClick={() => abrir(URL_CREAR_TOKEN)}>Crear token en GitHub ↗</button>
-                </div>
-              </li>
-              <li>Pulsa «Generate token» en GitHub, copia el token y pégalo aquí.</li>
-            </ol>
-            <form
-              className="td-fila"
-              onSubmit={(e) => {
-                e.preventDefault()
-                void run('Conectando…', () => gh('conectar', { token })).then((r) => {
-                  if (!r) return
-                  setGha(r)
-                  setToken('')
-                  avisar(`Conectado como ${r.usuario?.usuario ?? 'tu cuenta'}.`)
-                  actualizar()
-                })
-              }}
-            >
-              <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="ghp_… o github_pat_…" autoComplete="off" spellCheck={false} aria-label="Token de GitHub" />
-              <button className="primario" type="submit" disabled={bloqueado || !token.trim()}>
-                Conectar
-              </button>
-            </form>
-            <p className="vc-nota">El token se guarda cifrado con el llavero de tu sistema y no sale de esta máquina salvo hacia GitHub. Puedes revocarlo cuando quieras en GitHub → Settings → Tokens.</p>
           </div>
         </section>
       </div>

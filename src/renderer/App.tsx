@@ -13,6 +13,7 @@ import { Navegador } from './components/Navegador'
 import { ModalSolicitudGlobal } from './components/ModalSolicitud'
 import { escucharSolicitudes, useSolicitudes } from './agente/solicitudes'
 import { ConfigAgentes } from './components/ConfigAgentes'
+import { GitHubCuenta } from './components/GitHubCuenta'
 import { ConfigProveedores } from './components/ConfigProveedores'
 import { ConfigProyectos } from './components/ConfigProyectos'
 import { ModalAgregar } from './components/ModalAgregar'
@@ -419,6 +420,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
       )}
       {vista === 'config' && <ConfigProyectos datos={datos} onDatos={setDatos} />}
       {vista === 'agentes' && <ConfigAgentes datos={datos} biblioteca={biblioteca} onBiblioteca={setBiblioteca} />}
+      {vista === 'github' && <GitHubCuenta datos={datos} onDatos={setDatos} />}
       {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}
       <Asistente datos={datos} visible={vista === 'asistente'} />
       <Tareas datos={datos} visible={vista === 'tareas'} />

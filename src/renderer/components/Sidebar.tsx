@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { trabajandoAhora, type AvisoEquipo, type PendienteClonar } from '@shared/equipos'
 import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
 import logo from '../assets/logo.png'
-import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoBuscar, IconoGlobo, IconoLibro, IconoMas, IconoNube, IconoPanelLateral, IconoRama, IconoTareas, IconoUsuario } from './Iconos'
+import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoBuscar, IconoGitHub, IconoGlobo, IconoLibro, IconoMas, IconoNube, IconoPanelLateral, IconoRama, IconoTareas, IconoUsuario } from './Iconos'
 
 interface Props {
   datos: DatosProyectos
@@ -55,6 +55,7 @@ const NAV: { grupo: string; items: ItemNav[] }[] = [
   {
     grupo: 'Ajustes',
     items: [
+      { vista: 'github', icono: <IconoGitHub />, texto: 'GitHub', titulo: 'Tu cuenta de GitHub: perfil, permisos, organizaciones, repositorios y lo pendiente' },
       { vista: 'agentes', icono: <IconoAgente />, texto: 'Agentes y skills' },
       { vista: 'proveedores', icono: <IconoChispa />, texto: 'Proveedores de IA' },
       { vista: 'config', icono: <IconoEngranaje />, texto: 'Configurar proyectos' },
@@ -94,7 +95,7 @@ function useBarraCompacta(): [boolean, boolean, () => void] {
   return [manual || estrecho, estrecho, alternar]
 }
 
-export type Vista = 'terminales' | 'config' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones' | 'api' | 'navegador' | 'guia'
+export type Vista = 'terminales' | 'config' | 'github' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones' | 'api' | 'navegador' | 'guia'
 
 interface MenuIA {
   proyecto: Proyecto

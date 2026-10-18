@@ -164,6 +164,7 @@ export class Nucleo {
       carpetaDe: carpetaDeProyecto,
       agregarProyecto: registrarProyecto,
       vincular: vincularCarpetaAProyecto,
+      proyectos: async () => (await leerProyectos()).proyectos.map((p) => ({ id: p.id, nombre: p.nombre })),
       dirDatos: DIR
     })
     // Todas las herramientas de la aplicación (tareas, git y GitHub) salen de un único ejecutor: el registro del núcleo las usa en modo

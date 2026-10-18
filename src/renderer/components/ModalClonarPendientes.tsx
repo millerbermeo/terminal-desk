@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { PendienteClonar } from '@shared/equipos'
+import { leerPreferencias } from '../github/preferencias'
 import { mensajeDe } from '../tareas/useTareas'
 import { IconoCarpeta } from './Iconos'
 import { confirmar } from '../confirmar'
@@ -35,7 +36,7 @@ const leerPadre = (): string => {
 export function ModalClonarPendientes({ pendientes, inicial, onCerrar, onTerminado }: Props) {
   const [marcados, setMarcados] = useState<Set<string>>(() => new Set(inicial ? [inicial] : pendientes.map((p) => p.id)))
   const [carpeta, setCarpeta] = useState(leerPadre)
-  const [protocolo, setProtocolo] = useState<'https' | 'ssh'>('https')
+  const [protocolo, setProtocolo] = useState<'https' | 'ssh'>(() => leerPreferencias().protocolo)
   const [estados, setEstados] = useState<Record<string, Estado>>({})
   const [trabajando, setTrabajando] = useState(false)
   const [terminado, setTerminado] = useState(false)

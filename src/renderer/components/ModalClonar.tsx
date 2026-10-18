@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { DatosProyectos } from '@shared/modelos'
 import type { RepoGitHub } from '@shared/github'
 import { mensajeDe } from '../tareas/useTareas'
+import { leerPreferencias } from '../github/preferencias'
 import { IconoCarpeta } from './Iconos'
 
 interface Props {
@@ -10,16 +11,19 @@ interface Props {
   onCerrar: () => void
   /** Se clonó y se registró como proyecto. */
   onClonado: (proyectoId: string) => void
+  /** Repositorio con el que se abre (`propietario/repo`). */
+  repoInicial?: string
 }
 
 const gh = window.api.github.operar
 
 /** Clona un repositorio (de tu cuenta de GitHub, o por URL / propietario/repo) en una carpeta y lo agrega como proyecto. */
-export function ModalClonar({ datos, conectado, onCerrar, onClonado }: Props) {
-  const [repo, setRepo] = useState('')
-  const [carpeta, setCarpeta] = useState('')
-  const [protocolo, setProtocolo] = useState<'https' | 'ssh'>('https')
-  const [grupo, setGrupo] = useState('')
+export function ModalClonar({ datos, conectado, onCerrar, onClonado, repoInicial }: Props) {
+  const pref = leerPreferencias() // protocolo, carpeta y grupo elegidos en la sección GitHub
+  const [repo, setRepo] = useState(repoInicial ?? '')
+  const [carpeta, setCarpeta] = useState(pref.carpeta)
+  const [protocolo, setProtocolo] = useState<'https' | 'ssh'>(pref.protocolo)
+  const [grupo, setGrupo] = useState(datos.grupos.some((g) => g.id === pref.grupo) ? pref.grupo : '')
   const [repos, setRepos] = useState<RepoGitHub[] | null>(null)
   const [error, setError] = useState('')
   const [clonando, setClonando] = useState(false)
@@ -55,6 +59,11 @@ export function ModalClonar({ datos, conectado, onCerrar, onClonado }: Props) {
     setError('')
     try {
       const r = await gh('clonar', { repo, carpetaPadre: carpeta, protocolo, ...(grupo ? { grupoId: grupo } : {}) })
+      try {
+        localStorage.setItem('odesk.clonar.padre', carpeta.trim()) // la próxima vez ya está puesta
+      } catch {
+        // sin almacenamiento
+      }
       onClonado(r.proyectoId)
       onCerrar()
     } catch (e) {

@@ -9,7 +9,11 @@ import {
   nombreRepoValido,
   urlHttps,
   urlSsh,
+  type ActividadGitHub,
   type CodigoDispositivo,
+  type CuentaGitHub,
+  type OrgGitHub,
+  type RepoLocal,
   type EstadoGitHub,
   type Issue,
   type MetodoFusion,
@@ -22,7 +26,7 @@ import { git } from '../core/git/git'
 import { Repositorio, type ProveedorCredenciales } from '../core/git/repositorio'
 import { explicarError } from '../core/git/analisis'
 import { asegurarAskpass } from './askpass'
-import { API_GITHUB, ClienteGitHub, ErrorGitHub, aIssue, aPr, aRepo, resumirCI } from './cliente'
+import { API_GITHUB, ClienteGitHub, ErrorGitHub, aIssue, aItemActividad, aOrg, aPerfil, aPr, aRepo, metodoDeToken, resumirCI } from './cliente'
 import { ErrorDispositivo, esperarToken, pedirCodigo, refrescarToken, type CodigoPedido, type ConcesionToken } from './dispositivo'
 import type { AlmacenToken, RenovacionToken, TokenGuardado } from './token'
 
@@ -44,6 +48,8 @@ export interface DepsGitHub {
   oauth?: string
   /** Deja una carpeta ya clonada enlazada a un proyecto que ya existe en la cuenta (escribe `.odesk/project.json` y la ruta de este equipo). */
   vincular?(ruta: string, proyectoId: string): Promise<void>
+  /** Proyectos de este equipo (para saber cuáles de tus repositorios de GitHub ya están aquí). */
+  proyectos?(): Promise<{ id: string; nombre: string }[]>
   /** Pausa entre consultas del inicio de sesión por código (pruebas). */
   esperar?: (ms: number) => Promise<void>
 }
@@ -75,6 +81,7 @@ const textoLargo = (v: unknown, max = 60_000): string => (typeof v === 'string' 
  */
 export class ServicioGitHub {
   private readonly hosts = new Map<string, string>()
+  private locales?: { hasta: number; lista: RepoLocal[] }
   private dispositivo?: { codigo: CodigoPedido; clientId: string; abortar: AbortController }
   private refrescando?: Promise<TokenGuardado | undefined>
   private readonly api: string
@@ -294,15 +301,17 @@ export class ServicioGitHub {
   }
 
   async desconectar(): Promise<EstadoGitHub> {
+    this.locales = undefined
     await this.d.token.borrar()
     return this.estado()
   }
 
   // ---------------------------------------------------------------- repositorios
 
-  async repos(texto?: string): Promise<RepoGitHub[]> {
+  async repos(texto?: string, pagina?: unknown): Promise<RepoGitHub[]> {
     const c = await this.cliente()
-    const lista = await c.pedir<unknown[]>('GET', '/user/repos', { consulta: { sort: 'pushed', per_page: 100, affiliation: 'owner,collaborator,organization_member' } })
+    const n = Number.isInteger(pagina) && (pagina as number) >= 1 && (pagina as number) <= 50 ? (pagina as number) : 1
+    const lista = await c.pedir<unknown[]>('GET', '/user/repos', { consulta: { sort: 'pushed', per_page: 100, page: n, affiliation: 'owner,collaborator,organization_member' } })
     const t = (texto ?? '').trim().toLowerCase()
     return lista.map(aRepo).filter((r) => !t || r.completo.toLowerCase().includes(t) || r.descripcion.toLowerCase().includes(t))
   }
@@ -333,8 +342,81 @@ export class ServicioGitHub {
     return { destino, nombre }
   }
 
+  // ---------------------------------------------------------------- la cuenta conectada
+
+  /** Perfil, cómo está conectada (método, permisos, caducidad) y cuántas peticiones quedan. */
+  async cuenta(): Promise<CuentaGitHub> {
+    const c = await this.cliente()
+    let permisos: string[] | null = null
+    const u = await c.pedir<unknown>('GET', '/user', {
+      cabeceras: (h) => {
+        const x = h.get('x-oauth-scopes') // los tokens de acceso fino no informan permisos
+        permisos = x === null ? null : x.split(',').map((p) => p.trim()).filter(Boolean)
+      }
+    })
+    const t = await this.tokenVigente()
+    const limite = await c
+      .pedir<{ resources?: { core?: { limit?: number; remaining?: number; reset?: number } } }>('GET', '/rate_limit')
+      .then((r) => r?.resources?.core)
+      .catch(() => undefined)
+    return {
+      perfil: aPerfil(u),
+      conexion: {
+        metodo: t ? metodoDeToken(t.token) : 'desconocido',
+        host: this.hostGitHub,
+        persistente: t?.persistente ?? false,
+        renovable: Boolean(t?.refresh),
+        ...(t?.expira ? { expira: new Date(t.expira).toISOString() } : {}),
+        ...(t?.refrescaHasta ? { refrescaHasta: new Date(t.refrescaHasta).toISOString() } : {}),
+        permisos,
+        ...(limite && typeof limite.limit === 'number' && typeof limite.remaining === 'number' && typeof limite.reset === 'number'
+          ? { limite: { restantes: limite.remaining, total: limite.limit, reinicia: new Date(limite.reset * 1000).toISOString() } }
+          : {}),
+        oauth: Boolean(await this.clientId())
+      }
+    }
+  }
+
+  async orgs(): Promise<OrgGitHub[]> {
+    const c = await this.cliente()
+    return (await c.pedir<unknown[]>('GET', '/user/orgs', { consulta: { per_page: 100 } })).map(aOrg)
+  }
+
+  /** Lo pendiente en la cuenta: tus pull requests abiertos, revisiones que te piden e incidencias asignadas (búsqueda de GitHub). */
+  async actividad(): Promise<ActividadGitHub> {
+    const c = await this.cliente()
+    const buscar = async (q: string): Promise<ActividadGitHub['misPrs']> =>
+      (await c.pedir<{ items?: unknown[] }>('GET', '/search/issues', { consulta: { q, sort: 'updated', order: 'desc', per_page: 20 } })).items?.map(aItemActividad) ?? []
+    const [misPrs, revisiones, incidencias] = await Promise.all([
+      buscar('is:pr is:open author:@me archived:false'),
+      buscar('is:pr is:open review-requested:@me archived:false'),
+      buscar('is:issue is:open assignee:@me archived:false')
+    ])
+    return { misPrs, revisiones, incidencias }
+  }
+
+  /** Cuáles de los proyectos de este equipo son repositorios de GitHub (por el remoto de su carpeta). Se recuerda un minuto. */
+  async reposLocales(): Promise<RepoLocal[]> {
+    if (this.locales && this.locales.hasta > Date.now()) return this.locales.lista
+    const proyectos = (await this.d.proyectos?.()) ?? []
+    const encontrados = await Promise.all(
+      proyectos.map(async (p): Promise<RepoLocal | undefined> => {
+        try {
+          const remoto = await this.remoto(await this.repositorio(p.id))
+          return remoto?.esGitHub ? { completo: `${remoto.propietario}/${remoto.repo}`.toLowerCase(), proyectoId: p.id, proyecto: p.nombre } : undefined
+        } catch {
+          return undefined // la carpeta ya no existe o no es un repositorio
+        }
+      })
+    )
+    const lista = encontrados.filter((x): x is RepoLocal => x !== undefined)
+    this.locales = { hasta: Date.now() + 60_000, lista }
+    return lista
+  }
+
   async clonar(entrada: { repo: unknown; carpetaPadre: unknown; protocolo?: unknown; grupoId?: unknown }): Promise<{ proyectoId: string; ruta: string }> {
     const { destino, nombre } = await this.clonarEnCarpeta(entrada)
+    this.locales = undefined
     const p = await this.d.agregarProyecto(destino, nombre, typeof entrada.grupoId === 'string' && entrada.grupoId ? entrada.grupoId : undefined)
     return { proyectoId: p.id, ruta: destino }
   }
