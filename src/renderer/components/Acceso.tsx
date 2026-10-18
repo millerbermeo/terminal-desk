@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { servidorSeguro, type EstadoSesion, type ResultadoSesion } from '@shared/sesion'
 
 interface Props {
@@ -31,6 +31,15 @@ export function Acceso({ servidor, onEntrar, onServidor }: Props) {
   const [verPassword, setVerPassword] = useState(false)
   const [editandoServidor, setEditandoServidor] = useState(false)
   const [urlNueva, setUrlNueva] = useState(servidor)
+  const [googleListo, setGoogleListo] = useState(false)
+  useEffect(() => {
+    let vigente = true
+    setGoogleListo(false)
+    void window.api.sesion.googleDisponible().then((d) => vigente && setGoogleListo(d), () => undefined)
+    return () => {
+      vigente = false
+    }
+  }, [servidor])
 
   const ir = (m: Modo, mensaje = ''): void => {
     setModo(m)
@@ -235,7 +244,7 @@ export function Acceso({ servidor, onEntrar, onServidor }: Props) {
             {modo !== 'entrar' && <span className="ayuda">Mínimo 8 caracteres.</span>}
           </label>
         )}
-        {modo === 'entrar' && (
+        {modo === 'entrar' && googleListo && (
           <button type="button" disabled={enviando} onClick={() => void entrarConGoogle()}>
             {enviando ? 'Esperando al navegador…' : 'Continuar con Google'}
           </button>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { AvisoEquipo, PendienteClonar } from '@shared/equipos'
 import type { BibliotecaAgentes, DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
 import { EstadoVacio } from './components/EstadoVacio'
@@ -9,7 +9,6 @@ import { Tareas } from './components/Tareas'
 import { Versiones } from './components/Versiones'
 import { Api } from './components/Api'
 import { Navegador } from './components/Navegador'
-import { Documentacion } from './components/Documentacion'
 import { ModalSolicitudGlobal } from './components/ModalSolicitud'
 import { escucharSolicitudes, useSolicitudes } from './agente/solicitudes'
 import { ConfigAgentes } from './components/ConfigAgentes'
@@ -20,6 +19,8 @@ import { ModalClonarPendientes } from './components/ModalClonarPendientes'
 import { ModalConfirmar } from './components/ModalConfirmar'
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
 import { transferidas } from './components/TerminalPanel'
+
+const Documentacion = lazy(() => import('./components/Documentacion').then((m) => ({ default: m.Documentacion })))
 
 export interface TerminalInfo {
   id: string
@@ -93,6 +94,8 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   const [ventanas, setVentanas] = useState<Ventana[]>([])
   const [ventanaActiva, setVentanaActiva] = useState<string | null>(null)
   const [vista, setVista] = useState<Vista>('terminales')
+  const [guiaAbierta, setGuiaAbierta] = useState(false)
+  if (vista === 'guia' && !guiaAbierta) setGuiaAbierta(true)
   const solicitudes = useSolicitudes()
   useEffect(() => escucharSolicitudes(), [])
   const [proveedores, setProveedores] = useState<ProveedorEstado[]>([])
@@ -408,7 +411,11 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
       <Versiones datos={datos} visible={vista === 'versiones'} onDatos={setDatos} avisos={avisosEquipos} />
       <Api visible={vista === 'api'} />
       <Navegador visible={vista === 'navegador'} />
-      <Documentacion visible={vista === 'guia'} />
+      {guiaAbierta && (
+        <Suspense fallback={null}>
+          <Documentacion visible={vista === 'guia'} />
+        </Suspense>
+      )}
       {/* siempre montado (oculto en las pantallas de configuración) para no matar los procesos de las terminales */}
       <main className="principal" style={{ display: vista !== 'terminales' ? 'none' : 'flex' }}>
         <div className="ventanas" role="tablist" ref={barraPestanas}>

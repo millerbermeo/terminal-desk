@@ -81,6 +81,14 @@ describe('gancho de Claude Code (terminales ✦)', () => {
     }
   })
 
+  it('en Windows el gancho cita las variables y no se genera si una ruta lleva caracteres de cmd (& % ^ …)', () => {
+    const mcp = (cmd: string) => ({ mcpServers: { odesk: { command: cmd, args: ['C:\\app\\mcp.js'], env: { ODESK_DIR: 'C:\\Users\\Ana Perez\\.odesk', ODESK_PROYECTO_ID: PID } } } })
+    expect(comandoGancho(mcp('C:\\Program Files\\electron.exe'), 'pre', 'win32')).toBe(
+      `cmd /c "set "ODESK_DIR=C:\\Users\\Ana Perez\\.odesk"&& set "ODESK_PROYECTO_ID=${PID}"&& "C:\\Program Files\\electron.exe" "C:\\app\\mcp.js" "hook-historial" "pre""`
+    )
+    for (const malo of ['C:\\a&b\\e.exe', 'C:\\100%\\e.exe', 'C:\\a^b\\e.exe']) expect(comandoGancho(mcp(malo), 'pre', 'win32')).toBeUndefined()
+  })
+
   it.skipIf(process.platform === 'win32')('el comando del gancho se ejecuta de verdad en un shell (comillas, variables de entorno y argumentos correctos), incluso con espacios y comillas en las rutas', async () => {
     const dir = await carpeta('hg-con espacios y \'comilla\' ')
     const salida = join(dir, 'salida.json')

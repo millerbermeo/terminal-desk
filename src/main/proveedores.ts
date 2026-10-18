@@ -73,7 +73,7 @@ export async function listarProveedores(): Promise<ProveedorEstado[]> {
 }
 
 let cola: Promise<unknown> = Promise.resolve()
-function enCola<T>(fn: () => Promise<T>): Promise<T> {
+export function enCola<T>(fn: () => Promise<T>): Promise<T> {
   const p = cola.then(fn, fn)
   cola = p.catch(() => undefined)
   return p

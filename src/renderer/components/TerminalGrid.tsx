@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoCarpeta, IconoCerrar, IconoChispa, IconoTerminal } from './Iconos'
 import { ChatAgente } from './ChatAgente'
 import { TerminalPanel } from './TerminalPanel'
 import { useAgente } from '../agente/useAgente'
-import { PanelArchivos } from '../editor/PanelArchivos'
 import type { TerminalInfo } from '../App'
+
+const PanelArchivos = lazy(() => import('../editor/PanelArchivos').then((m) => ({ default: m.PanelArchivos })))
 import {
   calcular,
   conRazon,
@@ -233,7 +234,9 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveL
               )}
               {t.proyectoId && montados.has(`${t.id}:archivos`) && (
                 <div className="panel-archivos" style={{ display: t.vista === 'archivos' ? 'flex' : 'none' }}>
-                  <PanelArchivos proyectoId={t.proyectoId} nombre={t.titulo.split(' · ')[0] ?? t.titulo} visible={visible && t.vista === 'archivos'} />
+                  <Suspense fallback={null}>
+                    <PanelArchivos proyectoId={t.proyectoId} nombre={t.titulo.split(' · ')[0] ?? t.titulo} visible={visible && t.vista === 'archivos'} />
+                  </Suspense>
                 </div>
               )}
               {t.proyectoId && montados.has(`${t.id}:asistente`) && (

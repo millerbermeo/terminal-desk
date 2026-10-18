@@ -119,8 +119,11 @@ const esClaude = (comando: string): boolean => {
   return bin === 'claude' || bin === 'claude.exe' || bin === 'claude.cmd'
 }
 
-const citar = (ruta: string): string =>
-  process.platform === 'win32' ? `"${ruta}"` : `'${ruta.replace(/'/g, `'\\''`)}'`
+const citar = (ruta: string, plataforma: NodeJS.Platform = process.platform): string =>
+  plataforma === 'win32' ? `"${ruta}"` : `'${ruta.replace(/'/g, `'\\''`)}'`
+
+/** Caracteres que `cmd` interpreta aun entre comillas (o que no se pueden escapar con fiabilidad dentro de `cmd /c "…"`). */
+const PELIGROSO_EN_CMD = /[&|<>^%"!\r\n]/
 
 /** Herramientas de Claude Code que escriben archivos (las que el historial local quiere ver). */
 const HERRAMIENTAS_QUE_ESCRIBEN = 'Write|Edit|MultiEdit|NotebookEdit'
@@ -129,13 +132,22 @@ const HERRAMIENTAS_QUE_ESCRIBEN = 'Write|Edit|MultiEdit|NotebookEdit'
  * Cómo lanza Claude Code el gancho del historial: el mismo programa que el servidor MCP (el propio Electron como Node) en modo
  * `hook-historial`, con el proyecto y la carpeta de datos en el entorno. Usa la sintaxis del shell de cada sistema.
  */
-export function comandoGancho(mcp: NonNullable<ReturnType<typeof configMcpTareas>>, momento: 'pre' | 'post'): string | undefined {
+export function comandoGancho(
+  mcp: NonNullable<ReturnType<typeof configMcpTareas>>,
+  momento: 'pre' | 'post',
+  plataforma: NodeJS.Platform = process.platform
+): string | undefined {
   const m = Object.values(mcp.mcpServers)[0]
   if (!m) return undefined
-  const base = [m.command, ...m.args, 'hook-historial', momento].map(citar).join(' ')
   const env = Object.entries(m.env)
-  if (process.platform === 'win32') return `cmd /c "${env.map(([k, v]) => `set ${k}=${v}`).join('&& ')}&& ${base}"`
-  return `${env.map(([k, v]) => `${k}=${citar(v)}`).join(' ')} ${base}`
+  if (plataforma === 'win32') {
+    // Con una ruta que `cmd` interpretaría (p. ej. una carpeta con `&` o `%`) no hay gancho: el vigilante de archivos sigue registrando.
+    if ([m.command, ...m.args, ...env.flat()].some((t) => PELIGROSO_EN_CMD.test(t))) return undefined
+    const base = [m.command, ...m.args, 'hook-historial', momento].map((t) => citar(t, plataforma)).join(' ')
+    return `cmd /c "${env.map(([k, v]) => `set "${k}=${v}"&& `).join('')}${base}"`
+  }
+  const base = [m.command, ...m.args, 'hook-historial', momento].map((t) => citar(t, plataforma)).join(' ')
+  return `${env.map(([k, v]) => `${k}=${citar(v, plataforma)}`).join(' ')} ${base}`
 }
 
 /** `hooks/hooks.json` del plugin: avisa a la app antes y después de que Claude Code escriba un archivo del proyecto. */

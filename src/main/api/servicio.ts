@@ -70,6 +70,11 @@ export class ServicioApi {
     return this.leer()
   }
 
+  /** Reemplaza todos los datos (los que llegan de la bóveda de otro equipo) por la misma vía que cualquier otra escritura, sin pisar una en curso. */
+  async reemplazar(nuevos: unknown): Promise<void> {
+    await this.almacen.actualizar(ID, () => normalizar(nuevos as Doc))
+  }
+
   async enviar(entrada: unknown, envioId: string): Promise<RespuestaApi> {
     if (typeof envioId !== 'string' || !envioId || envioId.length > 80) throw new Error('Identificador de envío no válido.')
     const peticion = sanearPeticion(entrada)

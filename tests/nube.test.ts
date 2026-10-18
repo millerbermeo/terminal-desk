@@ -72,10 +72,10 @@ async function escribir(ruta: string, v: unknown, mtime?: number): Promise<void>
 }
 
 /** Un «equipo»: su carpeta de datos, su servicio de tareas y su sincronizador. */
-async function equipo(nube: NubeFalsa) {
+async function equipo(nube: NubeFalsa, confirmar?: (cambios: string[]) => Promise<boolean>) {
   const dir = await carpeta()
   const tareas = new ServicioTareas(new AlmacenJson<Documento>(join(dir, 'tareas'), 0o600), { proyectos: async () => ({ grupos: [], proyectos: [] }) })
-  const sync = new SincronizadorCuenta(nube.cliente(), join(dir, 'sync-cuenta.json'), [new FuenteArchivos(dir), new FuenteTareas(tareas)])
+  const sync = new SincronizadorCuenta(nube.cliente(), join(dir, 'sync-cuenta.json'), [new FuenteArchivos(dir, undefined, confirmar), new FuenteTareas(tareas)])
   return { dir, tareas, sync }
 }
 
@@ -88,6 +88,28 @@ describe('datos de la cuenta en la nube', () => {
   let nube: NubeFalsa
   beforeEach(() => {
     nube = new NubeFalsa()
+  })
+
+  it('un comando nuevo que llega de la cuenta (proveedor o MCP) pide confirmación; si se rechaza no se aplica ni se vuelve a preguntar', async () => {
+    const a = await equipo(nube)
+    const preguntas: string[][] = []
+    let responde = false
+    const b = await equipo(nube, async (c) => (preguntas.push(c), responde))
+    await escribir(join(a.dir, 'proveedores.json'), [{ id: 'p1', nombre: 'Propio', comando: 'mi-ia --rapido', env: {} }])
+    await escribir(join(a.dir, 'mcp.json'), { servidores: { s: { comando: 'node', args: ['x.js'], env: {}, deshabilitado: false, riesgo: 'ejecucion' } } })
+    await escribir(join(b.dir, 'proveedores.json'), [{ id: 'p1', nombre: 'Propio', comando: 'claude', env: {} }])
+    await a.sync.sincronizar()
+    await b.sync.sincronizar()
+    expect(preguntas.flat().sort()).toEqual(['Proveedor «Propio»: mi-ia --rapido', 'Servidor MCP «s»: node x.js'])
+    expect((await json(join(b.dir, 'proveedores.json')))[0].comando).toBe('claude') // rechazado: queda lo local
+    await expect(readFile(join(b.dir, 'mcp.json'))).rejects.toThrow()
+    await b.sync.sincronizar()
+    expect(preguntas).toHaveLength(2) // no insiste con lo mismo
+    responde = true
+    await escribir(join(a.dir, 'proveedores.json'), [{ id: 'p1', nombre: 'Propio', comando: 'mi-ia --lento', env: {} }], Date.now() + 5000)
+    await a.sync.sincronizar()
+    await b.sync.sincronizar()
+    expect((await json(join(b.dir, 'proveedores.json')))[0].comando).toBe('mi-ia --lento')
   })
 
   it('memoria, permisos y preferencias de un equipo llegan al otro; los borrados también', async () => {

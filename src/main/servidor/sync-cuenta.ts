@@ -20,7 +20,8 @@ export interface FuenteCuenta {
   maneja(id: string): boolean
   listar(): Promise<Map<string, DocLocal>>
   /** `null` = se borró en otro equipo. */
-  aplicar(id: string, data: Record<string, unknown> | null): Promise<void>
+  /** Devuelve `false` si no se aplicó (p. ej. el usuario rechazó el cambio): el documento queda como estaba y no se da por sincronizado. */
+  aplicar(id: string, data: Record<string, unknown> | null): Promise<void | false>
 }
 
 interface DocRemoto {
@@ -119,7 +120,7 @@ export class SincronizadorCuenta {
           estado.docs[id] = { hash: null, updatedAt: rem!.updatedAt }
           continue
         }
-        await fuente.aplicar(id, datos)
+        if ((await fuente.aplicar(id, datos)) === false) continue
         estado.docs[id] = { hash: datos === null ? null : hashDe(datos), updatedAt: rem!.updatedAt }
         if (datos === null) resumen.borrados++
         else resumen.bajados++
@@ -175,6 +176,25 @@ function conClavesLocales(id: string, remoto: Record<string, unknown>, local: un
   return remoto
 }
 
+/** Comandos que este equipo ejecutaría y que el documento remoto añade o cambia (proveedores y servidores MCP), en texto legible. */
+export function comandosNuevos(id: string, remoto: Record<string, unknown>, local: unknown): string[] {
+  const cambios: string[] = []
+  if (id === 'proveedores.json') {
+    const previos = new Map((Array.isArray(local) ? local : []).map((p: { id?: string; comando?: string }) => [p.id, p.comando]))
+    const lista = Array.isArray(remoto.lista) ? (remoto.lista as { id?: string; nombre?: string; comando?: string }[]) : []
+    for (const p of lista) if (previos.get(p.id) !== p.comando) cambios.push(`Proveedor «${p.nombre ?? p.id}»: ${p.comando}`)
+  } else if (id === 'mcp.json') {
+    const previos = ((local ?? {}) as { servidores?: Record<string, { comando?: string; args?: string[]; cwd?: string }> }).servidores ?? {}
+    const servidores = (remoto.servidores ?? {}) as Record<string, { comando?: string; args?: string[]; cwd?: string; deshabilitado?: boolean }>
+    for (const [n, s] of Object.entries(servidores)) {
+      const a = previos[n]
+      const igual = a && a.comando === s.comando && JSON.stringify(a.args ?? []) === JSON.stringify(s.args ?? []) && (a.cwd ?? '') === (s.cwd ?? '')
+      if (!igual) cambios.push(`Servidor MCP «${n}»: ${[s.comando, ...(s.args ?? [])].join(' ')}`)
+    }
+  }
+  return cambios
+}
+
 /**
  * Archivos de cuenta de `~/.odesk-agent`: memoria y permisos (un archivo por documento), preferencias, proveedores y
  * servidores MCP. `alAplicar` avisa tras escribir uno que llegó de otro equipo (p. ej. para olvidar una caché).
@@ -182,8 +202,13 @@ function conClavesLocales(id: string, remoto: Record<string, unknown>, local: un
 export class FuenteArchivos implements FuenteCuenta {
   constructor(
     private readonly dir: string,
-    private readonly alAplicar?: (id: string) => void
+    private readonly alAplicar?: (id: string) => void,
+    /** Si se da, se le pregunta antes de aplicar un comando nuevo o cambiado que vino del servidor (se ejecutaría en este equipo). */
+    private readonly confirmar?: (cambios: string[]) => Promise<boolean>
   ) {}
+
+  /** Versiones remotas ya rechazadas (por hash): no se vuelve a preguntar hasta que el servidor tenga otra. */
+  private readonly rechazadas = new Map<string, string>()
 
   maneja(id: string): boolean {
     return !id.startsWith('tareas')
@@ -213,7 +238,7 @@ export class FuenteArchivos implements FuenteCuenta {
     return salida
   }
 
-  async aplicar(id: string, data: Record<string, unknown> | null): Promise<void> {
+  async aplicar(id: string, data: Record<string, unknown> | null): Promise<void | false> {
     if (!ID_DOC_CUENTA.test(id)) return
     const ruta = join(this.dir, id)
     if (data === null) await rm(ruta, { force: true })
@@ -223,6 +248,18 @@ export class FuenteArchivos implements FuenteCuenta {
         local = JSON.parse(await readFile(ruta, 'utf8'))
       } catch {
         local = undefined
+      }
+      if (this.confirmar) {
+        const cambios = comandosNuevos(id, data, local)
+        if (cambios.length) {
+          const h = hashDe(data)
+          if (this.rechazadas.get(id) === h) return false
+          if (!(await this.confirmar(cambios))) {
+            this.rechazadas.set(id, h)
+            return false
+          }
+          this.rechazadas.delete(id)
+        }
       }
       await escribirAtomico(ruta, JSON.stringify(conClavesLocales(id, data, local), null, 2) + '\n')
     }

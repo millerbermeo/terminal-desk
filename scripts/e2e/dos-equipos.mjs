@@ -3,8 +3,10 @@
  * cuentas en el mismo equipo. Requisitos:
  *  - API en marcha SIN SMTP y SIN Google, con su salida en un archivo:  (cd ../terminal-desk-api && pnpm dev > /tmp/api.log 2>&1 &)
  *    (sin SMTP los códigos por correo se escriben en ese log: de ahí los lee la prueba).
- *  - La app compilada (`pnpm build`), un entorno gráfico y `psql` con acceso a la base `desk`.
+ *  - La app compilada (`pnpm build`), un entorno gráfico y `psql` con acceso a la base que use el API.
  * Uso:  API_LOG=/tmp/api.log node scripts/e2e/dos-equipos.mjs
+ *   La base se toma de DB_HOST, DB_USER, DB_PASS y DB_NAME (por defecto localhost, postgres, admin123, desk): arranca el API con la misma
+ *   (p. ej. DB_NAME=desk_e2e, creada antes con `createdb`) para no tocar la base de desarrollo.
  * Borra al final las cuentas y carpetas que crea.
  */
 import { spawn, execFileSync } from 'node:child_process'
@@ -21,7 +23,8 @@ const sello = Date.now()
 const EMAIL = `e2e-${sello}@desk.local`, PASS = 'clave-dos-pcs-1'
 const OTRO = `e2e-otro-${sello}@desk.local`, PASS_OTRO = 'clave-otra-cuenta-1'
 const PSQL = { env: { ...process.env, PGPASSWORD: process.env.DB_PASS ?? 'admin123' } }
-const sql = (q) => execFileSync('psql', ['-h', 'localhost', '-U', 'postgres', '-d', 'desk', '-tAc', q], PSQL).toString().trim()
+const DB = { host: process.env.DB_HOST ?? 'localhost', user: process.env.DB_USER ?? 'postgres', nombre: process.env.DB_NAME ?? 'desk' }
+const sql = (q) => execFileSync('psql', ['-h', DB.host, '-U', DB.user, '-d', DB.nombre, '-tAc', q], PSQL).toString().trim()
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms))
 const paso = (t, ok, extra = '') => {
   console.log(`${ok ? 'OK   ' : 'FALLO'} ${t}${extra ? ' — ' + extra : ''}`)

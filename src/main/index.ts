@@ -11,7 +11,7 @@ import { ServicioHistorial } from './historial/servicio'
 import { ejecutarOperacionHistorial } from './historial/operaciones'
 import { Nucleo, registrarIpcCore } from './core'
 import { GestorTerminales } from './terminales'
-import { eliminarProveedor, guardarProveedor, listarProveedores, obtenerProveedor } from './proveedores'
+import { eliminarProveedor, enCola as enColaProveedores, guardarProveedor, listarProveedores, obtenerProveedor } from './proveedores'
 import { verificarPassword } from './autenticacion'
 import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones } from './agentes'
 import { resolverPerfil } from './migracion'
@@ -159,13 +159,28 @@ function crearVentana(opciones: { token?: string; x?: number; y?: number; titulo
 
 /** Memoria, permisos, preferencias, proveedores y MCP (sin claves), tareas sin proyecto y columnas del tablero. */
 const syncCuenta = new SincronizadorCuenta(servidor, join(DIR, 'sync-cuenta.json'), [
-  new FuenteArchivos(DIR, (id) => {
-    if (id === 'preferencias.json') nucleo.preferencias.olvidarCache()
-  }),
+  new FuenteArchivos(
+    DIR,
+    (id) => {
+      if (id === 'preferencias.json') nucleo.preferencias.olvidarCache()
+    },
+    async (cambios) => {
+      const r = await dialog.showMessageBox({
+        type: 'warning',
+        title: 'Cambios de comandos desde tu cuenta',
+        message: 'Otro equipo o el servidor de tu cuenta quiere añadir o cambiar comandos que se ejecutarían en este equipo.',
+        detail: cambios.slice(0, 15).join('\n') + (cambios.length > 15 ? `\n… y ${cambios.length - 15} más` : '') + '\n\nAplícalos solo si los reconoces.',
+        buttons: ['Rechazar', 'Aplicar'],
+        defaultId: 0,
+        cancelId: 0
+      })
+      return r.response === 1
+    }
+  ),
   new FuenteTareas(nucleo.tareas)
 ])
 /** Claves (proveedores, MCP, cliente API, GitHub), cifradas en este equipo. */
-const boveda = new Boveda(servidor, join(DIR, 'boveda-clave.json'), join(DIR, 'boveda-estado.json'), cifradorDelSistema(), seccionesSecretas(DIR, nucleo.tokenGitHub))
+const boveda = new Boveda(servidor, join(DIR, 'boveda-clave.json'), join(DIR, 'boveda-estado.json'), cifradorDelSistema(), seccionesSecretas(DIR, nucleo.tokenGitHub, undefined, { proveedores: enColaProveedores, api: (d) => servicioApi.reemplazar(d) }))
 
 /** Estado de git de cada proyecto en cada PC de la cuenta, y proyectos de la cuenta que faltan clonar aquí. */
 const depsEquipos: DepsEquipos = {
@@ -354,6 +369,7 @@ function registrarIpc(): void {
   ipcMain.handle(Canales.sesionIniciar, (_e, c: CredencialesSesion) =>
     conSesion(() => servidor.iniciar(String(c?.email ?? ''), String(c?.password ?? '')))
   )
+  ipcMain.handle(Canales.sesionGoogleDisponible, () => servidor.googleDisponible().catch(() => false))
   ipcMain.handle(Canales.sesionGoogle, () => conSesion(() => iniciarSesionGoogle(servidor, (url) => shell.openExternal(url))))
   ipcMain.handle(Canales.sesionCuenta, (_e, op: NombreOperacionCuenta, entrada: Record<string, unknown>) => operarCuenta(op, entrada ?? {}))
   ipcMain.handle(Canales.sesionServidor, async (_e, url: string): Promise<ResultadoSesion> => {

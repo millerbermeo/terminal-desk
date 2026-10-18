@@ -28,7 +28,14 @@ type ConEnv = { env?: Record<string, string> }
  * - `github`: token de GitHub.
  * Lo demás de proveedores y MCP viaja con los datos de la cuenta (sin claves).
  */
-export function seccionesSecretas(dir: string, github: AlmacenToken, alAplicar?: (seccion: string) => void): SeccionesSecretas {
+export interface EscriturasSerializadas {
+  /** Ejecuta `f` en la cola de escrituras de `proveedores.json` (la misma que usa la pantalla de proveedores). */
+  proveedores?: <T>(f: () => Promise<T>) => Promise<T>
+  /** Reemplaza los datos del cliente API por la vía normal del servicio. */
+  api?: (datos: unknown) => Promise<void>
+}
+
+export function seccionesSecretas(dir: string, github: AlmacenToken, alAplicar?: (seccion: string) => void, serializar: EscriturasSerializadas = {}): SeccionesSecretas {
   const proveedores = join(dir, 'proveedores.json')
   const mcp = join(dir, 'mcp.json')
   const api = join(dir, 'api', 'datos.json')
@@ -49,11 +56,14 @@ export function seccionesSecretas(dir: string, github: AlmacenToken, alAplicar?:
 
     async aplicar(seccion, data) {
       if (seccion === 'proveedores' && data && typeof data === 'object') {
-        const lista = await leerJson<(ConEnv & { id?: string })[]>(proveedores)
-        if (Array.isArray(lista)) {
-          const env = data as Record<string, Record<string, string>>
-          await escribirJson(proveedores, lista.map((p) => (p.id && env[p.id] ? { ...p, env: env[p.id] } : p)))
+        const aplicarEnv = async (): Promise<void> => {
+          const lista = await leerJson<(ConEnv & { id?: string })[]>(proveedores)
+          if (Array.isArray(lista)) {
+            const env = data as Record<string, Record<string, string>>
+            await escribirJson(proveedores, lista.map((p) => (p.id && env[p.id] ? { ...p, env: env[p.id] } : p)))
+          }
         }
+        await (serializar.proveedores ? serializar.proveedores(aplicarEnv) : aplicarEnv())
       } else if (seccion === 'mcp' && data && typeof data === 'object') {
         const m = await leerJson<{ servidores?: Record<string, ConEnv> }>(mcp)
         if (m?.servidores) {
@@ -61,7 +71,7 @@ export function seccionesSecretas(dir: string, github: AlmacenToken, alAplicar?:
           await escribirJson(mcp, { ...m, servidores: Object.fromEntries(Object.entries(m.servidores).map(([n, v]) => [n, env[n] ? { ...v, env: env[n] } : v])) })
         }
       } else if (seccion === 'api' && data && typeof data === 'object') {
-        await escribirJson(api, data)
+        await (serializar.api ? serializar.api(data) : escribirJson(api, data))
       } else if (seccion === 'github' && data && typeof data === 'object') {
         const g = data as { token?: unknown; usuario?: unknown; refresh?: unknown; expira?: unknown; refrescaHasta?: unknown }
         if (typeof g.token === 'string') {
