@@ -252,6 +252,36 @@ export async function proyectosSinCarpeta(): Promise<{ id: string; nombre: strin
   return r.projects.flatMap((p) => (!locales[p.id] && p.repo ? [{ id: p.id, nombre: p.name, repo: p.repo, ...(p.groupId ? { grupoId: p.groupId } : {}) }] : []))
 }
 
+/** Prefijo del error cuando la carpeta apunta a otro repositorio que el del proyecto: la interfaz pregunta y reintenta con `confirmar`. */
+export const REPO_DISTINTO = 'REPO_DISTINTO:'
+
+/**
+ * Enlaza una carpeta que YA está en este equipo (sin clonar) a un proyecto de la cuenta: mismo id, así recupera su tablero, conversaciones
+ * y trazas. No se enlaza si la carpeta ya es otro proyecto aquí o está enlazada (`.odesk/project.json`) a otro proyecto vivo de la cuenta.
+ * Si su remoto de git no coincide con el repositorio del proyecto, pide confirmación (`confirmar`).
+ */
+export async function enlazarCarpetaExistente(entrada: { ruta: string; proyectoId: string; repo?: string; confirmar?: boolean }): Promise<{ ruta: string }> {
+  const v = await validarRuta(entrada.ruta)
+  if (!v.ok) throw new Error(v.mensaje) // no existe, no es carpeta o ya es otro proyecto de este equipo
+  const previo = await leerVinculo(v.ruta)
+  if (previo && previo !== entrada.proyectoId) {
+    try {
+      const otro = await servidor.get<{ name: string }>(`/projects/${encodeURIComponent(previo)}`)
+      throw new Error(`Esa carpeta ya está enlazada a otro proyecto de tu cuenta («${otro.name}»).`)
+    } catch (err) {
+      if (!(err instanceof ErrorServidor) || err.estado !== 404) throw err // el id del archivo ya no existe (p. ej. se vació la cuenta): se sustituye
+    }
+  }
+  const local = await repoDe(v.ruta)
+  const esperado = entrada.repo ? claveRepo(entrada.repo) : undefined
+  const encontrado = local ? claveRepo(local) : undefined
+  if (esperado && encontrado && esperado !== encontrado && !entrada.confirmar) {
+    throw new Error(`${REPO_DISTINTO} Esa carpeta apunta a «${encontrado}» y el proyecto usa «${esperado}».`)
+  }
+  await vincularCarpetaAProyecto(v.ruta, entrada.proyectoId)
+  return { ruta: v.ruta }
+}
+
 /**
  * Deja una carpeta (por ejemplo, un repositorio recién clonado) enlazada a un proyecto que ya existe en la cuenta: mismo id, así se
  * recupera su contexto (tablero, conversaciones, trazas). Si el repositorio ya trae `.odesk/project.json` con ese id no se toca.

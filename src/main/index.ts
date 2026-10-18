@@ -29,7 +29,7 @@ import { cambiarPerfil } from './perfiles'
 import { Boveda } from './servidor/boveda'
 import { seccionesSecretas } from './servidor/secretos'
 import { FuenteArchivos, FuenteTareas, SincronizadorCuenta } from './servidor/sync-cuenta'
-import { DIR, MIGRACION_DATOS, rutasLocales, agregarProyectos, carpetaDeProyecto, eliminarGrupo, eliminarProyecto, leerProyectos, proyectosSinCarpeta, sugerirRutas, validarRuta } from './proyectos'
+import { DIR, MIGRACION_DATOS, rutasLocales, agregarProyectos, carpetaDeProyecto, enlazarCarpetaExistente, eliminarGrupo, eliminarProyecto, leerProyectos, proyectosSinCarpeta, sugerirRutas, validarRuta } from './proyectos'
 import { configurarMcpTareas } from './core/tareas/mcp-config'
 import { ejecutarOperacionGit } from './core/git/operaciones'
 import { writeFile } from 'node:fs/promises'
@@ -197,6 +197,7 @@ const depsEquipos: DepsEquipos = {
   repositorio: (ruta) => new Repositorio(ruta, nucleo.github.credencialesPara),
   pendientes: proyectosSinCarpeta,
   clonarProyecto: (e) => nucleo.github.clonarProyecto(e),
+  enlazarCarpeta: (e) => enlazarCarpetaExistente(e),
   alClonar: async (id) => void (await nucleo.hidratar(id))
 }
 const equipos = new ServicioEquipos(depsEquipos)

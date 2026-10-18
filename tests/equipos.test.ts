@@ -101,6 +101,7 @@ async function nuevo(extra: Partial<DepsEquipos> = {}) {
     repositorio: (ruta) => new Repositorio(ruta),
     pendientes: async () => [],
     clonarProyecto: async () => ({ ruta: '' }),
+    enlazarCarpeta: async () => ({ ruta: '' }),
     ...extra
   }
   return { s: new ServicioEquipos(deps), srv, proyectos, deps, datos }
@@ -368,6 +369,22 @@ describe('clonar automático: proyectos de la cuenta que faltan en este equipo',
     expect(await leerVinculo(ruta)).toBe(P1)
     expect(await rutas.obtener(P1)).toBe(ruta)
     expect((await stat(join(ruta, '.odesk', 'project.json'))).isFile()).toBe(true)
+  })
+
+  it('enlazar una carpeta que ya existe: llama a enlazarCarpeta con el repo del proyecto, hidrata su contexto y solo vale para proyectos pendientes', async () => {
+    const llamadas: unknown[] = []
+    const hidratados: string[] = []
+    const { s } = await nuevo({
+      pendientes: async () => [{ id: P1, nombre: 'Tienda', repo: 'https://github.com/ana/tienda.git' }],
+      enlazarCarpeta: async (e) => (llamadas.push(e), { ruta: e.ruta }),
+      alClonar: async (id) => void hidratados.push(id)
+    })
+    expect(await s.enlazarPendiente({ proyectoId: P1, ruta: '/home/ana/tienda' })).toEqual({ ruta: '/home/ana/tienda' })
+    expect(llamadas).toEqual([{ proyectoId: P1, ruta: '/home/ana/tienda', repo: 'https://github.com/ana/tienda.git' }])
+    expect(hidratados).toEqual([P1])
+    await s.enlazarPendiente({ proyectoId: P1, ruta: '/x', confirmar: true })
+    expect(llamadas[1]).toMatchObject({ confirmar: true })
+    await expect(s.enlazarPendiente({ proyectoId: 'otro', ruta: '/x' })).rejects.toThrow(/ya está en este equipo/)
   })
 
   it('si el repositorio ya trae su .odesk/project.json con ese id, no lo toca', async () => {

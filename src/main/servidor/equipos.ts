@@ -25,6 +25,7 @@ export interface DepsEquipos {
   repositorio(ruta: string): RepoEquipos
   pendientes(): Promise<PendienteClonar[]>
   clonarProyecto(e: { proyectoId: string; repo: string; carpetaPadre: string; protocolo?: 'https' | 'ssh' }): Promise<{ ruta: string }>
+  enlazarCarpeta(e: { proyectoId: string; ruta: string; repo: string; confirmar?: boolean }): Promise<{ ruta: string }>
   /** Tras enlazar un proyecto clonado (por ejemplo, para bajar su tablero y conversaciones). */
   alClonar?(proyectoId: string): Promise<void>
   /** Resumen del historial local de un proyecto (solo nombres, número de versiones y fecha) para que otros equipos vean que aquí hay actividad. */
@@ -311,6 +312,14 @@ export class ServicioEquipos {
     await this.d.alClonar?.(p.id).catch(() => undefined)
     return r
   }
+
+  async enlazarPendiente(e: OperacionesEquipos['enlazarPendiente']['entrada']): Promise<{ ruta: string }> {
+    const p = (await this.d.pendientes()).find((x) => x.id === e.proyectoId)
+    if (!p) throw new Error('Ese proyecto ya está en este equipo o no tiene repositorio.')
+    const r = await this.d.enlazarCarpeta({ proyectoId: p.id, ruta: e.ruta, repo: p.repo, ...(e.confirmar ? { confirmar: true } : {}) })
+    await this.d.alClonar?.(p.id).catch(() => undefined) // baja su tablero, conversaciones y trazas
+    return r
+  }
 }
 
 type Entrada<K extends NombreOperacionEquipos> = OperacionesEquipos[K]['entrada']
@@ -328,7 +337,11 @@ const OPERACIONES: Implementaciones = {
   olvidar: (s, _d, e) => s.olvidar(id(e.proyectoId, 'el proyecto'), id(e.idEquipo, 'el equipo')),
   resumen: (s) => s.resumen(),
   pendientes: (_s, d) => d.pendientes(),
-  clonarPendiente: (s, _d, e) => s.clonarPendiente({ ...e, proyectoId: id(e.proyectoId, 'el proyecto'), protocolo: e.protocolo === 'ssh' ? 'ssh' : 'https' })
+  clonarPendiente: (s, _d, e) => s.clonarPendiente({ ...e, proyectoId: id(e.proyectoId, 'el proyecto'), protocolo: e.protocolo === 'ssh' ? 'ssh' : 'https' }),
+  enlazarPendiente: (s, _d, e) => {
+    if (typeof e.ruta !== 'string' || !e.ruta.trim() || e.ruta.length > 1000) return Promise.reject(new Error('Falta la carpeta.'))
+    return s.enlazarPendiente({ proyectoId: id(e.proyectoId, 'el proyecto'), ruta: e.ruta, ...(e.confirmar === true ? { confirmar: true } : {}) })
+  }
 }
 
 /** Operaciones de equipos de la interfaz. El renderer manda ids de proyecto y de equipo, nunca rutas. */
