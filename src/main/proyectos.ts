@@ -7,7 +7,7 @@ import type { ErrorProyecto, ResultadoAgregar, SolicitudAgregar, ValidacionRuta 
 import { resolverDirDatos } from './migracion'
 import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
 import { RutasLocales } from './servidor/rutas'
-import { avisoDeGit, leerVinculo, repoDe, vincularProyectoLocal } from './servidor/vinculo'
+import { avisoDeGit, leerVinculo, quitarVinculoLocal, repoDe, vincularProyectoLocal } from './servidor/vinculo'
 
 // Los datos del usuario viven en ~/.odesk-agent. Si existe la carpeta del nombre anterior (~/.centro-proyectos), se mueve aquí al
 // arrancar, antes de que nada lea ni escriba (este módulo se evalúa antes que los que usan `DIR`).
@@ -252,34 +252,55 @@ export async function proyectosSinCarpeta(): Promise<{ id: string; nombre: strin
   return r.projects.flatMap((p) => (!locales[p.id] && p.repo ? [{ id: p.id, nombre: p.name, repo: p.repo, ...(p.groupId ? { grupoId: p.groupId } : {}) }] : []))
 }
 
-/** Prefijo del error cuando la carpeta apunta a otro repositorio que el del proyecto: la interfaz pregunta y reintenta con `confirmar`. */
-export const REPO_DISTINTO = 'REPO_DISTINTO:'
+/** Prefijo del error cuando algo pide confirmación antes de enlazar: la interfaz la pregunta y reintenta con `confirmar`. */
+export const REQUIERE_CONFIRMACION = 'REQUIERE_CONFIRMACION:'
 
 /**
  * Enlaza una carpeta que YA está en este equipo (sin clonar) a un proyecto de la cuenta: mismo id, así recupera su tablero, conversaciones
- * y trazas. No se enlaza si la carpeta ya es otro proyecto aquí o está enlazada (`.odesk/project.json`) a otro proyecto vivo de la cuenta.
- * Si su remoto de git no coincide con el repositorio del proyecto, pide confirmación (`confirmar`).
+ * y trazas. Protecciones:
+ * - Si la carpeta ya es otro proyecto aquí, o su `.odesk/project.json` apunta a OTRO proyecto vivo de la cuenta: no se enlaza (error).
+ * - Si trae un id que ya no existe en la cuenta (p. ej. se vació la base) o su remoto de git no es el del proyecto: se pide confirmación.
+ * - Si trae el mismo id que el proyecto, es la carpeta correcta y se enlaza sin preguntar.
  */
 export async function enlazarCarpetaExistente(entrada: { ruta: string; proyectoId: string; repo?: string; confirmar?: boolean }): Promise<{ ruta: string }> {
   const v = await validarRuta(entrada.ruta)
   if (!v.ok) throw new Error(v.mensaje) // no existe, no es carpeta o ya es otro proyecto de este equipo
+  const avisos: string[] = []
   const previo = await leerVinculo(v.ruta)
   if (previo && previo !== entrada.proyectoId) {
     try {
       const otro = await servidor.get<{ name: string }>(`/projects/${encodeURIComponent(previo)}`)
-      throw new Error(`Esa carpeta ya está enlazada a otro proyecto de tu cuenta («${otro.name}»).`)
+      throw new Error(`Esa carpeta ya está enlazada a otro proyecto de tu cuenta («${otro.name}»): no es la de este proyecto.`)
     } catch (err) {
-      if (!(err instanceof ErrorServidor) || err.estado !== 404) throw err // el id del archivo ya no existe (p. ej. se vació la cuenta): se sustituye
+      if (!(err instanceof ErrorServidor) || err.estado !== 404) throw err
+      avisos.push('La carpeta trae el id de un proyecto que ya no existe en tu cuenta; se sustituirá por el de este proyecto.')
     }
   }
   const local = await repoDe(v.ruta)
   const esperado = entrada.repo ? claveRepo(entrada.repo) : undefined
   const encontrado = local ? claveRepo(local) : undefined
-  if (esperado && encontrado && esperado !== encontrado && !entrada.confirmar) {
-    throw new Error(`${REPO_DISTINTO} Esa carpeta apunta a «${encontrado}» y el proyecto usa «${esperado}».`)
-  }
+  if (esperado && encontrado && esperado !== encontrado) avisos.push(`La carpeta apunta a «${encontrado}» y el proyecto usa «${esperado}».`)
+  if (avisos.length > 0 && !entrada.confirmar) throw new Error(`${REQUIERE_CONFIRMACION} ${avisos.join('\n')}`)
   await vincularCarpetaAProyecto(v.ruta, entrada.proyectoId)
   return { ruta: v.ruta }
+}
+
+/**
+ * Cambia la carpeta de un proyecto de este equipo (te equivocaste al enlazarlo): enlaza la nueva con las mismas protecciones y, si el
+ * `.odesk/project.json` de la anterior es de este proyecto y no está subido a git, lo borra para que no siga apuntando ahí.
+ */
+export async function cambiarCarpetaProyecto(entrada: { proyectoId: string; ruta: string; confirmar?: boolean }): Promise<{ ruta: string; aviso?: string }> {
+  const actual = (await leerProyectos()).proyectos.find((p) => p.id === entrada.proyectoId)
+  if (!actual) throw new Error('Ese proyecto no está en este equipo.')
+  if (resolverRuta(entrada.ruta) === actual.ruta) throw new Error('Esa ya es la carpeta de este proyecto.')
+  const delServidor = await servidor.get<{ repo?: string | null }>(`/projects/${encodeURIComponent(entrada.proyectoId)}`)
+  const { ruta } = await enlazarCarpetaExistente({ ruta: entrada.ruta, proyectoId: entrada.proyectoId, ...(delServidor.repo ? { repo: delServidor.repo } : {}), ...(entrada.confirmar ? { confirmar: true } : {}) })
+  const resultado = await quitarVinculoLocal(actual.ruta, entrada.proyectoId).catch(() => 'sin-enlace' as const)
+  const aviso =
+    resultado === 'versionado'
+      ? `La carpeta anterior (${actual.ruta}) tiene .odesk/project.json subido a git y se dejó como estaba. Si ya no la usas para este proyecto, bórralo con git rm.`
+      : undefined
+  return { ruta, ...(aviso ? { aviso } : {}) }
 }
 
 /**

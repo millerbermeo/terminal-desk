@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
@@ -70,4 +70,30 @@ export async function avisoDeGit(ruta: string): Promise<string | undefined> {
   } catch {
     return `Falta subir ${archivo} a git (git add ${archivo} && git commit && git push). Sin él, la otra computadora no sabrá qué proyecto es.`
   }
+}
+
+export type ResultadoQuitarVinculo = 'quitado' | 'versionado' | 'otro-proyecto' | 'sin-enlace'
+
+/**
+ * Borra `.odesk/project.json` de una carpeta que se deja de usar para ese proyecto, solo si es SU enlace (el id coincide) y no está subido a
+ * git (si está versionado se deja: borrarlo cambiaría el repositorio, y lo decide quien lo gestiona). Quita `.odesk/` si queda vacía.
+ */
+export async function quitarVinculoLocal(ruta: string, projectId: string): Promise<ResultadoQuitarVinculo> {
+  const actual = await leerVinculo(ruta)
+  if (!actual) return 'sin-enlace'
+  if (actual !== projectId) return 'otro-proyecto'
+  const archivo = `${CARPETA_VINCULO}/${ARCHIVO_VINCULO}`
+  try {
+    await exec('git', ['ls-files', '--error-unmatch', archivo], { cwd: ruta, timeout: 5000 })
+    return 'versionado'
+  } catch {
+    // no es un repositorio o el archivo no está versionado: se puede borrar
+  }
+  await rm(join(ruta, CARPETA_VINCULO, ARCHIVO_VINCULO), { force: true })
+  try {
+    if ((await readdir(join(ruta, CARPETA_VINCULO))).length === 0) await rmdir(join(ruta, CARPETA_VINCULO))
+  } catch {
+    // la carpeta tiene otras cosas o ya no existe: se deja
+  }
+  return 'quitado'
 }

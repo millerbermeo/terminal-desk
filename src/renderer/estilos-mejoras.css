@@ -436,3 +436,4 @@ body {
 
 /* «Ya la tengo aquí» en la lista de proyectos por clonar */
 .cp-usar { margin-left: auto; padding: 3px 10px; font-size: 12px; white-space: nowrap; }
+.cfg-proyecto { flex-wrap: wrap; }
