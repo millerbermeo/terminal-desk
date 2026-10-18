@@ -153,9 +153,30 @@ export async function agregarProyectos(sol: SolicitudAgregar): Promise<Resultado
   return { datos: await leerProyectos(), errores, ...(reanudados.length ? { reanudados } : {}), ...(avisos.length ? { avisos } : {}) }
 }
 
+/** `propietario/repositorio` en minúsculas de una URL de git (https, ssh o alias SSH): dos remotos del mismo repo dan la misma clave. */
+export function claveRepo(url: string): string | undefined {
+  const m = /([^/:\s]+)\/([^/:\s]+?)(?:\.git)?\/?$/.exec(url.trim())
+  return m ? `${m[1]}/${m[2]}`.toLowerCase() : undefined
+}
+
+/**
+ * El único proyecto de la cuenta con ese repositorio que todavía no tiene carpeta en este equipo. Si hay varios (un monorepo con
+ * proyectos distintos) o ya está enlazado a otra carpeta de aquí, no se adivina: `undefined`.
+ */
+async function proyectoPorRepo(repo: string): Promise<string | undefined> {
+  const clave = claveRepo(repo)
+  if (!clave) return undefined
+  const { projects } = await servidor.get<{ projects: { id: string; repo?: string | null }[] }>('/projects')
+  const candidatos = projects.filter((p) => p.repo && claveRepo(p.repo) === clave)
+  if (candidatos.length !== 1) return undefined
+  const locales = await rutasLocales.todas()
+  return locales[candidatos[0]!.id] ? undefined : candidatos[0]!.id
+}
+
 /**
  * Enlace local de una carpeta: si ya trae `.odesk/project.json` y el proyecto es de esta cuenta, se reanuda (mismo id, así se
- * recupera su contexto); si no, se registra uno nuevo en el servidor y se escribe el archivo.
+ * recupera su contexto); si no, se busca un proyecto de la cuenta con el mismo repositorio (`proyectoPorRepo`) y, si tampoco hay, se
+ * registra uno nuevo en el servidor y se escribe el archivo.
  */
 async function resolverProyecto(nombre: string, ruta: string, destino: object): Promise<{ id: string; existente: boolean }> {
   const previo = await leerVinculo(ruta)
@@ -169,6 +190,13 @@ async function resolverProyecto(nombre: string, ruta: string, destino: object): 
     }
   }
   const repo = await repoDe(ruta)
+  const porRepo = repo ? await proyectoPorRepo(repo) : undefined
+  if (porRepo) {
+    // La carpeta no traía `.odesk/project.json` (o era de otra cuenta), pero su remoto coincide con un proyecto de la cuenta que aún no
+    // tiene carpeta aquí: es ese. Se enlaza para que el otro equipo y este compartan contexto.
+    await vincularProyectoLocal(ruta, porRepo)
+    return { id: porRepo, existente: true }
+  }
   const creado = await servidor.post<{ id: string }>('/projects', { name: nombre, ...(repo ? { repo } : {}), ...destino })
   try {
     await vincularProyectoLocal(ruta, creado.id)

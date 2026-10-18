@@ -8,6 +8,7 @@ export interface ProyectoFalso {
   nombre: string
   ruta: string
   grupo?: string
+  repo?: string
 }
 
 /**
@@ -36,22 +37,22 @@ export class ServidorFalso {
       if (req.url === '/projects' && req.method === 'GET') {
         return responder(200, {
           groups: this.grupos.map((g) => ({ id: g.id, name: g.nombre })),
-          projects: this.proyectos.map((p) => ({ id: p.id, name: p.nombre, repo: null, groupId: p.grupo ?? null }))
+          projects: this.proyectos.map((p) => ({ id: p.id, name: p.nombre, repo: p.repo ?? null, groupId: p.grupo ?? null }))
         })
       }
       const uno = /^\/projects\/([^/?]+)$/.exec(req.url ?? '')
       if (uno && req.method === 'GET') {
         const p = this.proyectos.find((x) => x.id === decodeURIComponent(uno[1]!))
-        return p ? responder(200, { id: p.id, name: p.nombre, repo: null, groupId: p.grupo ?? null }) : responder(404, { message: 'El proyecto no existe' })
+        return p ? responder(200, { id: p.id, name: p.nombre, repo: p.repo ?? null, groupId: p.grupo ?? null }) : responder(404, { message: 'El proyecto no existe' })
       }
       if (req.url === '/projects' && req.method === 'POST') {
         const trozos: Buffer[] = []
         req.on('data', (t: Buffer) => trozos.push(t))
         req.on('end', () => {
-          const c = JSON.parse(Buffer.concat(trozos).toString() || '{}') as { name: string; groupId?: string }
-          const p: ProyectoFalso = { id: randomUUID(), nombre: c.name, ruta: '', ...(c.groupId ? { grupo: c.groupId } : {}) }
+          const c = JSON.parse(Buffer.concat(trozos).toString() || '{}') as { name: string; groupId?: string; repo?: string }
+          const p: ProyectoFalso = { id: randomUUID(), nombre: c.name, ruta: '', ...(c.groupId ? { grupo: c.groupId } : {}), ...(c.repo ? { repo: c.repo } : {}) }
           this.proyectos.push(p)
-          responder(201, { id: p.id, name: p.nombre, repo: null, groupId: p.grupo ?? null })
+          responder(201, { id: p.id, name: p.nombre, repo: p.repo ?? null, groupId: p.grupo ?? null })
         })
         return
       }
