@@ -16,6 +16,7 @@ import type { NombreOperacionHistorial, OperacionesHistorial } from './historial
 import type { AccionNavegador, EstadoNavegador, ServidorLocal } from './navegador'
 import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion'
 import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
+import type { AjustesAsistente } from './ajustes'
 import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso } from './modelos'
 import type { CredencialesSesion, EstadoSesion, NombreOperacionCuenta, OperacionesCuenta, ResultadoSesion } from './sesion'
 
@@ -47,6 +48,8 @@ export const Canales = {
   terminalRedimensionar: 'terminal:redimensionar',
   terminalCerrar: 'terminal:cerrar',
   terminalAdjuntar: 'terminal:adjuntar',
+  ajustesLeer: 'ajustes:leer',
+  ajustesFijar: 'ajustes:fijar',
   terminalEnShell: 'terminal:en-shell',
   terminalHistorialComandos: 'terminal:historial-comandos',
   terminalRegistrarComando: 'terminal:registrar-comando',
@@ -382,6 +385,11 @@ export interface ApiCentro {
     eliminar(id: string): Promise<DatosProyectos>
     /** Exige la contraseña del usuario del sistema. */
     eliminarGrupo(id: string, password: string): Promise<ResultadoEliminarGrupo>
+  }
+  /** Modelo y autonomía del Asistente por proyecto (`global` o su UUID): se sincronizan con la cuenta. */
+  ajustes: {
+    leer(clave: string): Promise<AjustesAsistente>
+    fijar(clave: string, cambios: { modelo?: string | null; autonomia?: string | null }): Promise<AjustesAsistente>
   }
   terminal: {
     crear(opciones: OpcionesTerminal): Promise<string>

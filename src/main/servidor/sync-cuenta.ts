@@ -6,7 +6,7 @@ import { ErrorSesion, type ClienteServidor } from './cliente'
 
 /** Mismo patrón que acepta el servidor: solo documentos de cuenta conocidos (nada fuera de la carpeta de datos). */
 export const ID_DOC_CUENTA =
-  /^(?:(?:memoria|permisos)\/[A-Za-z0-9_-]{1,64}\.json|preferencias\.json|proveedores\.json|mcp\.json|tareas\/[A-Za-z0-9_-]{1,64}|tareas-estados)$/
+  /^(?:(?:memoria|permisos|ajustes)\/[A-Za-z0-9_-]{1,64}\.json|preferencias\.json|proveedores\.json|mcp\.json|tareas\/[A-Za-z0-9_-]{1,64}|tareas-estados)$/
 
 export interface DocLocal {
   data: Record<string, unknown>
@@ -158,6 +158,11 @@ function sinClaves(id: string, data: unknown): Record<string, unknown> {
     const servidores = Object.fromEntries(Object.entries(d.servidores ?? {}).map(([n, s]) => [n, { ...s, env: {} }]))
     return { ...d, servidores }
   }
+  if (id.startsWith('ajustes/')) {
+    // «Autónomo» solo vale en el equipo donde se activó: nunca sale de aquí.
+    const { autonomia, ...resto } = data as { autonomia?: string }
+    return autonomia === 'autonomo' ? resto : (data as Record<string, unknown>)
+  }
   return data as Record<string, unknown>
 }
 
@@ -172,6 +177,11 @@ function conClavesLocales(id: string, remoto: Record<string, unknown>, local: un
     const previos = ((local ?? {}) as { servidores?: Record<string, { env?: unknown }> }).servidores ?? {}
     const servidores = (remoto.servidores ?? {}) as Record<string, Record<string, unknown>>
     return { ...remoto, servidores: Object.fromEntries(Object.entries(servidores).map(([n, s]) => [n, { ...s, env: previos[n]?.env ?? {} }])) }
+  }
+  if (id.startsWith('ajustes/')) {
+    const l = (local ?? {}) as { autonomia?: string }
+    // Si el otro equipo no manda autonomía (porque allí era «autónomo»), aquí se queda la que había.
+    return l.autonomia !== undefined && (remoto as { autonomia?: string }).autonomia === undefined ? { ...remoto, autonomia: l.autonomia } : remoto
   }
   return remoto
 }
@@ -217,7 +227,7 @@ export class FuenteArchivos implements FuenteCuenta {
   async listar(): Promise<Map<string, DocLocal>> {
     const salida = new Map<string, DocLocal>()
     const candidatos = ['preferencias.json', 'proveedores.json', 'mcp.json']
-    for (const carpeta of ['memoria', 'permisos']) {
+    for (const carpeta of ['memoria', 'permisos', 'ajustes']) {
       try {
         for (const n of await readdir(join(this.dir, carpeta))) if (n.endsWith('.json')) candidatos.push(`${carpeta}/${n}`)
       } catch {

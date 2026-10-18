@@ -6,6 +6,7 @@ import type { ModoAutonomia } from '@shared/core/permisos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { Agente, Turno } from '../agente/useAgente'
 import { useCuenta } from '../agente/cuenta'
+import type { AjustesAsistente } from '@shared/ajustes'
 import { useModelos } from '../agente/uso'
 import { AdjuntosAgente } from './AdjuntosAgente'
 import { BarraRama } from './BarraRama'
@@ -35,6 +36,22 @@ const ESTADO: Record<Turno['estado'], string> = {
 }
 
 const NODOS: Record<string, string> = { planificacion: 'Planificación', aprobacion: 'Aprobación', generacion: 'Generación', pruebas: 'Verificación', confirmacion: 'Confirmación' }
+/** Una sola vez: lo que se había elegido antes y estaba solo en este navegador (`localStorage`) pasa a los ajustes de la cuenta. */
+async function migrarAjustesLocales(clave: string, vacios: AjustesAsistente): Promise<AjustesAsistente> {
+  try {
+    const kModelo = `asistente:modelo:${clave}`
+    const kAutonomia = `asistente:autonomia:${clave}`
+    const modelo = localStorage.getItem(kModelo)
+    const autonomia = localStorage.getItem(kAutonomia)
+    localStorage.removeItem(kModelo)
+    localStorage.removeItem(kAutonomia)
+    const cambios = { ...(modelo && modelo !== 'auto' ? { modelo } : {}), ...(autonomia && autonomia !== 'preguntar' ? { autonomia } : {}) }
+    return Object.keys(cambios).length ? await window.api.ajustes.fijar(clave, cambios) : vacios
+  } catch {
+    return vacios
+  }
+}
+
 const resumirEntrada = (e: Record<string, unknown>): string => {
   const t = JSON.stringify(e)
   return t.length > 120 ? t.slice(0, 120) + '…' : t
@@ -179,43 +196,45 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const modelos = useModelos()
   const { cuenta } = useCuenta()
   const conSuscripcion = cuenta?.proveedor === 'suscripcion'
-  const claveModelo = `asistente:modelo:${proyectoFijo?.id ?? 'global'}`
-  const [modeloSel, setModeloSel] = useState<string>(() => {
-    try {
-      return localStorage.getItem(claveModelo) ?? 'auto'
-    } catch {
-      return 'auto'
+  // Modelo y autonomía por proyecto: viven en la cuenta (`ajustes/<proyecto>.json`, se sincronizan con tus demás equipos).
+  const claveAjustes = proyectoFijo?.id ?? 'global'
+  const [modeloSel, setModeloSel] = useState<string>('auto')
+  const [autonomia, setAutonomiaEstado] = useState<ModoAutonomia>('preguntar')
+  const versionAjustes = useRef(0) // sube con cada cambio hecho aquí: una lectura que empezó antes se descarta
+  useEffect(() => {
+    let vigente = true
+    const leer = async (migrar: boolean): Promise<void> => {
+      const version = versionAjustes.current
+      let a = await window.api.ajustes.leer(claveAjustes).catch(() => ({}) as AjustesAsistente)
+      if (migrar && a.modelo === undefined && a.autonomia === undefined) a = await migrarAjustesLocales(claveAjustes, a)
+      if (!vigente || version !== versionAjustes.current) return
+      setModeloSel(a.modelo ?? 'auto')
+      setAutonomiaEstado(a.autonomia ?? 'preguntar')
     }
-  })
+    void leer(true)
+    const alVolver = (): void => void leer(false)
+    window.addEventListener('focus', alVolver)
+    const cada = window.setInterval(alVolver, 20_000)
+    return () => {
+      vigente = false
+      window.removeEventListener('focus', alVolver)
+      clearInterval(cada)
+    }
+  }, [claveAjustes])
   // Un modelo recordado que ya no está disponible vuelve al modo automático.
   useEffect(() => {
     if (modeloSel !== 'auto' && modelos.length > 0 && !modelos.some((m) => m.id === modeloSel)) setModeloSel('auto')
   }, [modelos, modeloSel])
   const cambiarModelo = (id: string): void => {
+    versionAjustes.current++
     setModeloSel(id)
-    try {
-      localStorage.setItem(claveModelo, id)
-    } catch {
-      /* sin almacenamiento: no se recordará */
-    }
+    void window.api.ajustes.fijar(claveAjustes, { modelo: id === 'auto' ? null : id }).catch(() => undefined)
   }
-  const claveAutonomia = `asistente:autonomia:${proyectoFijo?.id ?? 'global'}`
-  const [autonomia, setAutonomiaEstado] = useState<ModoAutonomia>(() => {
-    try {
-      const v = localStorage.getItem(claveAutonomia)
-      return v === 'ediciones' || v === 'autonomo' ? v : 'preguntar'
-    } catch {
-      return 'preguntar'
-    }
-  })
   const cambiarAutonomia = async (nuevo: ModoAutonomia): Promise<void> => {
-    if (nuevo === 'autonomo' && !(await confirmar({ titulo: 'Activar el modo autónomo', tono: 'aviso', etiqueta: 'Activar', texto: 'El agente escribirá archivos, ejecutará typecheck, lint y pruebas, y (en el Flujo) aprobará el plan sin preguntarte, con un límite de tokens.\n\nSeguirá pidiendo confirmación para lo destructivo (borrar, git push…), para comandos desconocidos y para aceptar el resultado del Flujo.\n\nLo más seguro es usarlo con el Flujo aislado en una rama.' }))) return
+    if (nuevo === 'autonomo' && !(await confirmar({ titulo: 'Activar el modo autónomo', tono: 'aviso', etiqueta: 'Activar', texto: 'El agente escribirá archivos, ejecutará typecheck, lint y pruebas, y (en el Flujo) aprobará el plan sin preguntarte, con un límite de tokens.\n\nSeguirá pidiendo confirmación para lo destructivo (borrar, git push…), para comandos desconocidos y para aceptar el resultado del Flujo.\n\nLo más seguro es usarlo con el Flujo aislado en una rama.\n\nEste modo solo vale en este equipo: no se sincroniza con tu cuenta.' }))) return
+    versionAjustes.current++
     setAutonomiaEstado(nuevo)
-    try {
-      localStorage.setItem(claveAutonomia, nuevo)
-    } catch {
-      /* sin almacenamiento: no se recordará */
-    }
+    void window.api.ajustes.fijar(claveAjustes, { autonomia: nuevo }).catch(() => undefined)
   }
   const fin = useRef<HTMLDivElement>(null)
 

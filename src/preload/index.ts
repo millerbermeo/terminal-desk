@@ -136,6 +136,10 @@ const api: ApiCentro = {
     eliminar: (id) => ipcRenderer.invoke(Canales.proyectosEliminar, id),
     eliminarGrupo: (id, password) => ipcRenderer.invoke(Canales.grupoEliminar, id, password)
   },
+  ajustes: {
+    leer: (clave) => ipcRenderer.invoke(Canales.ajustesLeer, clave),
+    fijar: (clave, cambios) => ipcRenderer.invoke(Canales.ajustesFijar, clave, cambios)
+  },
   terminal: {
     crear: (opciones) => ipcRenderer.invoke(Canales.terminalCrear, opciones),
     adjuntar: (ptyId, cols, rows) => ipcRenderer.invoke(Canales.terminalAdjuntar, ptyId, cols, rows),

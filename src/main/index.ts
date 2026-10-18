@@ -39,6 +39,7 @@ import { abrirEnNavegadorDelSistema, GestorNavegador, rutaPreload } from './nave
 import { esPaginaDeLaApp } from './navegacion'
 import { servidoresLocales } from './puertos'
 import { HistorialComandos } from './historial-comandos'
+import { fijarAjustes, leerAjustes } from './ajustes'
 import { iniciarServidorTareas, type ServidorTareas } from './core/tareas/servidor'
 
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
@@ -468,6 +469,8 @@ function registrarIpc(): void {
     terminales.redimensionar(id, cols, rows)
   )
   ipcMain.on(Canales.terminalCerrar, (_e, id: string) => terminales.cerrar(id))
+  ipcMain.handle(Canales.ajustesLeer, (_e, clave: string) => leerAjustes(clave))
+  ipcMain.handle(Canales.ajustesFijar, (_e, clave: string, cambios: { modelo?: string | null; autonomia?: string | null }) => fijarAjustes(clave, cambios ?? {}))
   ipcMain.handle(Canales.terminalEnShell, (_e, id: string) => terminales.enShell(String(id)))
   ipcMain.handle(Canales.terminalHistorialComandos, () => historialComandos.lista())
   ipcMain.on(Canales.terminalRegistrarComando, (_e, comando: string) => void historialComandos.agregar(comando))
