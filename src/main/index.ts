@@ -22,6 +22,7 @@ import { Repositorio } from './core/git/repositorio'
 import { importarProyectosLocales } from './servidor/importar'
 import { iniciarSesionGoogle } from './servidor/google'
 import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
+import { servidorPorDefecto } from './servidor/por-defecto'
 import { cifradorDelSistema } from './cifrador'
 import { URL_SERVIDOR_PRODUCCION, type CredencialesSesion, type EstadoSesion, type NombreOperacionCuenta, type ResultadoBoveda, type ResultadoPaso, type ResultadoSesion } from '@shared/sesion'
 import { cambiarPerfil } from './perfiles'
@@ -479,7 +480,9 @@ function registrarIpc(): void {
 let servidorTareas: ServidorTareas | undefined
 
 app.whenReady().then(() => {
-  if (app.isPackaged) servidor.usarPorDefecto(URL_SERVIDOR_PRODUCCION) // instalada: el servidor de producción; `servidor.json` y ODESK_API_URL mandan sobre él
+  // Instalada (empaquetada o con install.sh/install.ps1): el servidor de producción; `servidor.json` y ODESK_API_URL mandan sobre él.
+  const porDefecto = servidorPorDefecto({ rutaApp: app.getAppPath(), empaquetada: app.isPackaged, produccion: URL_SERVIDOR_PRODUCCION })
+  if (porDefecto) servidor.usarPorDefecto(porDefecto)
   servidor.configurar(join(DIR, 'sesion.json'), cifradorDelSistema(), join(DIR, 'servidor.json'))
   servidor.alPerderSesion = () => {
     for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(Canales.sesionPerdida)
