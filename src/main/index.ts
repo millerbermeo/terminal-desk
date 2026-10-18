@@ -126,6 +126,11 @@ process.on('unhandledRejection', (r) => registro.registrar({ level: 'error', sou
 app.on('child-process-gone', (_e, d) => {
   if (d.reason === 'clean-exit') return
   registro.registrar({ level: 'error', source: d.type === 'GPU' ? 'gpu' : 'proceso', kind: 'child-process-gone', message: `${d.type}: ${d.reason}`, context: { exitCode: d.exitCode, reason: d.reason } })
+  // Si cae el proceso de gráficos (p. ej. en Wayland) las ventanas pueden quedarse en blanco aunque la interfaz siga viva: se fuerza el repintado
+  // (sin recargar: así no se cierran las terminales).
+  if (d.type === 'GPU') {
+    for (const retardo of [500, 2500]) setTimeout(() => BrowserWindow.getAllWindows().forEach((w) => !w.isDestroyed() && w.webContents.invalidate()), retardo)
+  }
 })
 /** Interfaz caída (crash, sin memoria…): se anota y se recarga sola, con tope para no entrar en bucle. */
 app.on('render-process-gone', (_e, wc, d) => {
