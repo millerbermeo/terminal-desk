@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { analizarConfigMcp } from '../src/main/core/mcp/config'
+import { analizarConfigMcp, conServidoresDeSerie } from '../src/main/core/mcp/config'
 import { OrquestadorMcp } from '../src/main/core/mcp/orquestador'
 import { RegistroHerramientas } from '../src/main/core/tools/registro'
 
@@ -36,5 +36,18 @@ describe('MCP', () => {
   it('detener quita las herramientas', async () => {
     await mcp.detener()
     expect(registro.definiciones()).toEqual([])
+  })
+})
+
+describe('servidores de serie', () => {
+  it('Playwright viene activo por defecto en cualquier proyecto', () => {
+    const c = conServidoresDeSerie(analizarConfigMcp({}))
+    expect(c.servidores.playwright).toMatchObject({ comando: 'npx', deshabilitado: false })
+    expect(c.servidores.playwright?.args).toContain('@playwright/mcp@latest')
+  })
+  it('lo declarado por el usuario con el mismo nombre manda (p. ej. apagarlo)', () => {
+    const c = conServidoresDeSerie(analizarConfigMcp({ servidores: { playwright: { comando: 'npx', deshabilitado: true }, otro: { comando: 'x' } } }))
+    expect(c.servidores.playwright?.deshabilitado).toBe(true)
+    expect(Object.keys(c.servidores).sort()).toEqual(['otro', 'playwright'])
   })
 })
