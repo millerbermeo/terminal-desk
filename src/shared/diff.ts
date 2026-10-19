@@ -228,3 +228,30 @@ export function aplicarBloques(actual: string, destino: string, elegidos: readon
   })
   return salida.join('\n')
 }
+
+/** Un tramo de `a` (líneas `[desde, hasta)`, base 0) que en `b` se sustituye por `nuevas` (vacío en `desde === hasta` = inserción). */
+export interface CambioLineas {
+  desde: number
+  hasta: number
+  nuevas: string[]
+}
+
+/** Cambios de `a` a `b` como tramos que se pueden aplicar sobre `a` (base de la fusión a tres bandas). */
+export function cambiosDeLineas(a: string[], b: string[]): CambioLineas[] {
+  const { lineas } = analizar(a, b)
+  const cambios: CambioLineas[] = []
+  let pos = 0 // línea de `a` por la que va el recorrido
+  let actual: CambioLineas | null = null
+  for (const l of lineas) {
+    if (l.tipo === 'igual') {
+      actual = null
+      pos++
+    } else {
+      actual ??= (cambios.push({ desde: pos, hasta: pos, nuevas: [] }), cambios[cambios.length - 1]!)
+      if (l.tipo === 'quitada') {
+        actual.hasta = ++pos
+      } else actual.nuevas.push(l.texto)
+    }
+  }
+  return cambios
+}
