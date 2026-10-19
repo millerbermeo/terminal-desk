@@ -9,6 +9,7 @@ import { AnfitrionConfirmar } from './confirmar'
 import { VentanaNavegador } from './VentanaNavegador'
 import { VentanaSeparada } from './VentanaSeparada'
 import { LimiteErrores } from './components/LimiteErrores'
+import { IndicadorZoom } from './components/IndicadorZoom'
 import { capturarErroresGlobales, vigilarVistaVacia } from './vigilancia'
 import './estilos.css'
 import './estilos-mejoras.css'
@@ -82,6 +83,7 @@ createRoot(document.getElementById('root')!).render(
   <>
     <LimiteErrores zona="ventana">{navegador > 0 ? <VentanaNavegador id={navegador} /> : token ? <VentanaSeparada token={token} /> : <Raiz />}</LimiteErrores>
     <AnfitrionConfirmar />
+    <IndicadorZoom />
   </>
 )
 vigilarVistaVacia()

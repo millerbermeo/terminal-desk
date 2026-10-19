@@ -16,6 +16,7 @@ import { verificarPassword } from './autenticacion'
 import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones } from './agentes'
 import { resolverPerfil } from './migracion'
 import { mantenerCavemanActualizado } from './caveman'
+import { instalarZoom } from './zoom'
 import { repararWorktrees } from './core/git/reparar'
 import { ejecutarOperacionGitHub } from './github/operaciones'
 import { ServicioEquipos, ejecutarOperacionEquipos, type DepsEquipos } from './servidor/equipos'
@@ -80,6 +81,7 @@ function soloPaginasDeLaApp(wc: Electron.WebContents): void {
 const navegador = new GestorNavegador(
   (win, id) => {
     soloPaginasDeLaApp(win.webContents)
+    instalarZoom(win.webContents)
     if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(`${process.env.ELECTRON_RENDERER_URL}?navegador=${id}`)
     else void win.loadFile(join(__dirname, '../renderer/index.html'), { query: { navegador: String(id) } })
   },
@@ -207,6 +209,7 @@ function crearVentana(opciones: { token?: string; x?: number; y?: number; titulo
     return { action: 'deny' }
   })
   soloPaginasDeLaApp(win.webContents)
+  instalarZoom(win.webContents) // Ctrl + / Ctrl − / Ctrl 0 en la ventana principal y en las separadas
 
   // Recarga de la página: los ptys del renderer anterior quedan huérfanos.
   win.webContents.on('did-start-navigation', (_e, _url, enLugar, enPrincipal) => {
@@ -607,10 +610,10 @@ app.whenReady().then(() => {
     .catch((err) => console.error('Servidor de tareas no iniciado:', err))
   registrarIpc()
   void limpiarSesiones()
+  mantenerCavemanActualizado()
   void nucleo.iniciarMcp()
   void nucleo.adjuntos.limpiar().catch(() => undefined) // adjuntos de más de 30 días
   principal = crearVentana()
-  mantenerCavemanActualizado()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) principal = crearVentana()
   })
