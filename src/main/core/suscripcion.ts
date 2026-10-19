@@ -18,6 +18,8 @@ const WINDOWS = process.platform === 'win32'
 /** Sin estas variables el CLI usaría la clave de API (y se cobraría por tokens) en vez de la suscripción. */
 function entornoSuscripcion(carpeta?: string): NodeJS.ProcessEnv {
   const env = { ...process.env }
+  // App lanzada desde el menú: su PATH no trae nvm/pnpm/node. Se usa el del shell de login (ver `cargarPathShell`).
+  if (pathShell) env.PATH = pathShell
   delete env.ANTHROPIC_API_KEY
   delete env.ANTHROPIC_AUTH_TOKEN
   delete env.ELECTRON_RUN_AS_NODE
@@ -27,9 +29,25 @@ function entornoSuscripcion(carpeta?: string): NodeJS.ProcessEnv {
 }
 
 let rutaCache: string | undefined
+let pathShell: string | undefined
+let pathShellCargado: Promise<void> | undefined
+
+/** PATH del shell de login del usuario (con nvm, pnpm, volta…), unido al de la app. Una sola vez; en Windows no hace falta. */
+export function cargarPathShell(): Promise<void> {
+  if (WINDOWS) return Promise.resolve()
+  pathShellCargado ??= new Promise<void>((res) => {
+    execFile(process.env.SHELL || '/bin/bash', ['-ilc', 'printf "__PATH__%s__PATH__" "$PATH"'], { timeout: 8000 }, (err, out) => {
+      const m = err ? null : /__PATH__(.*)__PATH__/s.exec(String(out))
+      if (m?.[1]) pathShell = [...new Set([...m[1].split(':'), ...(process.env.PATH ?? '').split(':')])].filter(Boolean).join(':')
+      res()
+    })
+  })
+  return pathShellCargado
+}
 
 /** Localiza `claude`: primero el PATH de la app y, si no está (lanzada desde el menú), el del shell de login. */
 export async function rutaClaude(): Promise<string | undefined> {
+  await cargarPathShell()
   if (rutaCache) return rutaCache
   const probar = (cmd: string, args: string[]): Promise<string | undefined> =>
     new Promise((res) =>
@@ -171,6 +189,9 @@ export class SesionesCli {
 const LECTURA = ['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch']
 
 /** Autonomía -> permisos del CLI. En modo `-p` no hay forma de preguntar: lo que no está permitido se deniega. */
+/** Comandos que ni el modo autónomo puede ejecutar. */
+export const COMANDOS_BLOQUEADOS = ['Bash(sudo:*)', 'Bash(rm -rf /:*)', 'Bash(rm -rf ~:*)', 'Bash(git push --force:*)', 'Bash(git push -f:*)', 'Bash(mkfs:*)', 'Bash(dd:*)']
+
 export function permisosCli(autonomia: ModoAutonomia, verificaciones: string[], conHerramientas = false): string[] {
   const permitidas = [...LECTURA]
   // Herramientas de la app (servidor MCP: tareas, git y GitHub). Consultar siempre; cambiar, como las ediciones de archivos, desde
@@ -181,7 +202,12 @@ export function permisosCli(autonomia: ModoAutonomia, verificaciones: string[], 
       if (permitida) permitidas.push(PREFIJO_MCP + h.nombre)
     }
   }
-  if (autonomia === 'autonomo') for (const v of verificaciones) permitidas.push(`Bash(${v}:*)`)
+  if (autonomia === 'autonomo') {
+    // Autónomo = sin nadie que apruebe: terminal y ediciones libres. Los archivos quedan limitados a la carpeta del proyecto y a las
+    // de su grupo (`--add-dir`); lo irreversible o que sale de la máquina sin control se bloquea aunque todo lo demás esté permitido.
+    permitidas.push('Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit')
+    return ['--permission-mode', 'acceptEdits', '--allowedTools', ...permitidas, '--disallowedTools', ...COMANDOS_BLOQUEADOS]
+  }
   return ['--permission-mode', autonomia === 'preguntar' ? 'default' : 'acceptEdits', '--allowedTools', ...permitidas]
 }
 

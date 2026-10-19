@@ -76,8 +76,10 @@ describe('suscripción (CLI claude)', () => {
   it('traduce la autonomía a permisos del CLI', () => {
     expect(permisosCli('preguntar', [])).toEqual(['--permission-mode', 'default', '--allowedTools', 'Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch'])
     expect(permisosCli('ediciones', [])[1]).toBe('acceptEdits')
-    expect(permisosCli('autonomo', ['pnpm test'])).toContain('Bash(pnpm test:*)')
-    expect(permisosCli('ediciones', ['pnpm test'])).not.toContain('Bash(pnpm test:*)')
+    const autonomo = permisosCli('autonomo', [])
+    expect(autonomo).toEqual(expect.arrayContaining(['Bash', 'Edit', 'Write', '--disallowedTools', 'Bash(sudo:*)']))
+    expect(autonomo.indexOf('--disallowedTools')).toBeGreaterThan(autonomo.indexOf('Bash'))
+    for (const modo of ['preguntar', 'ediciones'] as const) expect(permisosCli(modo, [])).not.toContain('Bash')
   })
 
   it('la preferencia es suscripción por defecto y se recuerda; las sesiones del CLI se guardan', async () => {

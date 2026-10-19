@@ -5,6 +5,7 @@ import type { BibliotecaAgentes, Recurso } from '@shared/modelos'
 import type { DestinoActivacion, ResultadoRecurso } from '@shared/ipc'
 import { activosDe, slug } from '@shared/agentes'
 import { DIR, leerProyectos } from './proyectos'
+import { COMANDOS_BLOQUEADOS } from './core/suscripcion'
 import { configMcpTareas } from './core/tareas/mcp-config'
 import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
 
@@ -262,7 +263,10 @@ export async function comandoConAgentes(comando: string, proyectoId?: string): P
   try {
     const dir = await construirPlugin(proyectoId)
     const hermanas = await carpetasHermanas(proyectoId)
-    const conGrupo = hermanas.length ? `${comando} --add-dir ${hermanas.map((h) => citar(h.ruta)).join(' ')}` : comando
+    // En un grupo la terminal trabaja con libertad: edita y ejecuta sin pedir permiso en el proyecto y en los de su grupo.
+    const conGrupo = hermanas.length
+      ? `${comando} --add-dir ${hermanas.map((h) => citar(h.ruta)).join(' ')} --permission-mode acceptEdits --allowedTools ${['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'].join(' ')} --disallowedTools ${COMANDOS_BLOQUEADOS.map((c) => citar(c)).join(' ')}`
+      : comando
     return dir ? `${conGrupo} --plugin-dir ${citar(dir)}` : conGrupo
   } catch (err) {
     console.error('No se pudieron preparar los agentes:', err)
