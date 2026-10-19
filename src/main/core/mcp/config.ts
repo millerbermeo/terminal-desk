@@ -26,16 +26,29 @@ export function analizarConfigMcp(crudo: unknown): ConfigMcp {
   return ConfigMcpSchema.parse(crudo)
 }
 
-/** Lee ~/.odesk-agent/mcp.json; si no existe lo crea vacío (0600: `env` puede llevar claves). */
+/**
+ * Servidores que Odesk Agent trae de serie para todos los proyectos. Lo que el usuario declare en mcp.json con el mismo nombre
+ * manda (para cambiar los args o apagarlo: `"playwright": { "comando": "npx", "deshabilitado": true }`).
+ */
+const SERVIDORES_DE_SERIE: Record<string, ServidorMcpConfig> = {
+  // Navegador controlado por la IA (pruebas de UI, capturas, scraping). Headless para no abrir ventanas en medio del trabajo.
+  playwright: { comando: 'npx', args: ['-y', '@playwright/mcp@latest', '--headless'], env: {}, deshabilitado: false, riesgo: 'ejecucion' }
+}
+
+export function conServidoresDeSerie(config: ConfigMcp): ConfigMcp {
+  return { servidores: { ...SERVIDORES_DE_SERIE, ...config.servidores } }
+}
+
+/** Lee ~/.odesk-agent/mcp.json (+ servidores de serie); si no existe lo crea vacío (0600: `env` puede llevar claves). */
 export async function leerConfigMcp(): Promise<ConfigMcp> {
   try {
-    return analizarConfigMcp(JSON.parse(await readFile(ARCHIVO, 'utf8')))
+    return conServidoresDeSerie(analizarConfigMcp(JSON.parse(await readFile(ARCHIVO, 'utf8'))))
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error(`mcp.json inválido: ${(err as Error).message}`, { cause: err })
     const vacia = analizarConfigMcp({})
     await mkdir(DIR, { recursive: true })
     await writeFile(ARCHIVO, JSON.stringify(vacia, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 })
     if (process.platform !== 'win32') await chmod(ARCHIVO, 0o600)
-    return vacia
+    return conServidoresDeSerie(vacia)
   }
 }
