@@ -1,5 +1,6 @@
-import { stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, stat, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve, sep } from 'node:path'
+import { contarConflictos, fusion3, type ArchivoFusion, type DatosArchivoFusion, type PrevisualizacionFusion, type ResolucionFusion } from '@shared/fusion'
 import {
   enConflicto,
   preparados,
@@ -453,6 +454,143 @@ export class Repositorio {
       const existe = (await this.g(['rev-parse', '--verify', '--quiet', `refs/heads/${n}`])).ok || (await this.g(['rev-parse', '--verify', '--quiet', `refs/remotes/${n}`])).ok
       if (!existe) throw new Error(`No existe la rama «${n}».`)
       return this.conConflictos(await this.g(['merge', '--no-edit', n], { env: { GIT_EDITOR: 'true' } }), 'merge')
+    })
+  }
+
+  // ---------------------------------------------------------------- fusión asistida (editor de tres paneles)
+
+  private static readonly MAX_ARCHIVOS_FUSION = 300
+  private static readonly MAX_TEXTO_FUSION = 1024 * 1024
+
+  /** Valida la rama de origen (existe, no es la actual) y devuelve su nombre y el commit base común con HEAD. */
+  private async origenFusion(origen: string): Promise<{ nombre: string; base: string }> {
+    const nombre = await this.validarRama(origen, false)
+    if (!(await this.refExiste(nombre))) throw new Error(`No existe la rama «${nombre}».`)
+    const actual = await this.estado('ligero')
+    if (actual.rama === nombre) throw new Error('Elige otra rama: no se puede fusionar una rama consigo misma.')
+    const mb = await this.g(['merge-base', 'HEAD', nombre])
+    if (!mb.ok || !mb.stdout.trim()) throw new Error(`«${nombre}» y la rama actual no comparten historia: no hay base para fusionarlas.`)
+    return { nombre, base: mb.stdout.trim() }
+  }
+
+  private async textoDe(ref: string, ruta: string): Promise<{ texto: string; existe: boolean; noTexto: boolean }> {
+    const tam = await this.g(['cat-file', '-s', `${ref}:${ruta}`])
+    if (!tam.ok) return { texto: '', existe: false, noTexto: false }
+    if (Number(tam.stdout.trim()) > Repositorio.MAX_TEXTO_FUSION) return { texto: '', existe: true, noTexto: true }
+    const r = await this.g(['cat-file', 'blob', `${ref}:${ruta}`])
+    if (!r.ok) return { texto: '', existe: false, noTexto: false }
+    if (r.stdout.includes('\0') || r.stdout.includes('\uFFFD')) return { texto: '', existe: true, noTexto: true }
+    return { texto: r.stdout, existe: true, noTexto: false }
+  }
+
+  private async cambiosDesde(base: string, ref: string): Promise<Map<string, string>> {
+    const r = await this.ok(['diff', '--name-status', '-z', '--no-renames', base, ref, '--'])
+    const partes = r.split('\0').filter(Boolean)
+    const m = new Map<string, string>()
+    for (let i = 0; i + 1 < partes.length; i += 2) m.set(partes[i + 1]!, partes[i]![0]!)
+    return m
+  }
+
+  /** Vista previa de integrar `origen` en la rama actual: no modifica nada. */
+  async fusionPrevia(origen: string): Promise<PrevisualizacionFusion> {
+    await this.exigirRepo()
+    const { nombre, base } = await this.origenFusion(origen)
+    const actual = (await this.estado('ligero')).rama ?? 'HEAD'
+    const commits = Number((await this.ok(['rev-list', '--count', `HEAD..${nombre}`])).trim()) || 0
+    const deOrigen = await this.cambiosDesde(base, nombre)
+    const deActual = await this.cambiosDesde(base, 'HEAD')
+    const rutas = [...deOrigen.keys()].sort((a, b) => a.localeCompare(b))
+    const archivos: ArchivoFusion[] = []
+    for (const ruta of rutas.slice(0, Repositorio.MAX_ARCHIVOS_FUSION)) {
+      const eo = deOrigen.get(ruta)!
+      const ea = deActual.get(ruta)
+      if (!ea) {
+        archivos.push({ ruta, estado: 'origen', enOrigen: eo, enActual: '', conflictos: 0 })
+        continue
+      }
+      const [b, a, o] = await Promise.all([this.textoDe(base, ruta), this.textoDe('HEAD', ruta), this.textoDe(nombre, ruta)])
+      if (a.existe === o.existe && a.texto === o.texto && !a.noTexto && !o.noTexto) continue // las dos ramas dejaron el archivo igual: nada que integrar
+      if (b.noTexto || a.noTexto || o.noTexto || a.existe !== o.existe || b.existe !== a.existe) {
+        // binarios, enormes o añadidos / borrados en un lado: git no puede mezclarlos línea a línea
+        const conflicto = !(a.existe && o.existe && !a.noTexto && !o.noTexto) || !b.existe
+        archivos.push({ ruta, estado: 'conflicto', enOrigen: eo, enActual: ea, conflictos: conflicto ? 1 : 0, ...(a.noTexto || o.noTexto || b.noTexto ? { noTexto: true } : {}) })
+        continue
+      }
+      const n = contarConflictos(fusion3(b.texto, a.texto, o.texto))
+      archivos.push({ ruta, estado: n > 0 ? 'conflicto' : 'ambos', enOrigen: eo, enActual: ea, conflictos: n })
+    }
+    return { actual, origen: nombre, base, commits, archivos, truncado: rutas.length > Repositorio.MAX_ARCHIVOS_FUSION }
+  }
+
+  async fusionArchivo(origen: string, ruta: string): Promise<DatosArchivoFusion> {
+    await this.exigirRepo()
+    const motivo = validarRutaRepo(ruta)
+    if (motivo) throw new Error(motivo)
+    const { nombre, base } = await this.origenFusion(origen)
+    const [b, a, o] = await Promise.all([this.textoDe(base, ruta), this.textoDe('HEAD', ruta), this.textoDe(nombre, ruta)])
+    if (b.noTexto || a.noTexto || o.noTexto) throw new Error('Este archivo es binario o demasiado grande para el editor de fusión: elige la versión de una de las dos ramas.')
+    return { ruta, base: b.texto, actual: a.texto, origen: o.texto, existe: { base: b.existe, actual: a.existe, origen: o.existe } }
+  }
+
+  /** Escribe un archivo del repositorio sin salir de la raíz (ni a través de enlaces simbólicos de carpetas). */
+  private async escribirArchivo(ruta: string, texto: string): Promise<void> {
+    const raiz = this.raiz ?? this.carpeta
+    const destino = resolve(raiz, ruta)
+    if (!destino.startsWith(raiz + sep) || ruta.split(/[\\/]/).includes('.git')) throw new Error(`Ruta no permitida: ${ruta}`)
+    await mkdir(dirname(destino), { recursive: true })
+    await writeFile(destino, texto, 'utf8')
+  }
+
+  fusionAplicar(origen: string, resoluciones: Record<string, ResolucionFusion>, mensaje?: string, confirmar = true): Promise<{ estado: EstadoGit; hash?: string }> {
+    return this.escribir(async () => {
+      await this.exigirRepo()
+      const { nombre } = await this.origenFusion(origen)
+      if (resoluciones === null || typeof resoluciones !== 'object') throw new Error('Faltan las resoluciones.')
+      const lista = Object.entries(resoluciones)
+      if (lista.length > 5000) throw new Error('Demasiados archivos a la vez.')
+      for (const [ruta, r] of lista) {
+        const motivo = validarRutaRepo(ruta)
+        if (motivo) throw new Error(motivo)
+        if (!r || (r.tipo !== 'texto' && r.tipo !== 'actual' && r.tipo !== 'origen') || (r.tipo === 'texto' && (typeof r.texto !== 'string' || Buffer.byteLength(r.texto) > 5 * 1024 * 1024))) throw new Error(`Resolución no válida para «${ruta}».`)
+      }
+      const antes = await this.estado('ligero')
+      if (antes.operacion) throw new Error('Ya hay una operación en curso: termínala o abórtala primero.')
+      if (antes.archivos.length > 0) throw new Error('Tienes cambios sin confirmar: confírmalos o apártalos (stash) antes de fusionar.')
+
+      const m = await this.g(['merge', '--no-commit', '--no-ff', nombre], { env: { GIT_EDITOR: 'true' } })
+      const abortar = async (): Promise<void> => void (await this.g(['merge', '--abort']))
+      const sinConflictos = (await this.g(['diff', '--name-only', '--diff-filter=U', '-z'])).stdout.split('\0').filter(Boolean)
+      if (!m.ok && sinConflictos.length === 0) throw new Error(explicarError(m.stderr || m.stdout, 'merge'))
+      if (/Already up to date/i.test(m.stdout)) throw new Error('No hay nada que fusionar: la rama actual ya contiene esa rama.')
+      try {
+        const sinResolver = sinConflictos.filter((r) => !resoluciones[r])
+        if (sinResolver.length) throw new Error(`Faltan por resolver: ${sinResolver.slice(0, 5).join(', ')}${sinResolver.length > 5 ? '…' : ''}`)
+        for (const [ruta, r] of lista) {
+          if (r.tipo === 'texto') {
+            await this.escribirArchivo(ruta, r.texto)
+            await this.ok(['add', '--', ruta])
+          } else {
+            const ref = r.tipo === 'actual' ? 'HEAD' : nombre
+            const existeAllí = (await this.g(['cat-file', '-e', `${ref}:${ruta}`])).ok
+            if (existeAllí) await this.ok(['checkout', ref, '--', ruta])
+            else await this.ok(['rm', '-f', '-q', '--', ruta])
+          }
+        }
+        const quedan = (await this.g(['diff', '--name-only', '--diff-filter=U', '-z'])).stdout.split('\0').filter(Boolean)
+        if (quedan.length) throw new Error(`Siguen en conflicto: ${quedan.slice(0, 5).join(', ')}`)
+      } catch (e) {
+        await abortar() // no se deja la fusión a medias: el árbol queda como estaba
+        throw e
+      }
+      if (!confirmar) return { estado: await this.estado() }
+      const texto = (typeof mensaje === 'string' && mensaje.trim() ? mensaje.trim() : `Merge branch '${nombre}' into ${antes.rama ?? 'HEAD'}`).slice(0, 20_000)
+      const c = await this.g(['commit', '-F', '-'], { entrada: texto + '\n', env: { GIT_EDITOR: 'true' } })
+      if (!c.ok) {
+        await abortar()
+        throw new Error(explicarError(c.stderr || c.stdout, 'commit'))
+      }
+      const hash = (await this.ok(['rev-parse', '--short', 'HEAD'])).trim()
+      return { estado: await this.estado(), hash }
     })
   }
 

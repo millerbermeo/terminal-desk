@@ -131,6 +131,8 @@ export interface ResultadoCambioConflicto extends ResultadoRemoto {
   conflictos: boolean
 }
 
+import type { DatosArchivoFusion, PrevisualizacionFusion, ResolucionFusion } from './fusion'
+
 interface P {
   proyectoId: string
 }
@@ -153,6 +155,15 @@ export interface OperacionesGit {
   cambiarRama: { entrada: P & { nombre: string; remota?: boolean }; salida: EstadoGit }
   eliminarRama: { entrada: P & { nombre: string; forzar?: boolean }; salida: Rama[] }
   fusionar: { entrada: P & { rama: string }; salida: ResultadoCambioConflicto }
+  /** Compara la rama actual con otra sin tocar nada: qué archivos trae, cuáles se fusionan solos y cuáles tienen conflictos. */
+  fusionPrevia: { entrada: P & { origen: string }; salida: PrevisualizacionFusion }
+  /** Las tres versiones (base común, rama actual y rama de origen) de un archivo, para el editor de fusión. */
+  fusionArchivo: { entrada: P & { origen: string; ruta: string }; salida: DatosArchivoFusion }
+  /**
+   * Fusiona `origen` en la rama actual usando las resoluciones elegidas en el editor (por archivo: su texto, o la versión entera de una rama).
+   * Deben cubrir todos los archivos en conflicto; si falta alguno no se toca nada. Con `confirmar` (por defecto) crea el commit de fusión.
+   */
+  fusionAplicar: { entrada: P & { origen: string; resoluciones: Record<string, ResolucionFusion>; mensaje?: string; confirmar?: boolean }; salida: { estado: EstadoGit; hash?: string } }
   revertir: { entrada: P & { hash: string }; salida: ResultadoCambioConflicto }
   /** Cancela la fusión, el revert, el cherry-pick o el rebase en curso. */
   abortar: { entrada: P; salida: EstadoGit }

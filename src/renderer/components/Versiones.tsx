@@ -8,6 +8,7 @@ import { IconoMas, IconoRama, IconoReiniciar } from './Iconos'
 import { VersionesCambios } from './VersionesCambios'
 import { ModalClonar } from './ModalClonar'
 import { VersionesEtiquetas } from './VersionesEtiquetas'
+import { VersionesFusion } from './VersionesFusion'
 import { AvisoEquipos } from './AvisoEquipos'
 import { HistorialLocal } from './HistorialLocal'
 import { VersionesEquipos } from './VersionesEquipos'
@@ -16,11 +17,12 @@ import { VersionesHistorial } from './VersionesHistorial'
 import { VersionesRamas } from './VersionesRamas'
 import { VersionesStash } from './VersionesStash'
 
-type Pestana = 'cambios' | 'historial' | 'ramas' | 'versiones' | 'stash' | 'github' | 'equipos' | 'historial-local'
+type Pestana = 'cambios' | 'historial' | 'ramas' | 'fusion' | 'versiones' | 'stash' | 'github' | 'equipos' | 'historial-local'
 const PESTANAS: { id: Pestana; nombre: string }[] = [
   { id: 'cambios', nombre: 'Cambios' },
   { id: 'historial', nombre: 'Historial' },
   { id: 'ramas', nombre: 'Ramas' },
+  { id: 'fusion', nombre: 'Fusión' },
   { id: 'versiones', nombre: 'Versiones' },
   { id: 'stash', nombre: 'Stash' },
   { id: 'github', nombre: 'GitHub' },
@@ -150,6 +152,7 @@ export function Versiones({ datos, visible, onDatos, avisos = [] }: Props) {
         {pestana === 'cambios' && <VersionesCambios c={contexto} />}
         {pestana === 'historial' && <VersionesHistorial c={contexto} />}
         {pestana === 'ramas' && <VersionesRamas c={contexto} />}
+        {pestana === 'fusion' && <VersionesFusion c={contexto} />}
         {pestana === 'versiones' && <VersionesEtiquetas c={contexto} />}
         {pestana === 'stash' && <VersionesStash c={contexto} />}
         {pestana === 'github' && <VersionesGitHub c={contexto} />}
