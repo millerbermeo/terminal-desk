@@ -20,6 +20,8 @@ export interface Turno {
   proyectoId?: string
   autonomia?: 'preguntar' | 'ediciones' | 'autonomo'
   adjuntos?: Adjunto[]
+  /** Pregunta lateral: respondida aparte mientras otra tarea seguía en marcha (no es parte del hilo principal). */
+  lateral?: boolean
 }
 
 export interface OpcionesEnvio {
@@ -210,6 +212,36 @@ export function useAgente(opciones: { clave?: string } = {}) {
     [actualizar, sesionId]
   )
 
+  /**
+   * Pregunta lateral: se responde ya, en paralelo, sin cancelar ni esperar a la tarea en marcha (que sigue su curso).
+   * Devuelve false si no hay una tarea en marcha a la que preguntar.
+   */
+  const preguntarAhora = useCallback(
+    async (prompt: string, destino: string, proyectoId?: string): Promise<boolean> => {
+      const principal = [...ref.current].reverse().find((t) => t.estado === 'en_curso' && !t.lateral && t.ejecucionId && t.modo === 'chat')
+      if (!principal?.ejecucionId) return false
+      const clave = `t${++contador.current}`
+      actualizar((ts) => [
+        ...ts,
+        { clave, prompt, modo: 'chat', destino, raiz: 'asistente', eventos: [], parcial: '', estado: 'en_curso', lateral: true, ...(proyectoId ? { proyectoId } : {}) }
+      ])
+      enVuelo.current++
+      try {
+        const { ejecucionId } = await window.api.core.lateral(principal.ejecucionId, prompt)
+        etiquetarEjecucion(ejecucionId, destino)
+        const previos = huerfanos.current.get(ejecucionId) ?? []
+        actualizar((ts) => ts.map((t) => (t.clave === clave ? previos.reduce(aplicar, { ...t, ejecucionId }) : t)))
+      } catch (err) {
+        const mensaje = (err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+        actualizar((ts) => ts.map((t) => (t.clave === clave ? { ...t, estado: 'error', error: mensaje } : t)))
+      } finally {
+        if (--enVuelo.current === 0) huerfanos.current.clear()
+      }
+      return true
+    },
+    [actualizar]
+  )
+
   /** Ejecuta un comando propio `/nombre` (tipo ejecutable); el resultado llega como un turno más. */
   const ejecutarComando = useCallback(
     async (o: { proyectoId: string; nombre: string; argumentos: string; destino: string }): Promise<void> => {
@@ -280,12 +312,13 @@ export function useAgente(opciones: { clave?: string } = {}) {
     [nuevaConversacion, sesionId]
   )
 
-  const enCurso = turnos.some((t) => t.estado === 'en_curso')
+  // Las preguntas laterales no cuentan: la tarea principal es la que bloquea «Enviar», «Nueva conversación», etc.
+  const enCurso = turnos.some((t) => t.estado === 'en_curso' && !t.lateral)
   const contexto = contextoDe(turnos, contextoEstimado)
   const tokensSesion = turnos.reduce((s, t) => s + t.eventos.reduce((x, e) => (e.tipo === 'fin' ? x + e.resultado.uso.tokensEntrada + e.resultado.uso.tokensSalida : x), 0), 0)
   return {
     contexto,
-    tokensSesion, turnos, enCurso, sesionId, enviar, ejecutarComando, avisar, cancelar, nuevaConversacion, abrirSesion, borrarSesion }
+    tokensSesion, turnos, enCurso, sesionId, enviar, preguntarAhora, ejecutarComando, avisar, cancelar, nuevaConversacion, abrirSesion, borrarSesion }
 }
 
 export type Agente = ReturnType<typeof useAgente>

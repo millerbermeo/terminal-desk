@@ -33,6 +33,7 @@ const api: ApiCentro = {
     trazasListar: (limite) => ipcRenderer.invoke(Canales.coreTrazasListar, limite),
     trazaObtener: (id) => ipcRenderer.invoke(Canales.coreTrazaObtener, id),
     trazaEliminar: (id) => ipcRenderer.invoke(Canales.coreTrazaEliminar, id),
+    lateral: (ejecucionId, prompt) => ipcRenderer.invoke(Canales.coreLateral, ejecucionId, prompt),
     evalsSuites: () => ipcRenderer.invoke(Canales.coreEvalsSuites),
     evalsEjecutar: (suiteId, casos) => ipcRenderer.invoke(Canales.coreEvalsEjecutar, suiteId, casos),
     evalsInformes: (suiteId) => ipcRenderer.invoke(Canales.coreEvalsInformes, suiteId),
