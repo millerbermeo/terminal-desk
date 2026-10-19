@@ -23,6 +23,7 @@ export const COMPARTIDOS = new Set([
   'worktrees', // checkouts git con rutas absolutas: moverlos los rompería
   'sesiones', // plugins de Claude Code generados (derivados, pueden estar en uso)
   'mcp', // configuración generada del servidor MCP
+  'caveman', // plugin Caveman descargado de GitHub (global para todas las cuentas)
   'tareas.sock',
   'tareas.token'
 ])

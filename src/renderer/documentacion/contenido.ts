@@ -233,7 +233,7 @@ export const SECCIONES: Seccion[] = [
     ],
     pasos: [
       { titulo: '1. Elegir proveedor', texto: 'El menú ✦ lista los proveedores configurados y el «Asistente integrado». Un proveedor con «?» no se encontró en el PATH de la app.' },
-      { titulo: '2. La app prepara el entorno', texto: 'Si el binario es claude y la terminal tiene proyecto, se genera un plugin con tus agentes, skills y el servidor MCP de la app, y se añade --plugin-dir. Nada se escribe en el repositorio del proyecto.' },
+      { titulo: '2. La app prepara el entorno', texto: 'Si el binario es claude y la terminal tiene proyecto, se genera un plugin con tus agentes, skills y el servidor MCP de la app, y se añade --plugin-dir. Además, toda terminal de Claude Code y el Asistente cargan Caveman (respuestas comprimidas, menos tokens), que la app descarga de GitHub y mantiene actualizado sola. Nada se escribe en el repositorio del proyecto.' },
       { titulo: '3. Trabajar', texto: 'Es el CLI real: mismos comandos, misma sesión. La app no interfiere en la conversación.' }
     ],
     bloques: [

@@ -15,6 +15,7 @@ import type { BloqueContenido, DecisionHumana, EstadoFlujo, EjecucionIniciada, E
 import type { NuevaEntradaMemoria } from '@shared/core/memoria'
 import { Canales } from '@shared/ipc'
 import { carpetasHermanas, pluginAgentesAsistente } from '../agentes'
+import { pluginCaveman } from '../caveman'
 import { leerProveedores } from '../proveedores'
 import { DIR, carpetaDeProyecto, leerProyectos, registrarProyecto, vincularCarpetaAProyecto } from '../proyectos'
 import { Agente } from './agents/agente'
@@ -461,7 +462,7 @@ export class Nucleo {
       let estado: 'completado' | 'cancelado' | 'error' = 'completado'
       try {
         const mcpTareas = await archivoMcpTareas(proyecto?.id).catch(() => undefined)
-        const pluginDir = await pluginAgentesAsistente(proyecto?.id)
+        const pluginDirs = [await pluginAgentesAsistente(proyecto?.id), await pluginCaveman()].filter((d): d is string => Boolean(d))
         // Dentro de un grupo, el Asistente puede leer y editar también las carpetas de los demás proyectos del grupo.
         const hermanas = await carpetasHermanas(proyecto?.id)
         const extraGrupo = hermanas.length
@@ -487,7 +488,7 @@ export class Nucleo {
             ...(carpeta || hermanas.length ? { carpetasExtra: [...(carpeta ? [carpeta] : []), ...hermanas.map((h) => h.ruta)] } : {}),
             ...(carpetaCuenta ? { carpetaCuenta } : {}),
             ...(mcpTareas ? { mcpTareas } : {}),
-            ...(pluginDir ? { pluginDir } : {}),
+            ...(pluginDirs.length ? { pluginDirs } : {}),
             senal: ctl.signal,
             alEvento: emitir,
             retenerFin: true,
