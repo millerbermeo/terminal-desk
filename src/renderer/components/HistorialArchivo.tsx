@@ -103,12 +103,17 @@ export function HistorialArchivo({ proyectoId, ruta, onCambio, avisar, tick = 0 
     if (!sel || !versiones.some((v) => v.id === sel)) setSel(versiones[0]?.id ?? null)
   }, [versiones, sel])
 
+  // La versión base (lo que había en el último commit) no tiene «anterior»: compararla con nada lo muestra todo como agregado y no dice qué
+  // cambió. Se compara con el archivo actual, que es el «antes y después» real.
+  const esBase = versiones?.find((v) => v.id === sel)?.origen === 'base'
+  const contraEf = contra === 'anterior' && esBase ? 'actual' : contra
+
   // La comparación: la versión elegida contra su anterior, contra el archivo actual o contra otra versión.
   useEffect(() => {
     if (!sel) return void setResultado(null)
     let vigente = true
     setCargando(true)
-    const pedir = contra === 'actual' ? api('comparar', { proyectoId, ruta, desde: sel, hasta: 'actual' }) : api('comparar', { proyectoId, ruta, desde: contra, hasta: sel })
+    const pedir = contraEf === 'actual' ? api('comparar', { proyectoId, ruta, desde: sel, hasta: 'actual' }) : api('comparar', { proyectoId, ruta, desde: contraEf, hasta: sel })
     pedir
       .then((r) => vigente && (setResultado(r), setError('')))
       .catch((e) => vigente && (setResultado(null), setError(mensajeDe(e))))
@@ -116,7 +121,7 @@ export function HistorialArchivo({ proyectoId, ruta, onCambio, avisar, tick = 0 
     return () => {
       vigente = false
     }
-  }, [proyectoId, ruta, sel, contra, tick])
+  }, [proyectoId, ruta, sel, contraEf, tick])
 
   // Para elegir qué restaurar: los cambios que se aplicarían (archivo actual → versión elegida).
   useEffect(() => {
@@ -215,7 +220,7 @@ export function HistorialArchivo({ proyectoId, ruta, onCambio, avisar, tick = 0 
             <div className="hv-barra">
               <label className="hv-comparar">
                 <span>Comparar con</span>
-                <select value={contra} onChange={(e) => (setContra(e.target.value), setEligiendo(false))}>
+                <select value={contraEf} onChange={(e) => (setContra(e.target.value), setEligiendo(false))}>
                   <option value="anterior">Su versión anterior (qué cambió aquí)</option>
                   <option value="actual">El archivo actual</option>
                   {versiones
@@ -237,6 +242,10 @@ export function HistorialArchivo({ proyectoId, ruta, onCambio, avisar, tick = 0 
                 </button>
               </div>
             </div>
+
+            {esBase && contra === 'anterior' && (
+              <p className="vc-nota">Esta es la versión del último commit de git (no tiene una anterior): a la izquierda está como estaba entonces y a la derecha el archivo actual.</p>
+            )}
 
             {resultado && (
               <p className="hv-resumen">
