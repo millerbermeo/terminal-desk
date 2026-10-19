@@ -150,7 +150,7 @@ function TurnoVista({ t, onCancelar }: { t: Turno; onCancelar: () => void }) {
     <article className="ag-turno">
       <div className="ag-usuario">
         <div className="ag-quien">
-          Tú · {t.destino} {t.modo !== 'chat' && t.modo !== 'comando' && <span className="chip">{t.modo === 'flujo' ? 'flujo de desarrollo' : 'grupo (A2A)'}</span>}
+          Tú · {t.destino} {t.lateral && <span className="chip" title="Respondida aparte: la tarea principal sigue su curso">pregunta lateral</span>} {t.modo !== 'chat' && t.modo !== 'comando' && <span className="chip">{t.modo === 'flujo' ? 'flujo de desarrollo' : 'grupo (A2A)'}</span>}
           {t.autonomia && <span className="chip chip-aviso" title="Se ejecutó con menos confirmaciones">{t.autonomia === 'autonomo' ? 'autónomo' : 'acepta ediciones'}</span>}
         </div>
         <div className="ag-texto">{t.prompt}</div>
@@ -381,6 +381,17 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     lanzar(prompt)
   }
 
+  /** Responde ya, en paralelo, sin interrumpir la tarea en marcha (a diferencia de «Encolar», que espera a que termine). */
+  const preguntarAhora = (): void => {
+    const prompt = texto.trim()
+    if (!prompt || prompt.startsWith('/')) return
+    setTexto('')
+    void agente.preguntarAhora(prompt, etiqueta, proyecto?.id).then((ok) => {
+      // Nada consultable (p. ej. un flujo, o acabó justo ahora): se encola como un mensaje normal, nunca en paralelo.
+      if (!ok) setCola((c) => [...c, { prompt, adjuntos: [] }])
+    })
+  }
+
   const quitarDeCola = (i: number): void => {
     for (const a of cola[i]?.adjuntos ?? []) void window.api.core.adjuntoEliminar(a.id)
     setCola((c) => c.filter((_, j) => j !== i))
@@ -399,7 +410,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     setSugOculta(true)
   }
 
-  const actual = agente.turnos.at(-1)
+  const actual = agente.turnos.filter((t) => !t.lateral).at(-1) // una pregunta lateral no decide si la cola avanza
   // Al terminar bien el turno en marcha, sale el siguiente de la cola. Si se canceló o falló, la cola espera a que el usuario decida.
   useEffect(() => {
     if (!agente.enCurso && cola.length > 0 && actual?.estado === 'completado') despacharSiguiente()
@@ -604,7 +615,12 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               }
             }}
           />
-          <button className="primario" onClick={enviar} disabled={(!texto.trim() && pendientes.length === 0) || subiendo > 0} title={agente.enCurso ? 'El agente está trabajando: el mensaje se enviará al terminar' : undefined}>
+          {agente.enCurso && (
+            <button onClick={preguntarAhora} disabled={!texto.trim() || texto.trim().startsWith('/') || subiendo > 0} title="Responde ya, en paralelo y sin interrumpir lo que está haciendo (solo suscripción, en solo lectura)">
+              Preguntar ahora
+            </button>
+          )}
+          <button className="primario" onClick={enviar} disabled={(!texto.trim() && pendientes.length === 0) || subiendo > 0} title={agente.enCurso ? 'El agente está trabajando: el mensaje se enviará al terminar (o usa «Preguntar ahora»)' : undefined}>
             {agente.enCurso ? 'Encolar' : !texto.trim() && pendientes.length > 0 ? 'Enviar archivos' : 'Enviar'}
           </button>
         </div>

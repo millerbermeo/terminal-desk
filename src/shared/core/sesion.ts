@@ -15,6 +15,8 @@ export interface TurnoGuardado {
   proyectoId?: string
   autonomia?: 'preguntar' | 'ediciones' | 'autonomo'
   adjuntos?: Adjunto[]
+  /** Pregunta lateral: se respondió aparte mientras otra tarea seguía en marcha. */
+  lateral?: boolean
 }
 
 export interface SesionGuardada {

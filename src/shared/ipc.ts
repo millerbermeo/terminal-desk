@@ -63,6 +63,7 @@ export const Canales = {
   coreCancelar: 'core:cancelar',
   coreMcpEstado: 'core:mcp-estado',
   coreMcpReiniciar: 'core:mcp-reiniciar',
+  coreLateral: 'core:lateral',
   coreEvento: 'core:evento',
   coreResponder: 'core:responder',
   coreWorktreesListar: 'core:worktrees-listar',
@@ -257,6 +258,8 @@ export interface ApiCentro {
     evalsSuites(): Promise<InfoSuite[]>
     evalsEjecutar(suiteId: string, casos?: string[]): Promise<ResultadoEvals>
     evalsInformes(suiteId: string): Promise<InformeEval[]>
+    /** Pregunta lateral: se responde ya, en paralelo, con el contexto de la ejecución en marcha, sin interrumpirla (solo suscripción). */
+    lateral(ejecucionId: string, prompt: string): Promise<EjecucionIniciada>
     /** Modelos disponibles para la clave (con su ventana de contexto); si la API no responde, los conocidos. */
     modelos(): Promise<InfoModelo[]>
     /** Cuenta con la que se paga el modelo: proveedor elegido (suscripción por defecto) y estado de la sesión. */
