@@ -131,6 +131,9 @@ export const CanalesArchivos = {
   crear: 'archivos:crear',
   renombrar: 'archivos:renombrar',
   borrar: 'archivos:borrar',
+  duplicar: 'archivos:duplicar',
+  rutaAbsoluta: 'archivos:ruta-absoluta',
+  mostrar: 'archivos:mostrar',
   estadoGit: 'archivos:estado-git',
   vigilar: 'archivos:vigilar',
   cambio: 'archivos:cambio'
@@ -241,6 +244,12 @@ export interface ApiCentro {
     renombrar(proyectoId: string, desde: string, hasta: string): Promise<void>
     /** A la papelera del sistema (recuperable). */
     borrar(proyectoId: string, ruta: string): Promise<void>
+    /** Copia el elemento junto al original con un nombre libre; devuelve la ruta nueva. */
+    duplicar(proyectoId: string, ruta: string): Promise<string>
+    /** Ruta absoluta en disco de un elemento ('' = raíz del proyecto). */
+    rutaAbsoluta(proyectoId: string, ruta: string): Promise<string>
+    /** Lo muestra en el explorador de archivos del sistema. */
+    mostrar(proyectoId: string, ruta: string): Promise<void>
     estadoGit(proyectoId: string): Promise<Record<string, MarcaGit>>
     /** Carpetas cuyos cambios en disco se quieren recibir (sustituye a las anteriores de este proyecto en esta ventana). */
     vigilar(proyectoId: string, carpetas: string[]): Promise<void>

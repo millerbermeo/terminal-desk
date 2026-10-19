@@ -30,6 +30,9 @@ export function registrarIpcArchivos(historial?: ServicioHistorial): void {
   ipcMain.handle(c.crear, (_e, id: string, ruta: string, tipo: 'archivo' | 'carpeta') => gestor.crear(String(id), String(ruta), tipo === 'carpeta' ? 'carpeta' : 'archivo'))
   ipcMain.handle(c.renombrar, (_e, id: string, desde: string, hasta: string) => gestor.renombrar(String(id), String(desde), String(hasta)))
   ipcMain.handle(c.borrar, (_e, id: string, ruta: string) => gestor.borrar(String(id), String(ruta)))
+  ipcMain.handle(c.duplicar, (_e, id: string, ruta: string) => gestor.duplicar(String(id), String(ruta)))
+  ipcMain.handle(c.rutaAbsoluta, (_e, id: string, ruta: string) => gestor.rutaAbsoluta(String(id), String(ruta ?? '')))
+  ipcMain.handle(c.mostrar, async (_e, id: string, ruta: string) => shell.showItemInFolder(await gestor.rutaAbsoluta(String(id), String(ruta ?? ''))))
   ipcMain.handle(c.estadoGit, (_e, id: string) => gestor.estadoGit(String(id)))
   ipcMain.handle(c.vigilar, async (e, id: string, carpetas: string[]) => {
     const sender = e.sender

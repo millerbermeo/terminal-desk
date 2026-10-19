@@ -671,6 +671,10 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
 .ed-pos { font-variant-numeric: tabular-nums; }
 .ed-menu { z-index: 20; position: fixed; }
 .ed-menu .peligro { color: var(--error); }
+.ed-menu { min-width: 250px; max-height: calc(100vh - 8px); overflow-y: auto; }
+.ed-menu button { font-size: 12.5px; }
+.ed-menu button:focus-visible { background: var(--bg-hover); outline: none; }
+.ed-menu-sep { height: 1px; margin: 4px 6px; background: var(--borde); }
 /* panel estrecho: el árbol pasa a ser un cajón que se abre con ☰ */
 @container ed (max-width: 560px) {
   .ed-cajon { display: inline-flex; align-items: center; }
