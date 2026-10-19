@@ -118,6 +118,8 @@ function Cabecera({ b, seleccion, onSeleccion, etiqueta }: { b: BloqueDiff; sele
 export function VisorDiff({ diff, modo, seleccion, onSeleccion, etiquetaBloque = 'Restaurar este bloque' }: Props) {
   const total = useMemo(() => diff.bloques.reduce((n, b) => n + b.lineas.length, 0), [diff])
   if (diff.iguales) return <p className="tareas-vacio">Sin diferencias: las dos versiones son iguales.</p>
+  // Si todo es agregado (o todo quitado) una de las dos mitades queda vacía: se usa el ancho completo en vez de dejar medio panel en blanco.
+  const unLado: 'izq' | 'der' | null = diff.quitadas === 0 && diff.modificadas === 0 ? 'der' : diff.agregadas === 0 && diff.modificadas === 0 ? 'izq' : null
   let restantes = MAX_FILAS
   return (
     <div className="hd" role="table" aria-label="Diferencias">
@@ -142,15 +144,19 @@ export function VisorDiff({ diff, modo, seleccion, onSeleccion, etiquetaBloque =
                   </div>
                 ))
               : filasDivididas(b).map((f, i) => (
-                  <div key={i} className="hd-f" role="row">
-                    <div className={`hd-mitad hd-${f.izq?.tipo ?? 'vacio'}${f.izq?.modificada ? ' mod' : ''}`}>
-                      <span className="hd-n">{f.izq?.a ?? ''}</span>
-                      <span className="hd-t">{f.izq ? <Texto linea={f.izq} pareja={f.parIzq} /> : ''}</span>
-                    </div>
-                    <div className={`hd-mitad hd-${f.der?.tipo ?? 'vacio'}${f.der?.modificada ? ' mod' : ''}`}>
-                      <span className="hd-n">{f.der?.b ?? ''}</span>
-                      <span className="hd-t">{f.der ? <Texto linea={f.der} pareja={f.parDer} /> : ''}</span>
-                    </div>
+                  <div key={i} className={`hd-f${unLado ? ' solo' : ''}`} role="row">
+                    {unLado !== 'der' && (
+                      <div className={`hd-mitad hd-${f.izq?.tipo ?? 'vacio'}${f.izq?.modificada ? ' mod' : ''}`}>
+                        <span className="hd-n">{f.izq?.a ?? ''}</span>
+                        <span className="hd-t">{f.izq ? <Texto linea={f.izq} pareja={f.parIzq} /> : ''}</span>
+                      </div>
+                    )}
+                    {unLado !== 'izq' && (
+                      <div className={`hd-mitad hd-${f.der?.tipo ?? 'vacio'}${f.der?.modificada ? ' mod' : ''}`}>
+                        <span className="hd-n">{f.der?.b ?? ''}</span>
+                        <span className="hd-t">{f.der ? <Texto linea={f.der} pareja={f.parDer} /> : ''}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
           </section>

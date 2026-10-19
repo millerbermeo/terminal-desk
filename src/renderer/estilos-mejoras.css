@@ -399,6 +399,8 @@ body {
 .hd-f { display: grid; grid-template-columns: 1fr 1fr; }
 .hd-mitad { display: grid; grid-template-columns: 44px minmax(0, 1fr); min-width: 0; border-right: 1px solid var(--borde); }
 .hd-mitad:last-child { border-right: none; }
+.hd-f.solo { grid-template-columns: minmax(0, 1fr); }
+.hd-f.solo .hd-mitad { grid-template-columns: 52px minmax(0, 1fr); }
 .hd-vacio { background: rgba(255, 255, 255, 0.025); }
 
 /* dentro de una ventana, `.modal label` pone las etiquetas en columna: estas van en línea */
