@@ -3,6 +3,7 @@ import type { CambioArchivo } from '@shared/archivos'
 import type { EventoAgente } from '@shared/core/agente'
 import type { ResumenUso } from '@shared/core/uso'
 import type { EstadoNavegador } from '@shared/navegador'
+import type { EstadoZoom } from '@shared/zoom'
 import { Canales, CanalesArchivos as CA, type ApiCentro, type DatosTerminal, type PayloadVentana, type SalidaTerminal } from '@shared/ipc'
 
 function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
@@ -12,6 +13,9 @@ function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
 }
 
 const api: ApiCentro = {
+  zoom: {
+    onCambio: (cb) => suscribir<EstadoZoom>(Canales.zoomCambio, cb)
+  },
   archivos: {
     listar: (id, ruta) => ipcRenderer.invoke(CA.listar, id, ruta),
     leer: (id, ruta) => ipcRenderer.invoke(CA.leer, id, ruta),
@@ -26,6 +30,7 @@ const api: ApiCentro = {
   core: {
     ejecutar: (solicitud) => ipcRenderer.invoke(Canales.coreEjecutar, solicitud),
     cancelar: (id) => ipcRenderer.invoke(Canales.coreCancelar, id),
+    lateral: (ejecucionId, prompt) => ipcRenderer.invoke(Canales.coreLateral, ejecucionId, prompt),
     responder: (solicitudId, decision) => ipcRenderer.invoke(Canales.coreResponder, solicitudId, decision),
     worktreesListar: (proyectoId) => ipcRenderer.invoke(Canales.coreWorktreesListar, proyectoId),
     worktreeDescartar: (proyectoId, id) => ipcRenderer.invoke(Canales.coreWorktreeDescartar, proyectoId, id),
@@ -33,7 +38,6 @@ const api: ApiCentro = {
     trazasListar: (limite) => ipcRenderer.invoke(Canales.coreTrazasListar, limite),
     trazaObtener: (id) => ipcRenderer.invoke(Canales.coreTrazaObtener, id),
     trazaEliminar: (id) => ipcRenderer.invoke(Canales.coreTrazaEliminar, id),
-    lateral: (ejecucionId, prompt) => ipcRenderer.invoke(Canales.coreLateral, ejecucionId, prompt),
     evalsSuites: () => ipcRenderer.invoke(Canales.coreEvalsSuites),
     evalsEjecutar: (suiteId, casos) => ipcRenderer.invoke(Canales.coreEvalsEjecutar, suiteId, casos),
     evalsInformes: (suiteId) => ipcRenderer.invoke(Canales.coreEvalsInformes, suiteId),

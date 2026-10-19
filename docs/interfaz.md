@@ -111,3 +111,9 @@ Cancelar la ejecución cierra las confirmaciones pendientes y deniega la acción
 El SDK de Anthropic respeta `ANTHROPIC_BASE_URL`, así que se puede lanzar la app apuntando a un servidor local que imite
 `POST /v1/messages` (con y sin streaming), con `ANTHROPIC_API_KEY` ficticia, y manejarla por CDP como indica `CLAUDE.md`.
 Así se verificó de punta a punta: streaming, herramientas, aprobaciones, guardrails, flujo con worktree y commit, A2A, trazas, ramas y evals.
+
+## Zoom de la interfaz
+
+`Ctrl +` acerca, `Ctrl −` aleja y `Ctrl 0` vuelve al 100 % (como VS Code; en macOS con ⌘). Solo con el teclado: la rueda del ratón y el pellizco no hacen zoom.
+Pasos de 20 % aprox. (de 50 % a 300 %). Al pulsar aparece el porcentaje en la esquina superior derecha (`IndicadorZoom`) y se esconde solo a los ~2 s.
+El nivel se recuerda (`~/.odesk-agent/zoom.json`) y vale para todas las ventanas. Se intercepta en main (`src/main/zoom.ts`, `before-input-event`), así que la tecla no llega a la terminal. Lógica pura y tests: `src/shared/zoom.ts`, `tests/zoom.test.ts`.

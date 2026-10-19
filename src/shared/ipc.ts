@@ -9,6 +9,7 @@ import type { InfoModelo, ResumenUso } from './core/uso'
 import type { EstadoCuenta, ProveedorModelo } from './core/cuenta'
 import type { NombreOperacionTareas, OperacionesTareas } from './tareas'
 import type { NombreOperacionGit, OperacionesGit } from './versiones'
+import type { EstadoZoom } from './zoom'
 import type { NombreOperacionApi, OperacionesApi } from './api'
 import type { NombreOperacionEquipos, OperacionesEquipos } from './equipos'
 import type { NombreOperacionGitHub, OperacionesGitHub } from './github'
@@ -59,11 +60,12 @@ export const Canales = {
   ventanaTomar: 'ventana:tomar',
   ventanaDevolver: 'ventana:devolver',
   ventanaRecibir: 'ventana:recibir',
+  zoomCambio: 'zoom:cambio',
   coreEjecutar: 'core:ejecutar',
   coreCancelar: 'core:cancelar',
+  coreLateral: 'core:lateral',
   coreMcpEstado: 'core:mcp-estado',
   coreMcpReiniciar: 'core:mcp-reiniciar',
-  coreLateral: 'core:lateral',
   coreEvento: 'core:evento',
   coreResponder: 'core:responder',
   coreWorktreesListar: 'core:worktrees-listar',
@@ -224,6 +226,10 @@ export interface ResultadoAgregar {
 
 /** API expuesta en window.api por el preload. */
 export interface ApiCentro {
+  /** Zoom de la interfaz (Ctrl + / − / 0): cada cambio avisa para mostrar el porcentaje. */
+  zoom: {
+    onCambio(cb: (e: EstadoZoom) => void): () => void
+  }
   /** Editor de archivos de un proyecto: todo queda confinado a su carpeta. */
   archivos: {
     /** Contenido de una carpeta (ruta relativa; vacía = raíz): carpetas primero, sin `.git` ni `node_modules`. */
@@ -243,6 +249,8 @@ export interface ApiCentro {
   core: {
     /** Lanza el agente. El progreso y el resultado llegan por onEvento. */
     ejecutar(solicitud: SolicitudAgente): Promise<EjecucionIniciada>
+    /** Pregunta lateral: se responde ya, en paralelo, con el contexto de la ejecución en marcha, sin interrumpirla (solo suscripción). */
+    lateral(ejecucionId: string, prompt: string): Promise<EjecucionIniciada>
     /** Responde a una `solicitud_humana` (aprobar/rechazar un plan o un resultado). */
     responder(solicitudId: string, decision: DecisionHumana): Promise<boolean>
     worktreesListar(proyectoId: string): Promise<InfoWorktree[]>
@@ -258,8 +266,6 @@ export interface ApiCentro {
     evalsSuites(): Promise<InfoSuite[]>
     evalsEjecutar(suiteId: string, casos?: string[]): Promise<ResultadoEvals>
     evalsInformes(suiteId: string): Promise<InformeEval[]>
-    /** Pregunta lateral: se responde ya, en paralelo, con el contexto de la ejecución en marcha, sin interrumpirla (solo suscripción). */
-    lateral(ejecucionId: string, prompt: string): Promise<EjecucionIniciada>
     /** Modelos disponibles para la clave (con su ventana de contexto); si la API no responde, los conocidos. */
     modelos(): Promise<InfoModelo[]>
     /** Cuenta con la que se paga el modelo: proveedor elegido (suscripción por defecto) y estado de la sesión. */
