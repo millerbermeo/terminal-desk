@@ -35,6 +35,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
   const contenedor = useRef<HTMLDivElement>(null)
   const term = useRef<Terminal | null>(null)
   const fit = useRef<FitAddon | null>(null)
+  const remedirRef = useRef<() => void>(() => undefined)
   const alPty = useRef(onPty)
   alPty.current = onPty
   const [menu, setMenu] = useState<{ x: number; y: number; haySeleccion: boolean } | null>(null)
@@ -84,6 +85,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', Menlo, Consolas, monospace",
       fontSize: 14,
       cursorBlink: true,
+      scrollOnUserInput: true, // al teclear siempre se vuelve al final (el cursor y el prompt)
       scrollback: 5000,
       allowProposedApi: true,
       allowTransparency: true, // deja ver la marca de agua de `.terminal`
@@ -177,7 +179,9 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
     const ajustarYa = (): void => {
       ultimo = performance.now()
       if (!el.offsetWidth || !el.offsetHeight) return
+      const alFondo = t.buffer.active.viewportY >= t.buffer.active.baseY
       f.fit()
+      if (alFondo) t.scrollToBottom() // un reajuste no deja la vista a medias lejos del cursor
       // solo se avisa al pty si el tamaño en celdas cambió respecto al último enviado
       if (ptyId && (t.cols !== enviado.cols || t.rows !== enviado.rows)) {
         enviado = { cols: t.cols, rows: t.rows }
@@ -240,6 +244,35 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
     const ro = new ResizeObserver(ajustar)
     ro.observe(el)
 
+    // El tamaño de la celda depende de la tipografía y del zoom, y ninguno de los dos cambia el tamaño del contenedor (no dispara el
+    // ResizeObserver): si la fuente termina de cargar después de abrir la terminal, o se arrastra la ventana a otra pantalla / cambia el
+    // zoom, xterm y el shell quedarían con columnas distintas y el cursor aparecería descolocado. Se vuelve a medir y a repintar.
+    const remedir = (): void => {
+      if (!vivo) return
+      try {
+        t.clearTextureAtlas()
+      } catch {
+        // sin WebGL no hay atlas
+      }
+      ajustarYa()
+      t.refresh(0, t.rows - 1)
+    }
+    void document.fonts?.ready.then(remedir)
+    void document.fonts?.load(`${t.options.fontSize ?? 14}px 'JetBrains Mono'`).then(remedir, () => undefined)
+    let consultaDpr: MediaQueryList | null = null
+    const alCambiarDpr = (): void => {
+      remedir()
+      escucharDpr()
+    }
+    const escucharDpr = (): void => {
+      consultaDpr?.removeEventListener('change', alCambiarDpr)
+      consultaDpr = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+      consultaDpr.addEventListener('change', alCambiarDpr)
+    }
+    escucharDpr()
+    bajas.push(() => consultaDpr?.removeEventListener('change', alCambiarDpr))
+    remedirRef.current = remedir
+
     return () => {
       vivo = false
       ro.disconnect()
@@ -252,8 +285,17 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
     }
   }, [id])
 
+  // Al volver a verse (cambio de pestaña de la celda, otra ventana…) el lienzo pudo quedar sin repintar y con medidas viejas.
   useEffect(() => {
-    if (visible && activa) term.current?.focus()
+    if (!visible) return
+    const r = requestAnimationFrame(() => {
+      remedirRef.current()
+      if (activa) {
+        term.current?.focus()
+        term.current?.scrollToBottom()
+      }
+    })
+    return () => cancelAnimationFrame(r)
   }, [visible, activa])
 
   return (
