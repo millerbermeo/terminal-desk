@@ -1096,7 +1096,7 @@ button.enlace:hover:not(:disabled) { background: none; text-decoration: underlin
 .doc-enlace.activo svg { color: var(--acento); }
 .doc-cuerpo { flex: 1; min-width: 0; overflow-y: auto; }
 .doc-vacio { color: var(--texto-tenue); padding: 40px 28px; }
-.doc-art { max-width: 760px; padding: 28px 28px 64px; animation: subir var(--medio) var(--ease) both; }
+.doc-art { max-width: none; padding: 28px 28px 64px; animation: subir var(--medio) var(--ease) both; }
 .doc-cab { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
 .doc-icono { width: 42px; height: 42px; flex: none; border-radius: var(--radio-lg); display: grid; place-items: center; color: var(--acento); background: linear-gradient(180deg, rgba(129, 140, 248, 0.16), rgba(129, 140, 248, 0.05)); border: 1px solid rgba(129, 140, 248, 0.28); box-shadow: var(--brillo); }
 .doc-icono svg { width: 20px; height: 20px; }
