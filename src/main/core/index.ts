@@ -14,6 +14,7 @@ import type { ResumenTraza, Traza } from '@shared/core/traza'
 import type { BloqueContenido, DecisionHumana, EstadoFlujo, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, Mensaje, ResultadoPublicar, SolicitudAgente } from '@shared/core/agente'
 import type { NuevaEntradaMemoria } from '@shared/core/memoria'
 import { Canales } from '@shared/ipc'
+import { pluginAgentesAsistente } from '../agentes'
 import { leerProveedores } from '../proveedores'
 import { DIR, carpetaDeProyecto, leerProyectos, registrarProyecto, vincularCarpetaAProyecto } from '../proyectos'
 import { Agente } from './agents/agente'
@@ -460,6 +461,7 @@ export class Nucleo {
       let estado: 'completado' | 'cancelado' | 'error' = 'completado'
       try {
         const mcpTareas = await archivoMcpTareas(proyecto?.id).catch(() => undefined)
+        const pluginDir = await pluginAgentesAsistente(proyecto?.id)
         const probadas = new Set<string>()
         let cuenta = await this.cuentaParaEjecutar()
         const previa = await this.sesionesCli.obtener(sesionId)
@@ -479,6 +481,7 @@ export class Nucleo {
             ...(carpeta ? { carpetasExtra: [carpeta] } : {}),
             ...(carpetaCuenta ? { carpetaCuenta } : {}),
             ...(mcpTareas ? { mcpTareas } : {}),
+            ...(pluginDir ? { pluginDir } : {}),
             senal: ctl.signal,
             alEvento: emitir,
             retenerFin: true,

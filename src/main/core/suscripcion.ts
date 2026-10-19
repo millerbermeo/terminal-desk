@@ -198,6 +198,8 @@ export interface OpcionesEjecucion {
   senal: AbortSignal
   /** Archivo `--mcp-config` con el servidor MCP de tareas de la app (y se permiten sus herramientas según la autonomía). */
   mcpTareas?: string
+  /** Carpeta del plugin con los agentes y skills activos del proyecto (`--plugin-dir`). */
+  pluginDir?: string
   /** Carpeta de configuración de la cuenta con la que se ejecuta (ausente = la principal). */
   carpetaCuenta?: string
   /** No emitir `inicio` (reintento con otra cuenta: el turno ya lo mostró). */
@@ -323,6 +325,7 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
     '--include-partial-messages',
     ...permisosCli(o.autonomia, o.verificaciones, Boolean(o.mcpTareas)),
     ...(o.mcpTareas ? ['--mcp-config', o.mcpTareas] : []),
+    ...(o.pluginDir ? ['--plugin-dir', o.pluginDir] : []),
     ...(o.modelo ? ['--model', o.modelo] : []),
     ...(o.reanudar ? ['--resume', o.reanudar] : []),
     ...(o.sistemaExtra ? ['--append-system-prompt', o.sistemaExtra] : []),
