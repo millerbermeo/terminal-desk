@@ -522,3 +522,7 @@ body {
   .gc-cab h2 { font-size: 19px; }
   .gc-filtros select { flex: 1 1 100%; }
 }
+
+/* buscador de la biblioteca de agentes y skills (en la cabecera de cada sección) */
+.cfg-grupo-cab .buscar-rec { flex: 1; max-width: 340px; margin-left: auto; padding: 0 10px 0 0; }
+.cfg-grupo-cab .buscar-rec > svg { left: 10px; }

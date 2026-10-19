@@ -156,6 +156,51 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     void window.api.agentes.listar().then(setBiblioteca).catch(() => undefined)
   }, [onSesionPerdida])
 
+  // Lo que otro equipo registró (proyectos, proveedores, skills y agentes) llega al disco con la sincronización de la cuenta; aquí se vuelve
+  // a leer cada 20 s, al volver a la ventana y al cambiar de vista, sin tocar el estado si nada cambió (no pisa lo que se esté editando).
+  const ultimoLeido = useRef({ datos: '', proveedores: '', biblioteca: '' })
+  const refrescarDatos = useCallback(async (): Promise<void> => {
+    const [d, p, b] = await Promise.all([
+      window.api.proyectos.listar().catch(() => null),
+      window.api.proveedores.listar().catch(() => null),
+      window.api.agentes.listar().catch(() => null)
+    ])
+    const u = ultimoLeido.current
+    if (d) {
+      const j = JSON.stringify(d)
+      if (j !== u.datos) {
+        u.datos = j
+        setDatos(d)
+      }
+    }
+    if (p) {
+      const j = JSON.stringify(p)
+      if (j !== u.proveedores) {
+        u.proveedores = j
+        setProveedores(p)
+      }
+    }
+    if (b) {
+      const j = JSON.stringify(b)
+      if (j !== u.biblioteca) {
+        u.biblioteca = j
+        setBiblioteca(b)
+      }
+    }
+  }, [])
+  useEffect(() => {
+    const t = setInterval(() => void refrescarDatos(), 20_000)
+    const alEnfocar = (): void => void refrescarDatos()
+    window.addEventListener('focus', alEnfocar)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('focus', alEnfocar)
+    }
+  }, [refrescarDatos])
+  useEffect(() => {
+    void refrescarDatos()
+  }, [vista, refrescarDatos])
+
   const cambiar = useCallback((id: string, f: (v: Ventana) => Ventana): void => {
     setVentanas((vs) => vs.map((v) => (v.id === id ? f(v) : v)))
   }, [])
