@@ -15,6 +15,7 @@ import { eliminarProveedor, enCola as enColaProveedores, guardarProveedor, lista
 import { verificarPassword } from './autenticacion'
 import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones } from './agentes'
 import { resolverPerfil } from './migracion'
+import { mantenerCavemanActualizado } from './caveman'
 import { repararWorktrees } from './core/git/reparar'
 import { ejecutarOperacionGitHub } from './github/operaciones'
 import { ServicioEquipos, ejecutarOperacionEquipos, type DepsEquipos } from './servidor/equipos'
@@ -609,6 +610,7 @@ app.whenReady().then(() => {
   void nucleo.iniciarMcp()
   void nucleo.adjuntos.limpiar().catch(() => undefined) // adjuntos de más de 30 días
   principal = crearVentana()
+  mantenerCavemanActualizado()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) principal = crearVentana()
   })

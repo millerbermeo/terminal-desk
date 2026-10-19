@@ -6,6 +6,7 @@ import type { DestinoActivacion, ResultadoRecurso } from '@shared/ipc'
 import { activosDe, slug } from '@shared/agentes'
 import { DIR, leerProyectos } from './proyectos'
 import { COMANDOS_BLOQUEADOS } from './core/suscripcion'
+import { pluginCaveman } from './caveman'
 import { configMcpTareas } from './core/tareas/mcp-config'
 import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
 
@@ -254,12 +255,16 @@ export async function carpetasHermanas(proyectoId?: string): Promise<{ nombre: s
 }
 
 /**
- * Si el proveedor es Claude Code y el proyecto tiene agentes o skills activos, añade `--plugin-dir`.
+ * Si el proveedor es Claude Code añade `--plugin-dir` con Caveman y, si el proyecto tiene agentes o skills activos, con su plugin.
  * Si el proyecto está en un grupo, añade `--add-dir` con las carpetas de los demás proyectos del grupo.
  * Una terminal normal (o `claude` escrito a mano) no pasa por aquí y no carga nada.
  */
 export async function comandoConAgentes(comando: string, proyectoId?: string): Promise<string> {
-  if (!proyectoId || !esClaude(comando)) return comando
+  if (!esClaude(comando)) return comando
+  // Caveman es global: va en toda terminal de Claude Code, con o sin proyecto y con cualquier cuenta (no depende de su ~/.claude).
+  const caveman = await pluginCaveman()
+  const conCaveman = (c: string): string => (caveman ? `${c} --plugin-dir ${citar(caveman)}` : c)
+  if (!proyectoId) return conCaveman(comando)
   try {
     const dir = await construirPlugin(proyectoId)
     const hermanas = await carpetasHermanas(proyectoId)
@@ -267,10 +272,10 @@ export async function comandoConAgentes(comando: string, proyectoId?: string): P
     const conGrupo = hermanas.length
       ? `${comando} --add-dir ${hermanas.map((h) => citar(h.ruta)).join(' ')} --permission-mode acceptEdits --allowedTools ${['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'].join(' ')} --disallowedTools ${COMANDOS_BLOQUEADOS.map((c) => citar(c)).join(' ')}`
       : comando
-    return dir ? `${conGrupo} --plugin-dir ${citar(dir)}` : conGrupo
+    return conCaveman(dir ? `${conGrupo} --plugin-dir ${citar(dir)}` : conGrupo)
   } catch (err) {
     console.error('No se pudieron preparar los agentes:', err)
-    return comando // mejor abrir Claude sin agentes que no abrirlo
+    return conCaveman(comando) // mejor abrir Claude sin agentes que no abrirlo
   }
 }
 
