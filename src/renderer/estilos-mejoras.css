@@ -470,7 +470,7 @@ body {
 .panel-vista .pestana-extra .cerrar-extra:hover { opacity: 1; color: var(--error, #f87171); }
 
 /* ===================== Sección GitHub (cuenta conectada) ===================== */
-.config.gc > :not(.modal-fondo) { max-width: 1120px; }
+.config.gc > :not(.modal-fondo) { max-width: none; }
 .gc-cab { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
 .gc-cab h2 { margin: 0 0 2px; font-size: 22px; font-weight: 650; letter-spacing: -0.025em; }
 .gc-cab-datos { min-width: 0; }
