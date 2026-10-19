@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CambioArchivo, EntradaArchivo, MarcaGit } from '@shared/archivos'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { ModalHistorialArchivo } from '../components/ModalHistorialArchivo'
@@ -38,6 +38,41 @@ const carpetaDe = (ruta: string): string => ruta.split('/').slice(0, -1).join('/
 const base = (ruta: string): string => ruta.split('/').pop() ?? ruta
 const unir = (padre: string, nombre: string): string => (padre ? `${padre}/${nombre}` : nombre)
 const clave = (id: string): string => `editor:estado:${id}`
+
+type ItemMenu = 'separador' | { etiqueta: string; atajo?: string; peligro?: boolean; accion: () => void }
+
+/** Menú flotante del clic derecho: se mantiene dentro de la ventana, se maneja con flechas, Enter y Esc. */
+function MenuArchivos({ menu, items }: { menu: { x: number; y: number }; items: ItemMenu[] }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ x: menu.x, y: menu.y })
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setPos({ x: Math.max(4, Math.min(menu.x, window.innerWidth - r.width - 4)), y: Math.max(4, Math.min(menu.y, window.innerHeight - r.height - 4)) })
+    el.querySelector<HTMLButtonElement>('button')?.focus()
+  }, [menu.x, menu.y])
+  const mover = (ev: React.KeyboardEvent): void => {
+    const botones = [...(ref.current?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+    const i = botones.indexOf(document.activeElement as HTMLButtonElement)
+    if (ev.key === 'ArrowDown') (ev.preventDefault(), botones[(i + 1) % botones.length]?.focus())
+    else if (ev.key === 'ArrowUp') (ev.preventDefault(), botones[(i - 1 + botones.length) % botones.length]?.focus())
+  }
+  return (
+    <div ref={ref} className="menu-ia ed-menu" style={{ top: pos.y, left: pos.x }} role="menu" onMouseDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()} onKeyDown={mover}>
+      {items.map((it, i) =>
+        it === 'separador' ? (
+          i > 0 && items[i - 1] !== 'separador' && i < items.length - 1 ? <div key={i} className="ed-menu-sep" role="separator" /> : null
+        ) : (
+          <button key={it.etiqueta} role="menuitem" className={it.peligro ? 'peligro' : undefined} onClick={it.accion}>
+            {it.etiqueta}
+            {it.atajo && <small>{it.atajo}</small>}
+          </button>
+        )
+      )}
+    </div>
+  )
+}
 
 /** Mini editor de código de la celda: árbol del proyecto, pestañas de archivos y guardado automático. */
 export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
@@ -396,6 +431,73 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
     }
   }, [menu])
 
+  const copiar = (texto: string): void => {
+    setMenu(null)
+    void navigator.clipboard?.writeText(texto).catch(() => undefined)
+  }
+  const duplicar = async (e: EntradaArchivo): Promise<void> => {
+    setMenu(null)
+    try {
+      const nueva = await api.duplicar(proyectoId, e.ruta)
+      await cargar(carpetaDe(e.ruta))
+      setErrorArbol('')
+      refrescarGit()
+      if (e.tipo === 'archivo') await abrir(nueva)
+    } catch (err) {
+      setErrorArbol(limpiar((err as Error).message))
+    }
+  }
+  const plegarTodo = (): void => setExpandidas(new Set(['']))
+
+  /** Opciones del clic derecho (como VS Code): sobre un elemento, o sobre el espacio vacío del árbol. */
+  const itemsMenu = (e: EntradaArchivo | null): ItemMenu[] => {
+    const padre = e ? (e.tipo === 'carpeta' ? e.ruta : carpetaDe(e.ruta)) : ''
+    const cerrando = (f: () => void) => (): void => (setMenu(null), f())
+    const items: ItemMenu[] = []
+    if (e?.tipo === 'archivo') {
+      items.push({ etiqueta: 'Abrir', accion: cerrando(() => (void abrir(e.ruta), setArbolVisible(false))) })
+      items.push({ etiqueta: 'Ver historial de versiones', accion: cerrando(() => void (async () => {
+        if (buscar(e.ruta)?.sucio) await guardarYa(e.ruta)
+        setHistorialDe(e.ruta)
+      })()) })
+      items.push('separador')
+    } else if (e?.tipo === 'carpeta') {
+      items.push({ etiqueta: expandidas.has(e.ruta) ? 'Contraer' : 'Expandir', accion: cerrando(() => alternar(e.ruta)) })
+      items.push('separador')
+    }
+    items.push({ etiqueta: 'Nuevo archivo', accion: () => iniciarNuevo(padre, 'archivo') })
+    items.push({ etiqueta: 'Nueva carpeta', accion: () => iniciarNuevo(padre, 'carpeta') })
+    if (e) {
+      items.push('separador')
+      items.push({ etiqueta: 'Renombrar', atajo: 'F2', accion: cerrando(() => (setCreando(null), setRenombrando(e.ruta))) })
+      items.push({ etiqueta: 'Duplicar', accion: () => void duplicar(e) })
+      items.push('separador')
+      items.push({ etiqueta: 'Copiar nombre', accion: () => copiar(e.nombre) })
+      items.push({ etiqueta: 'Copiar ruta relativa', accion: () => copiar(e.ruta) })
+      items.push({ etiqueta: 'Copiar ruta absoluta', accion: () => void api.rutaAbsoluta(proyectoId, e.ruta).then(copiar, () => setMenu(null)) })
+      items.push('separador')
+    } else items.push('separador')
+    items.push({ etiqueta: 'Mostrar en el explorador de archivos', accion: cerrando(() => void api.mostrar(proyectoId, e?.ruta ?? '').catch(() => undefined)) })
+    if (!e) {
+      items.push({ etiqueta: 'Actualizar', accion: cerrando(refrescarTodo) })
+      items.push({ etiqueta: 'Plegar todo', accion: cerrando(plegarTodo) })
+    }
+    if (e) {
+      items.push('separador')
+      items.push({ etiqueta: 'Mover a la papelera', atajo: 'Supr', peligro: true, accion: () => void borrar(e) })
+    }
+    return items
+  }
+
+  // F2 renombra y Supr borra el archivo activo cuando el foco está en el árbol (no al escribir en el editor).
+  const teclaArbol = (ev: React.KeyboardEvent): void => {
+    if (!activa || (ev.target as HTMLElement).closest('input, textarea')) return
+    const e = Object.values(hijos).flat().find((x) => x.ruta === activa)
+    if (!e) return
+    if (ev.key === 'F2') (ev.preventDefault(), setCreando(null), setRenombrando(e.ruta))
+    else if (ev.key === 'Delete') (ev.preventDefault(), void borrar(e))
+  }
+
   const conCambios = useMemo(() => {
     const s = new Set<string>()
     for (const r of Object.keys(marcas)) for (let i = r.indexOf('/'); i !== -1; i = r.indexOf('/', i + 1)) s.add(r.slice(0, i))
@@ -414,9 +516,9 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
           <button className="icono" title="Nuevo archivo" aria-label="Nuevo archivo" onClick={() => iniciarNuevo('', 'archivo')}>＋📄</button>
           <button className="icono" title="Nueva carpeta" aria-label="Nueva carpeta" onClick={() => iniciarNuevo('', 'carpeta')}>＋📁</button>
           <button className="icono" title="Actualizar" aria-label="Actualizar" onClick={refrescarTodo}>↻</button>
-          <button className="icono" title="Plegar todo" aria-label="Plegar todo" onClick={() => setExpandidas(new Set(['']))}>⊟</button>
+          <button className="icono" title="Plegar todo" aria-label="Plegar todo" onClick={plegarTodo}>⊟</button>
         </div>
-        <div className="ed-arbol-cuerpo">
+        <div className="ed-arbol-cuerpo" tabIndex={-1} onKeyDown={teclaArbol} onContextMenu={(ev) => (ev.preventDefault(), setMenu({ x: ev.clientX, y: ev.clientY, entrada: null }))}>
           <ArbolArchivos
             hijos={hijos}
             expandidas={expandidas}
@@ -522,26 +624,7 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
 
       {historialDe && <ModalHistorialArchivo proyectoId={proyectoId} ruta={historialDe} onCerrar={() => setHistorialDe(null)} onCambio={() => void refrescarTodo()} />}
 
-      {menu && (
-        <div className="menu-ia ed-menu" style={{ top: menu.y, left: menu.x }} role="menu" onMouseDown={(e) => e.stopPropagation()}>
-          {(() => {
-            const padre = menu.entrada ? (menu.entrada.tipo === 'carpeta' ? menu.entrada.ruta : carpetaDe(menu.entrada.ruta)) : ''
-            return (
-              <>
-                <button role="menuitem" onClick={() => iniciarNuevo(padre, 'archivo')}>Nuevo archivo</button>
-                <button role="menuitem" onClick={() => iniciarNuevo(padre, 'carpeta')}>Nueva carpeta</button>
-                {menu.entrada && (
-                  <>
-                    <button role="menuitem" onClick={() => (setMenu(null), setCreando(null), setRenombrando(menu.entrada!.ruta))}>Renombrar</button>
-                    <button role="menuitem" onClick={() => (void navigator.clipboard?.writeText(menu.entrada!.ruta).catch(() => undefined), setMenu(null))}>Copiar ruta relativa</button>
-                    <button role="menuitem" className="peligro" onClick={() => void borrar(menu.entrada!)}>Mover a la papelera</button>
-                  </>
-                )}
-              </>
-            )
-          })()}
-        </div>
-      )}
+      {menu && <MenuArchivos menu={menu} items={itemsMenu(menu.entrada)} />}
     </div>
   )
 }

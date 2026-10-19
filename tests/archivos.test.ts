@@ -89,6 +89,25 @@ describe('guardar', () => {
   })
 })
 
+describe('duplicar y rutaAbsoluta', () => {
+  it('copia junto al original con nombre libre y conserva la extensión', async () => {
+    expect(await g.duplicar('p', 'src/index.ts')).toBe('src/index copia.ts')
+    expect(await g.duplicar('p', 'src/index.ts')).toBe('src/index copia 2.ts')
+    expect(await readFile(join(dir, 'src/index copia.ts'), 'utf8')).toBe('export const a = 1\n')
+  })
+  it('duplica carpetas completas y rechaza raíz, .git y rutas fuera del proyecto', async () => {
+    expect(await g.duplicar('p', 'src')).toBe('src copia')
+    expect(await readFile(join(dir, 'src copia/util/b.ts'), 'utf8')).toBe('export const b = 2\n')
+    await expect(g.duplicar('p', '')).rejects.toThrow(/raíz/)
+    await expect(g.duplicar('p', '.git/HEAD')).rejects.toThrow(/git/)
+    await expect(g.duplicar('p', '../x')).rejects.toThrow(/sale del proyecto/)
+  })
+  it('rutaAbsoluta resuelve dentro del proyecto y rechaza escapes', async () => {
+    expect(await g.rutaAbsoluta('p', 'src/index.ts')).toMatch(/src\/index\.ts$/)
+    await expect(g.rutaAbsoluta('p', '../x')).rejects.toThrow(/sale del proyecto/)
+  })
+})
+
 describe('crear, renombrar y borrar', () => {
   it('crea archivos y carpetas (con padres), sin pisar lo que existe', async () => {
     await g.crear('p', 'src/nuevo/uno.ts', 'archivo')

@@ -25,7 +25,7 @@ Cada celda de un proyecto tiene un tercer selector **Terminal | Asistente | Arch
 lo abierto y lo desplegado se recuerdan por proyecto.
 
 - **Árbol**: carpetas que se cargan al desplegarlas, sin `.git` ni `node_modules`, con una insignia por tipo (TS, JS, `{}`, `#`, `<>`, `M↓`, PY…) y **marcas de git** (M modificado, A añadido,
-  D borrado, R renombrado, U sin seguimiento, C conflicto; las carpetas con cambios llevan un punto). Clic derecho: nuevo archivo, nueva carpeta, renombrar, copiar ruta relativa y **mover a la papelera** (recuperable).
+  D borrado, R renombrado, U sin seguimiento, C conflicto; las carpetas con cambios llevan un punto). Clic derecho (menú flotante como el de VS Code, se mantiene dentro de la ventana, flechas/Enter/Esc): abrir, ver historial de versiones, expandir/contraer, nuevo archivo, nueva carpeta, renombrar (`F2`), **duplicar** («x copia.ext»), copiar nombre / ruta relativa / ruta absoluta, mostrar en el explorador del sistema, y **mover a la papelera** (`Supr`, recuperable). En el espacio vacío del árbol: nuevo archivo/carpeta, mostrar la raíz, actualizar y plegar todo.
 - **Editor**: resaltado para TypeScript/JavaScript (con JSX), JSON, CSS, HTML, Markdown y Python; números de línea, buscar y reemplazar (`Ctrl+F`), plegado, autocompletado de paréntesis, varias pestañas (clic central o ✕ para cerrar).
 - **Guardado automático** un segundo después de dejar de escribir (`Ctrl+S` guarda al instante). La pestaña muestra ● mientras hay cambios sin guardar y la barra inferior «Guardado» / «Sin guardar…» / errores.
   Se desactiva con la casilla «Guardado automático» (entonces aparece el botón «Guardar», y al cerrar con cambios se pregunta). También se guarda al cambiar de archivo, al perder el foco y al cerrar la celda.

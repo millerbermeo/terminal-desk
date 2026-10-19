@@ -1,6 +1,6 @@
 import { watch, type FSWatcher } from 'node:fs'
-import { chmod, mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, join, relative, sep } from 'node:path'
+import { chmod, cp, mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, extname, join, relative, sep } from 'node:path'
 import { LIMITES_EDITOR, type CambioArchivo, type EntradaArchivo, type MarcaGit, type ResultadoGuardar, type ResultadoLeer } from '@shared/archivos'
 import { git } from './core/git/git'
 import { rutaSegura } from './core/tools/integradas/ruta'
@@ -131,6 +131,36 @@ export class GestorArchivos {
     await rename(a.abs, b.abs)
     await this.anotar('despues', proyectoId, desde) // el archivo ya no está ahí
     await this.anotar('despues', proyectoId, hasta)
+  }
+
+  /** Copia un archivo o carpeta junto al original con nombre libre («a copia.ts», «a copia 2.ts»…). Devuelve la ruta nueva. */
+  async duplicar(proyectoId: string, ruta: string): Promise<string> {
+    const motivo = protegida(ruta)
+    if (motivo) throw new Error(`No se copia ${motivo}`)
+    const { raiz, abs } = await this.abs(proyectoId, ruta)
+    if (abs === raiz) throw new Error('No se puede duplicar la raíz del proyecto')
+    const s = await stat(abs).catch(() => undefined)
+    if (!s) throw new Error('El elemento ya no existe')
+    const ext = s.isDirectory() ? '' : extname(abs)
+    const nombre = basename(abs, ext)
+    let destino = ''
+    for (let n = 1; n < 1000; n++) {
+      const candidato = join(dirname(abs), `${nombre} copia${n > 1 ? ` ${n}` : ''}${ext}`)
+      if (!(await stat(candidato).then(() => true, () => false))) {
+        destino = candidato
+        break
+      }
+    }
+    if (!destino) throw new Error('No se encontró un nombre libre para la copia')
+    await cp(abs, destino, { recursive: true, errorOnExist: true, force: false, filter: (origen) => !IGNORADOS.has(basename(origen)) })
+    const rel = aPosix(relative(raiz, destino))
+    if (!s.isDirectory()) await this.anotar('despues', proyectoId, rel)
+    return rel
+  }
+
+  /** Ruta absoluta (ya validada) de un elemento del proyecto; '' = raíz. */
+  async rutaAbsoluta(proyectoId: string, ruta: string): Promise<string> {
+    return (await this.abs(proyectoId, ruta)).abs
   }
 
   /** Manda a la papelera (recuperable). */
