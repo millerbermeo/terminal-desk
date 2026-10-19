@@ -239,15 +239,31 @@ async function construirPlugin(proyectoId: string, conMcp = true): Promise<strin
   return dir
 }
 
+/** Carpetas de los demás proyectos del mismo grupo (vacío si el proyecto no tiene grupo): dentro de un grupo la IA ve y edita todos. */
+export async function carpetasHermanas(proyectoId?: string): Promise<{ nombre: string; ruta: string }[]> {
+  if (!proyectoId) return []
+  try {
+    const { proyectos } = await leerProyectos()
+    const yo = proyectos.find((p) => p.id === proyectoId)
+    if (!yo?.grupo) return []
+    return proyectos.filter((p) => p.grupo === yo.grupo && p.id !== yo.id).map((p) => ({ nombre: p.nombre, ruta: p.ruta }))
+  } catch {
+    return []
+  }
+}
+
 /**
  * Si el proveedor es Claude Code y el proyecto tiene agentes o skills activos, añade `--plugin-dir`.
+ * Si el proyecto está en un grupo, añade `--add-dir` con las carpetas de los demás proyectos del grupo.
  * Una terminal normal (o `claude` escrito a mano) no pasa por aquí y no carga nada.
  */
 export async function comandoConAgentes(comando: string, proyectoId?: string): Promise<string> {
   if (!proyectoId || !esClaude(comando)) return comando
   try {
     const dir = await construirPlugin(proyectoId)
-    return dir ? `${comando} --plugin-dir ${citar(dir)}` : comando
+    const hermanas = await carpetasHermanas(proyectoId)
+    const conGrupo = hermanas.length ? `${comando} --add-dir ${hermanas.map((h) => citar(h.ruta)).join(' ')}` : comando
+    return dir ? `${conGrupo} --plugin-dir ${citar(dir)}` : conGrupo
   } catch (err) {
     console.error('No se pudieron preparar los agentes:', err)
     return comando // mejor abrir Claude sin agentes que no abrirlo

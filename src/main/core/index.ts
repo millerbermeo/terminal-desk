@@ -14,7 +14,7 @@ import type { ResumenTraza, Traza } from '@shared/core/traza'
 import type { BloqueContenido, DecisionHumana, EstadoFlujo, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, Mensaje, ResultadoPublicar, SolicitudAgente } from '@shared/core/agente'
 import type { NuevaEntradaMemoria } from '@shared/core/memoria'
 import { Canales } from '@shared/ipc'
-import { pluginAgentesAsistente } from '../agentes'
+import { carpetasHermanas, pluginAgentesAsistente } from '../agentes'
 import { leerProveedores } from '../proveedores'
 import { DIR, carpetaDeProyecto, leerProyectos, registrarProyecto, vincularCarpetaAProyecto } from '../proyectos'
 import { Agente } from './agents/agente'
@@ -462,6 +462,12 @@ export class Nucleo {
       try {
         const mcpTareas = await archivoMcpTareas(proyecto?.id).catch(() => undefined)
         const pluginDir = await pluginAgentesAsistente(proyecto?.id)
+        // Dentro de un grupo, el Asistente puede leer y editar también las carpetas de los demás proyectos del grupo.
+        const hermanas = await carpetasHermanas(proyecto?.id)
+        const extraGrupo = hermanas.length
+          ? `Este proyecto pertenece a un grupo. Tienes acceso completo (leer, crear y modificar archivos) a las carpetas de los demás proyectos del grupo:\n${hermanas.map((h) => `- ${h.nombre}: ${h.ruta}`).join('\n')}`
+          : ''
+        const sistema = [sistemaExtra, extraGrupo].filter(Boolean).join('\n\n')
         const probadas = new Set<string>()
         let cuenta = await this.cuentaParaEjecutar()
         const previa = await this.sesionesCli.obtener(sesionId)
@@ -477,8 +483,8 @@ export class Nucleo {
             ...(previa ? { reanudar: previa } : {}),
             autonomia,
             verificaciones,
-            ...(sistemaExtra ? { sistemaExtra } : {}),
-            ...(carpeta ? { carpetasExtra: [carpeta] } : {}),
+            ...(sistema ? { sistemaExtra: sistema } : {}),
+            ...(carpeta || hermanas.length ? { carpetasExtra: [...(carpeta ? [carpeta] : []), ...hermanas.map((h) => h.ruta)] } : {}),
             ...(carpetaCuenta ? { carpetaCuenta } : {}),
             ...(mcpTareas ? { mcpTareas } : {}),
             ...(pluginDir ? { pluginDir } : {}),
