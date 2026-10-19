@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { BibliotecaAgentes, DatosProyectos, Recurso, TipoRecurso } from '@shared/modelos'
 import { activosDe } from '@shared/agentes'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoAgente, IconoBasura, IconoCarpeta, IconoLapiz, IconoMas } from './Iconos'
+import { IconoAgente, IconoBasura, IconoBuscar, IconoCarpeta, IconoLapiz, IconoMas } from './Iconos'
 import { ModalConfirmar } from './ModalConfirmar'
 import { ModalRecurso } from './ModalRecurso'
 
@@ -14,8 +14,11 @@ interface Props {
 
 type Destino = { tipo: 'grupo' | 'proyecto'; id: string }
 
+const sinAcentos = (t: string): string => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
 export function ConfigAgentes({ datos, biblioteca, onBiblioteca }: Props) {
   const [pestana, setPestana] = useState<'biblioteca' | 'activacion'>('biblioteca')
+  const [busca, setBusca] = useState<Record<TipoRecurso, string>>({ agente: '', skill: '' })
   const [modal, setModal] = useState<{ tipo: TipoRecurso; inicial?: Recurso } | null>(null)
   const [porEliminar, setPorEliminar] = useState<Recurso | null>(null)
   const [destino, setDestino] = useState<Destino | null>(
@@ -46,18 +49,44 @@ export function ConfigAgentes({ datos, biblioteca, onBiblioteca }: Props) {
   )
 
   const seccion = (titulo: string, tipo: TipoRecurso, vacio: { titulo: string; texto: string }) => {
-    const lista = biblioteca.recursos.filter((r) => r.tipo === tipo)
+    const todos = biblioteca.recursos.filter((r) => r.tipo === tipo)
+    const palabras = sinAcentos(busca[tipo]).split(/\s+/).filter(Boolean)
+    // todas las palabras deben aparecer (en cualquier orden) en el nombre, la descripción, el modelo, las herramientas o el contenido
+    const lista = palabras.length
+      ? todos.filter((r) => {
+          const texto = sinAcentos([r.nombre, r.descripcion, r.modelo, r.herramientas?.join(' '), r.contenido].filter(Boolean).join(' '))
+          return palabras.every((w) => texto.includes(w))
+        })
+      : todos
     return (
       <section className="cfg-grupo">
         <div className="cfg-grupo-cab">
           <h3>
-            {titulo} <small>{lista.length}</small>
+            {titulo} <small>{palabras.length ? `${lista.length} de ${todos.length}` : todos.length}</small>
           </h3>
+          <div className="buscar buscar-rec">
+            <IconoBuscar />
+            <input
+              type="search"
+              value={busca[tipo]}
+              onChange={(e) => setBusca({ ...busca, [tipo]: e.target.value })}
+              onKeyDown={(e) => e.key === 'Escape' && setBusca({ ...busca, [tipo]: '' })}
+              placeholder={tipo === 'agente' ? 'Buscar subagentes…' : 'Buscar skills…'}
+              aria-label={tipo === 'agente' ? 'Buscar subagentes' : 'Buscar skills'}
+              spellCheck={false}
+            />
+          </div>
           <button onClick={() => setModal({ tipo })}>
             <IconoMas /> {tipo === 'agente' ? 'Agente' : 'Skill'}
           </button>
         </div>
-        {lista.length === 0 ? <EstadoVacio variante="compacto" icono={<IconoAgente />} titulo={vacio.titulo} texto={vacio.texto} /> : lista.map(fila)}
+        {todos.length === 0 ? (
+          <EstadoVacio variante="compacto" icono={<IconoAgente />} titulo={vacio.titulo} texto={vacio.texto} />
+        ) : lista.length === 0 ? (
+          <EstadoVacio variante="compacto" icono={<IconoBuscar />} titulo="Sin coincidencias" texto={`Nada coincide con «${busca[tipo].trim()}».`} />
+        ) : (
+          lista.map(fila)
+        )}
       </section>
     )
   }
