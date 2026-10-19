@@ -191,6 +191,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [pendientes, setPendientes] = useState<Adjunto[]>([])
   const [subiendo, setSubiendo] = useState(0)
   const [errorAdjunto, setErrorAdjunto] = useState('')
+  const [cola, setCola] = useState<{ prompt: string; adjuntos: Adjunto[] }[]>([]) // mensajes escritos mientras el agente trabaja
   const [arrastrando, setArrastrando] = useState(false)
   const selector = useRef<HTMLInputElement>(null)
   const modelos = useModelos()
@@ -304,8 +305,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     void window.api.core.adjuntoEliminar(a.id)
   }
 
-  const lanzar = (prompt: string, forzarFlujo = false): void => {
-    const adjuntos = pendientes
+  const lanzar = (prompt: string, forzarFlujo = false, adjuntos: Adjunto[] = pendientes): void => {
     setPendientes([])
     setErrorAdjunto('')
     void agente.enviar({
@@ -369,10 +369,29 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
 
   const enviar = (): void => {
     const prompt = texto.trim() || (pendientes.length ? 'Revisa los archivos adjuntos.' : '')
-    if (!prompt || agente.enCurso || subiendo > 0) return
+    if (!prompt || subiendo > 0) return
     setTexto('')
+    if (agente.enCurso) {
+      // El agente está trabajando: el mensaje espera su turno y se envía solo al terminar.
+      setCola((c) => [...c, { prompt, adjuntos: pendientes }])
+      setPendientes([])
+      return
+    }
     if (prompt.startsWith('/')) return comandoSlash(prompt)
     lanzar(prompt)
+  }
+
+  const quitarDeCola = (i: number): void => {
+    for (const a of cola[i]?.adjuntos ?? []) void window.api.core.adjuntoEliminar(a.id)
+    setCola((c) => c.filter((_, j) => j !== i))
+  }
+
+  const despacharSiguiente = (): void => {
+    const [sig, ...resto] = cola
+    if (!sig) return
+    setCola(resto)
+    if (sig.prompt.startsWith('/')) return comandoSlash(sig.prompt)
+    lanzar(sig.prompt, false, sig.adjuntos)
   }
 
   const completar = (nombre: string): void => {
@@ -381,6 +400,10 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   }
 
   const actual = agente.turnos.at(-1)
+  // Al terminar bien el turno en marcha, sale el siguiente de la cola. Si se canceló o falló, la cola espera a que el usuario decida.
+  useEffect(() => {
+    if (!agente.enCurso && cola.length > 0 && actual?.estado === 'completado') despacharSiguiente()
+  })
   return (
     <div
       className={`ag-chat${arrastrando ? ' arrastrando' : ''}`}
@@ -524,6 +547,24 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               ))}
             </div>
           )}
+          {cola.length > 0 && (
+            <ul className="ag-cola" aria-label="Mensajes en cola">
+              {cola.map((m, i) => (
+                <li key={i}>
+                  <span className="ag-cola-n">{i + 1}</span>
+                  <span className="ag-cola-texto">{m.prompt}</span>
+                  {m.adjuntos.length > 0 && <small>{m.adjuntos.length} archivo(s)</small>}
+                  <button onClick={() => quitarDeCola(i)} aria-label="Quitar de la cola" title="Quitar de la cola">×</button>
+                </li>
+              ))}
+              {!agente.enCurso && (
+                <li className="ag-cola-pausa">
+                  <span>Cola en pausa (el turno anterior no terminó bien).</span>
+                  <button onClick={despacharSiguiente}>Enviar ahora</button>
+                </li>
+              )}
+            </ul>
+          )}
           <textarea
             rows={3}
             value={texto}
@@ -563,8 +604,8 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               }
             }}
           />
-          <button className="primario" onClick={enviar} disabled={(!texto.trim() && pendientes.length === 0) || agente.enCurso || subiendo > 0}>
-            {actual?.estado === 'en_curso' ? 'Trabajando…' : !texto.trim() && pendientes.length > 0 ? 'Enviar archivos' : 'Enviar'}
+          <button className="primario" onClick={enviar} disabled={(!texto.trim() && pendientes.length === 0) || subiendo > 0} title={agente.enCurso ? 'El agente está trabajando: el mensaje se enviará al terminar' : undefined}>
+            {agente.enCurso ? 'Encolar' : !texto.trim() && pendientes.length > 0 ? 'Enviar archivos' : 'Enviar'}
           </button>
         </div>
       </div>

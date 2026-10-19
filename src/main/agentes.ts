@@ -180,13 +180,13 @@ function nombresUnicos(recursos: Recurso[]): Map<string, string> {
  * La carpeta lleva el hash del contenido: es inmutable, así que varias terminales o cambios de
  * configuración nunca pisan archivos que una sesión en marcha pueda estar leyendo.
  */
-async function construirPlugin(proyectoId: string): Promise<string | null> {
+async function construirPlugin(proyectoId: string, conMcp = true): Promise<string | null> {
   const datos = await leerProyectos()
   const proyecto = datos.proyectos.find((p) => p.id === proyectoId)
   if (!proyecto) return null
   const activos = activosDe(await leerBiblioteca(), proyecto).map((a) => a.recurso)
   // Además de los agentes y skills, el plugin lleva el servidor MCP de tareas: Claude Code ve las tareas del proyecto.
-  const mcp = configMcpTareas(proyectoId)
+  const mcp = conMcp ? configMcpTareas(proyectoId) : undefined
   if (activos.length === 0 && !mcp) return null
 
   const agentes = activos.filter((r) => r.tipo === 'agente')
@@ -251,6 +251,20 @@ export async function comandoConAgentes(comando: string, proyectoId?: string): P
   } catch (err) {
     console.error('No se pudieron preparar los agentes:', err)
     return comando // mejor abrir Claude sin agentes que no abrirlo
+  }
+}
+
+/**
+ * Plugin solo con los agentes y skills activos (sin MCP ni ganchos: el Asistente ya pasa su propio `--mcp-config`).
+ * Para `claude -p` del Asistente; devuelve undefined si no hay nada activo o falla.
+ */
+export async function pluginAgentesAsistente(proyectoId?: string): Promise<string | undefined> {
+  if (!proyectoId) return undefined
+  try {
+    return (await construirPlugin(proyectoId, false)) ?? undefined
+  } catch (err) {
+    console.error('No se pudieron preparar los agentes del Asistente:', err)
+    return undefined
   }
 }
 
