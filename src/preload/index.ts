@@ -87,6 +87,9 @@ const api: ApiCentro = {
   historial: {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.historialOperar, op, entrada)
   },
+  credenciales: {
+    operar: (op, entrada) => ipcRenderer.invoke(Canales.credencialesOperar, op, entrada)
+  },
   equipos: {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.equiposOperar, op, entrada)
   },

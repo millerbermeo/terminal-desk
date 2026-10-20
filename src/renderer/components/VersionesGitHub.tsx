@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { URL_CREAR_TOKEN, nombreRepoValido, type EstadoGitHub, type Issue, type MetodoFusion, type PullRequest, type ResumenCI } from '@shared/github'
 import { fechaRelativa } from '@shared/versiones'
 import { mensajeDe } from '../tareas/useTareas'
@@ -82,10 +82,11 @@ export function VersionesGitHub({ c }: { c: ContextoGit }) {
   }, [hayRepo, proyectoId, tick, estado.rama])
 
   // Valores por defecto de los formularios: el nombre del proyecto y el asunto del último commit.
+  const tituloEscrito = useRef(false) // el título del pull request lo tocó el usuario: ya no se sigue al último commit
   useEffect(() => {
-    git('historial', { proyectoId, limite: 1 }).then((r) => setNuevoPr((n) => (n.titulo ? n : { ...n, titulo: r.commits[0]?.asunto ?? '' }))).catch(() => undefined)
+    if (!tituloEscrito.current) git('historial', { proyectoId, limite: 1 }).then((r) => !tituloEscrito.current && setNuevoPr((n) => ({ ...n, titulo: r.commits[0]?.asunto ?? '' }))).catch(() => undefined)
     setPub((p) => (p.nombre ? p : { ...p, nombre: nombreRepoValido(estado.raiz?.split('/').pop() ?? 'proyecto') }))
-  }, [proyectoId, estado.raiz, estado.rama])
+  }, [proyectoId, estado.raiz, estado.rama, tick])
 
   const actualizar = (): void => void c.recargar()
 
@@ -249,6 +250,7 @@ export function VersionesGitHub({ c }: { c: ContextoGit }) {
                 void run('Creando pull request…', () => gh('crearPr', { proyectoId, titulo: nuevoPr.titulo, cuerpo: nuevoPr.cuerpo, borrador: nuevoPr.borrador })).then((pr) => {
                   if (!pr) return
                   avisar(`Pull request #${pr.numero} creado.`)
+                  tituloEscrito.current = false
                   setNuevoPr({ titulo: '', cuerpo: '', borrador: false })
                   actualizar()
                 })
@@ -259,7 +261,7 @@ export function VersionesGitHub({ c }: { c: ContextoGit }) {
               </p>
               <label>
                 Título
-                <input value={nuevoPr.titulo} onChange={(e) => setNuevoPr({ ...nuevoPr, titulo: e.target.value })} />
+                <input value={nuevoPr.titulo} onChange={(e) => ((tituloEscrito.current = true), setNuevoPr({ ...nuevoPr, titulo: e.target.value }))} />
               </label>
               <label>
                 Descripción

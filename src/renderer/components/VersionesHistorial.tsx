@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { fechaRelativa, NOMBRE_ESTADO, type Commit, type DetalleCommit, type DiffArchivo, type Rama, type RefCommit } from '@shared/versiones'
 import { carpetaDeArchivo, nombreDeArchivo } from '@shared/versiones'
 import { mensajeDe } from '../tareas/useTareas'
@@ -21,6 +21,7 @@ export function VersionesHistorial({ c }: { c: ContextoGit }) {
   const [rama, setRama] = useState('') // '' = la actual, '__todas__' = todas
   const [ramas, setRamas] = useState<Rama[]>([])
   const [texto, setTexto] = useState('')
+  const [busqueda, setBusqueda] = useState('') // `texto` con retardo: la búsqueda se hace en git, sobre todo el historial
   const [hash, setHash] = useState<string | null>(null)
   const [detalle, setDetalle] = useState<DetalleCommit | null>(null)
   const [archivo, setArchivo] = useState<string | null>(null)
@@ -28,7 +29,12 @@ export function VersionesHistorial({ c }: { c: ContextoGit }) {
   const [dialogo, setDialogo] = useState<'rama' | 'version' | 'revertir' | null>(null)
   const [error, setError] = useState('')
 
-  const filtro = useCallback((saltar: number) => ({ proyectoId, limite: PAGINA, saltar, ...(rama === '__todas__' ? { todas: true } : rama ? { rama } : {}) }), [proyectoId, rama])
+  useEffect(() => {
+    const t = window.setTimeout(() => setBusqueda(texto.trim()), 250)
+    return () => window.clearTimeout(t)
+  }, [texto])
+
+  const filtro = useCallback((saltar: number) => ({ proyectoId, limite: PAGINA, saltar, ...(busqueda ? { texto: busqueda } : {}), ...(rama === '__todas__' ? { todas: true } : rama ? { rama } : {}) }), [proyectoId, rama, busqueda])
 
   useEffect(() => {
     let vigente = true
@@ -71,10 +77,7 @@ export function VersionesHistorial({ c }: { c: ContextoGit }) {
     }
   }, [hash, archivo, proyectoId])
 
-  const visibles = useMemo(() => {
-    const t = texto.trim().toLowerCase()
-    return t ? commits.filter((x) => `${x.asunto} ${x.autor} ${x.corto} ${x.refs.map((r) => r.nombre).join(' ')}`.toLowerCase().includes(t)) : commits
-  }, [commits, texto])
+  const visibles = commits
 
   const cargarMas = (): void => {
     setCargando(true)
@@ -84,7 +87,7 @@ export function VersionesHistorial({ c }: { c: ContextoGit }) {
       .finally(() => setCargando(false))
   }
 
-  if (!cargando && commits.length === 0 && !error && rama === '') {
+  if (!cargando && commits.length === 0 && !error && rama === '' && !busqueda) {
     return <EstadoVacio icono={<IconoReloj />} titulo="Aún no hay commits" texto="Cuando confirmes tus primeros cambios, su historial aparecerá aquí." />
   }
 

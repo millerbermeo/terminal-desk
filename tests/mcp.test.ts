@@ -51,3 +51,24 @@ describe('servidores de serie', () => {
     expect(Object.keys(c.servidores).sort()).toEqual(['otro', 'playwright'])
   })
 })
+
+describe('MCP externos en suscripción (claude -p)', () => {
+  it('Playwright y los servidores de mcp.json van al --mcp-config y se permiten según la autonomía', async () => {
+    const { servidoresExternos, archivoMcpTareas, configurarMcpTareas } = await import('../src/main/core/tareas/mcp-config')
+    const { permisosCli } = await import('../src/main/core/suscripcion')
+    const { mkdtemp, readFile } = await import('node:fs/promises')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const c = conServidoresDeSerie(analizarConfigMcp({ servidores: { otro: { comando: 'x', deshabilitado: true }, odesk: { comando: 'y' } } }))
+    const ext = servidoresExternos(c.servidores)
+    expect(Object.keys(ext)).toEqual(['playwright']) // deshabilitado y nombre reservado fuera
+    const dir = await mkdtemp(join(tmpdir(), 'mcp-ext-'))
+    configurarMcpTareas({ raizApp: dir, dirDatos: dir })
+    const archivo = (await archivoMcpTareas('p1', ext))!
+    expect(JSON.parse(await readFile(archivo, 'utf8')).mcpServers.playwright).toMatchObject({ command: 'npx', args: expect.arrayContaining(['@playwright/mcp@latest']) })
+    const externos = [{ nombre: 'playwright', riesgo: c.servidores.playwright!.riesgo }]
+    expect(permisosCli('preguntar', [], false, externos)).not.toContain('mcp__playwright')
+    expect(permisosCli('ediciones', [], false, externos)).toContain('mcp__playwright')
+    expect(permisosCli('autonomo', [], false, externos)).toContain('mcp__playwright')
+  })
+})

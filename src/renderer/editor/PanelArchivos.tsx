@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CambioArchivo, EntradaArchivo, MarcaGit } from '@shared/archivos'
 import { EstadoVacio } from '../components/EstadoVacio'
@@ -58,7 +59,8 @@ function MenuArchivos({ menu, items }: { menu: { x: number; y: number }; items: 
     if (ev.key === 'ArrowDown') (ev.preventDefault(), botones[(i + 1) % botones.length]?.focus())
     else if (ev.key === 'ArrowUp') (ev.preventDefault(), botones[(i - 1 + botones.length) % botones.length]?.focus())
   }
-  return (
+  // En un portal al <body>: `position: fixed` dentro de un ancestro con transform/filter/contain se coloca respecto a ese ancestro, no a la ventana.
+  return createPortal(
     <div ref={ref} className="menu-ia ed-menu" style={{ top: pos.y, left: pos.x }} role="menu" onMouseDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()} onKeyDown={mover}>
       {items.map((it, i) =>
         it === 'separador' ? (
@@ -70,7 +72,8 @@ function MenuArchivos({ menu, items }: { menu: { x: number; y: number }; items: 
           </button>
         )
       )}
-    </div>
+    </div>,
+    document.body
   )
 }
 

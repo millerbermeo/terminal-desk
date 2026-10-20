@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import type { DatosProyectos } from '@shared/modelos'
 import { useAgente } from '../agente/useAgente'
 import { ChatAgente } from './ChatAgente'
+import { CredencialesAgente } from './CredencialesAgente'
 import { ComandosAgente } from './ComandosAgente'
 import { EvalsAgente } from './EvalsAgente'
 import { MemoriaAgente } from './MemoriaAgente'
@@ -9,12 +10,13 @@ import { PermisosAgente } from './PermisosAgente'
 import { RamasAgente } from './RamasAgente'
 import { TrazasAgente } from './TrazasAgente'
 
-type Pestana = 'chat' | 'trazas' | 'memoria' | 'permisos' | 'comandos' | 'ramas' | 'evals'
+type Pestana = 'chat' | 'trazas' | 'memoria' | 'permisos' | 'credenciales' | 'comandos' | 'ramas' | 'evals'
 const PESTANAS: { id: Pestana; nombre: string }[] = [
   { id: 'chat', nombre: 'Conversación' },
   { id: 'trazas', nombre: 'Trazas' },
   { id: 'memoria', nombre: 'Memoria' },
   { id: 'permisos', nombre: 'Permisos' },
+  { id: 'credenciales', nombre: 'Credenciales' },
   { id: 'comandos', nombre: 'Comandos /' },
   { id: 'ramas', nombre: 'Ramas' },
   { id: 'evals', nombre: 'Evals' }
@@ -51,6 +53,9 @@ export function Asistente({ datos, visible }: Props) {
         </div>
         <div className="ag-vista scroll" style={{ display: pestana === 'permisos' ? 'block' : 'none' }}>
           <AmbitoGlobal datos={datos}>{(ambito) => <PermisosAgente {...(ambito ? { proyectoId: ambito } : {})} visible={visible && pestana === 'permisos'} />}</AmbitoGlobal>
+        </div>
+        <div className="ag-vista scroll" style={{ display: pestana === 'credenciales' ? 'block' : 'none' }}>
+          <CredencialesAgente datos={datos} visible={visible && pestana === 'credenciales'} />
         </div>
         <div className="ag-vista scroll" style={{ display: pestana === 'comandos' ? 'block' : 'none' }}>
           <AmbitoGlobal datos={datos}>{(ambito) => <ComandosAgente {...(ambito ? { proyectoId: ambito } : {})} visible={visible && pestana === 'comandos'} />}</AmbitoGlobal>

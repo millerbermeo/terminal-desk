@@ -1,5 +1,7 @@
+import type { CredencialEfectiva } from '@shared/credenciales'
 import type { ResultadoHerramienta } from '@shared/core/herramientas'
 import { esArchivoSensible } from '@shared/github'
+import { HERRAMIENTAS_CREDENCIALES } from '@shared/credenciales-herramientas'
 import { HERRAMIENTAS_GIT } from '@shared/git-herramientas'
 import { HERRAMIENTAS_GITHUB } from '@shared/github-herramientas'
 import { HERRAMIENTAS_ODESK } from '@shared/herramientas-odesk'
@@ -22,6 +24,8 @@ export interface ServiciosOdesk {
   github: ServicioGitHub
   carpetaDe(proyectoId: string): Promise<string>
   credenciales?: ProveedorCredenciales
+  /** Credenciales de prueba locales del proyecto (y su grupo). */
+  credencialesPrueba?: (proyectoId: string) => Promise<CredencialEfectiva[]>
 }
 
 const MAX_SALIDA = 30_000
@@ -136,9 +140,28 @@ async function ejecutarGitHub(s: ServiciosOdesk, nombre: string, e: Entrada, pro
  * Un único punto de entrada para todas las herramientas de la aplicación (tareas, git y GitHub): lo usan el registro del núcleo (modo
  * API) y el servidor MCP (suscripción y terminales ✦). Valida la entrada y nunca lanza: los fallos vuelven como resultado con `error`.
  */
+async function ejecutarCredenciales(s: ServiciosOdesk, nombre: string, entrada: unknown, ctx: ContextoOdesk): Promise<ResultadoHerramienta> {
+  const def = HERRAMIENTAS_CREDENCIALES.find((h) => h.nombre === nombre)!
+  const motivo = validarEntrada(def.esquema, entrada ?? {})
+  if (motivo) return { texto: `Entrada inválida para ${nombre}: ${motivo}`, error: true }
+  const e = (entrada ?? {}) as Entrada
+  const proyectoId = (typeof e.proyecto_id === 'string' && e.proyecto_id ? e.proyecto_id : ctx.proyectoId) ?? ''
+  if (!proyectoId) return { texto: 'Indica proyecto_id (usa listar_proyectos): esta conversación no está ligada a un proyecto.', error: true }
+  const todas = await (s.credencialesPrueba ?? (async () => []))(proyectoId)
+  if (nombre === 'credenciales_listar') {
+    if (!todas.length) return { texto: 'No hay credenciales de prueba guardadas en este equipo para este proyecto.' }
+    return { texto: aTexto(todas.map((c) => ({ nombre: c.nombre, ambito: c.origen, ...(c.notas ? { notas: c.notas } : {}), campos: c.campos.map((f) => f.clave) }))) }
+  }
+  const buscado = String(e.nombre).trim().toLowerCase()
+  const c = todas.find((x) => x.nombre.toLowerCase() === buscado)
+  if (!c) return { texto: `No hay una credencial llamada «${String(e.nombre)}». Disponibles: ${todas.map((x) => x.nombre).join(', ') || '(ninguna)'}.`, error: true }
+  return { texto: aTexto({ nombre: c.nombre, ...(c.notas ? { notas: c.notas } : {}), campos: Object.fromEntries(c.campos.map((f) => [f.clave, f.valor])) }) }
+}
+
 export function crearEjecutorOdesk(s: ServiciosOdesk): EjecutorOdesk {
   return async (nombre, entrada, ctx = {}) => {
     if (HERRAMIENTAS_TAREAS.some((h) => h.nombre === nombre)) return ejecutarHerramientaTareas(s.tareas, nombre, entrada, ctx)
+    if (HERRAMIENTAS_CREDENCIALES.some((h) => h.nombre === nombre)) return ejecutarCredenciales(s, nombre, entrada, ctx)
     const def = [...HERRAMIENTAS_GIT, ...HERRAMIENTAS_GITHUB].find((h) => h.nombre === nombre)
     if (!def) return { texto: `Herramienta desconocida: ${nombre}`, error: true }
     const motivo = validarEntrada(def.esquema, entrada ?? {})

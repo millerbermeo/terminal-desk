@@ -1,4 +1,4 @@
-import { mkdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import { contarConflictos, fusion3, type ArchivoFusion, type DatosArchivoFusion, type PrevisualizacionFusion, type ResolucionFusion } from '@shared/fusion'
 import {
@@ -285,10 +285,28 @@ export class Repositorio {
   preparar(rutas?: string[]): Promise<EstadoGit> {
     return this.escribir(async () => {
       await this.exigirRepo()
-      if (rutas === undefined) await this.ok(['add', '-A'])
-      else await this.ok(['add', '-A', '--', ...this.rutas(rutas)])
+      const lista = rutas === undefined ? undefined : this.rutas(rutas)
+      await this.sinMarcadoresDeConflicto(lista)
+      if (!lista) await this.ok(['add', '-A'])
+      else await this.ok(['add', '-A', '--', ...lista])
       return this.estado()
     })
+  }
+
+  /**
+   * Marcar como resuelto un archivo en conflicto que aún lleva los marcadores (`<<<<<<<`…) los dejaría escritos dentro del commit:
+   * se avisa antes. Solo mira los archivos que están en conflicto en este momento.
+   */
+  private async sinMarcadoresDeConflicto(rutas?: string[]): Promise<void> {
+    const raiz = this.raiz ?? this.carpeta
+    const enConflicto = (await this.estado('ligero')).archivos.filter((a) => a.conflicto && (!rutas || rutas.includes(a.ruta)))
+    const conMarcas: string[] = []
+    for (const a of enConflicto) {
+      const texto = await readFile(join(raiz, a.ruta), 'utf8').catch(() => '')
+      if (/^<{7}( |$)/m.test(texto) && /^>{7}( |$)/m.test(texto)) conMarcas.push(a.ruta)
+    }
+    if (conMarcas.length)
+      throw new Error(`${conMarcas.length === 1 ? 'El archivo' : 'Los archivos'} ${conMarcas.slice(0, 3).map((r) => `«${r}»`).join(', ')}${conMarcas.length > 3 ? '…' : ''} todavía ${conMarcas.length === 1 ? 'tiene' : 'tienen'} marcadores de conflicto (<<<<<<<, =======, >>>>>>>). Edítalo${conMarcas.length === 1 ? '' : 's'} para dejar el resultado final y vuelve a marcarlo${conMarcas.length === 1 ? '' : 's'} como resuelto${conMarcas.length === 1 ? '' : 's'}.`)
   }
 
   despreparar(rutas?: string[]): Promise<EstadoGit> {
@@ -328,9 +346,10 @@ export class Repositorio {
     return this.escribir(async () => {
       await this.exigirRepo()
       const texto = typeof mensaje === 'string' ? mensaje.trim() : ''
-      if (!enmendar && !texto) throw new Error('Escribe un mensaje para el commit.')
       if (texto.length > 20_000) throw new Error('El mensaje es demasiado largo.')
       const estado = await this.estado()
+      // Al cerrar una fusión, un revert o un cherry-pick git ya trae un mensaje propio: sin escribir nada se usa ese.
+      if (!enmendar && !texto && !estado.operacion) throw new Error('Escribe un mensaje para el commit.')
       if (enConflicto(estado).length) throw new Error('Hay archivos en conflicto: resuélvelos y prepáralos antes de confirmar.')
       if (!enmendar && preparados(estado).length === 0 && !estado.operacion) throw new Error('No hay cambios preparados. Prepara los archivos que quieras incluir.')
       const args = ['commit', ...(enmendar ? ['--amend'] : []), ...(texto ? ['-F', '-'] : ['--no-edit'])]
@@ -342,10 +361,12 @@ export class Repositorio {
 
   // ---------------------------------------------------------------- historial
 
-  async historial(o: { limite?: number; saltar?: number; rama?: string; todas?: boolean; ruta?: string } = {}): Promise<{ commits: Commit[]; hayMas: boolean }> {
+  async historial(o: { limite?: number; saltar?: number; rama?: string; todas?: boolean; ruta?: string; texto?: string } = {}): Promise<{ commits: Commit[]; hayMas: boolean }> {
     await this.exigirRepo()
     const limite = Math.min(Math.max(Math.trunc(o.limite ?? 50), 1), 500)
     const saltar = Math.max(Math.trunc(o.saltar ?? 0), 0)
+    const texto = typeof o.texto === 'string' ? o.texto.trim().slice(0, 200) : ''
+    if (texto) return this.buscarHistorial({ ...o, texto }, limite, saltar)
     const args = ['log', '--decorate=full', `--format=${FORMATO_LOG}`, '-n', String(limite + 1), '--skip', String(saltar)]
     if (o.todas) args.push('--all')
     else if (o.rama) {
@@ -365,6 +386,41 @@ export class Repositorio {
     }
     const commits = analizarLog(r.stdout)
     return { commits: commits.slice(0, limite), hayMas: commits.length > limite }
+  }
+
+  /**
+   * Búsqueda en todo el historial de la rama (no solo en lo ya cargado): por mensaje, por autor o por hash. `git log` combina `--grep` y
+   * `--author` con «y», así que se lanzan por separado y se unen.
+   */
+  private async buscarHistorial(o: { rama?: string; todas?: boolean; ruta?: string; texto: string }, limite: number, saltar: number): Promise<{ commits: Commit[]; hayMas: boolean }> {
+    const base = ['log', '--decorate=full', `--format=${FORMATO_LOG}`, '-n', '500', '-i', '-F']
+    if (o.todas) base.push('--all')
+    else if (o.rama) {
+      const rama = await this.validarRama(o.rama, false)
+      if (!(await this.refExiste(rama))) throw new Error(`No existe «${rama}».`)
+      base.push(rama)
+    }
+    let cola: string[] = ['--']
+    if (o.ruta !== undefined) {
+      const motivo = validarRutaRepo(o.ruta)
+      if (motivo) throw new Error(motivo)
+      cola = ['--', o.ruta]
+    }
+    const unidos = new Map<string, Commit>()
+    for (const filtro of [`--grep=${o.texto}`, `--author=${o.texto}`]) {
+      const r = await this.g([...base, filtro, ...cola])
+      if (!r.ok) {
+        if (/does not have any commits yet|bad default revision 'HEAD'|unknown revision/i.test(r.stderr)) return { commits: [], hayMas: false }
+        throw new Error(explicarError(r.stderr, 'log'))
+      }
+      for (const c of analizarLog(r.stdout)) unidos.set(c.hash, c)
+    }
+    if (/^[0-9a-f]{4,40}$/i.test(o.texto)) {
+      const r = await this.g(['log', '--decorate=full', `--format=${FORMATO_LOG}`, '-n', '1', o.texto, '--'])
+      if (r.ok) for (const c of analizarLog(r.stdout)) unidos.set(c.hash, c)
+    }
+    const todos = [...unidos.values()].sort((a, b) => Date.parse(b.fecha) - Date.parse(a.fecha))
+    return { commits: todos.slice(saltar, saltar + limite), hayMas: todos.length > saltar + limite }
   }
 
   async detalleCommit(hash: string): Promise<DetalleCommit> {

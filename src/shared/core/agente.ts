@@ -42,7 +42,7 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
   | { tipo: 'fin'; resultado: ResultadoAgente }
   | { tipo: 'ruta'; complejidad: Complejidad; modelo: string; razon: string; sugerirFlujo: boolean }
   | { tipo: 'flujo_nodo'; nodo: NodoFlujo; intento: number }
-  | { tipo: 'solicitud_humana'; solicitudId: string; clase: ClaseSolicitud; contenido: string; detalle?: string; destructivo?: boolean; herramienta?: string; puedeSiempre?: boolean }
+  | { tipo: 'solicitud_humana'; solicitudId: string; clase: ClaseSolicitud; contenido: string; detalle?: string; destructivo?: boolean; herramienta?: string; puedeSiempre?: boolean; preguntas?: PreguntaUsuario[] }
   | { tipo: 'guardrail'; herramienta: string; motivo: string }
   | { tipo: 'worktree'; accion: AccionWorktree; rama: string; ruta: string; detalle?: string }
   | { tipo: 'flujo_fin'; estado: EstadoFlujo; resumen: string }
@@ -57,7 +57,15 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
 
 export type Complejidad = 'simple' | 'media' | 'compleja'
 export type NodoFlujo = 'planificacion' | 'aprobacion' | 'generacion' | 'pruebas' | 'confirmacion'
-export type ClaseSolicitud = 'plan' | 'confirmacion' | 'accion'
+export type ClaseSolicitud = 'plan' | 'confirmacion' | 'accion' | 'pregunta'
+
+/** Pregunta con opciones que el modelo le hace al usuario (herramienta `AskUserQuestion` del CLI). */
+export interface PreguntaUsuario {
+  pregunta: string
+  encabezado?: string
+  opciones: { etiqueta: string; descripcion?: string }[]
+  multiple?: boolean
+}
 export type AccionWorktree = 'creado' | 'confirmado' | 'descartado' | 'conservado' | 'publicado'
 export type EstadoFlujo = 'completado' | 'rechazado' | 'fallido' | 'cancelado'
 
@@ -69,6 +77,8 @@ export interface DecisionHumana {
   recordar?: boolean
   /** Solo en `accion`: guardar una regla persistente que permita esta acción en el proyecto (nunca para acciones destructivas). */
   siempre?: boolean
+  /** Solo en `pregunta`: respuesta elegida (o escrita) para cada pregunta, por su texto. */
+  respuestas?: Record<string, string>
 }
 
 /** Directorio de trabajo aislado (git worktree) de una tarea de agente. */

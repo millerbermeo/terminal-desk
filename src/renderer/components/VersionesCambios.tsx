@@ -57,6 +57,7 @@ export function VersionesCambios({ c }: { c: ContextoGit }) {
   const [mensaje, setMensaje] = useState('')
   const [enmendar, setEnmendar] = useState(false)
   const [descartar, setDescartar] = useState<string[] | null>(null)
+  const [soloMensaje, setSoloMensaje] = useState(false) // sin cambios pendientes: se abre el panel solo para enmendar el último commit
 
   const conflictos = enConflicto(estado)
   const listos = preparados(estado)
@@ -103,18 +104,27 @@ export function VersionesCambios({ c }: { c: ContextoGit }) {
       aplicar(r.estado)
       setMensaje('')
       setEnmendar(false)
+      setSoloMensaje(false)
       avisar(`${enmendar ? 'Commit enmendado' : 'Commit creado'}: ${r.hash}`)
     })
   }
 
-  const puedeCommit = !bloqueado && conflictos.length === 0 && (enmendar ? true : (listos.length > 0 || Boolean(estado.operacion)) && mensaje.trim() !== '')
+  // Durante una fusión, un revert… git propone su propio mensaje: se puede confirmar sin escribir nada.
+  const puedeCommit = !bloqueado && conflictos.length === 0 && (enmendar ? true : (listos.length > 0 && mensaje.trim() !== '') || Boolean(estado.operacion))
 
-  if (estado.archivos.length === 0 && !estado.operacion) {
+  if (estado.archivos.length === 0 && !estado.operacion && !soloMensaje) {
     return (
       <EstadoVacio
         icono={<IconoCheck />}
         titulo="Todo está confirmado"
         texto={estado.sinCommits ? 'Aún no hay archivos en este proyecto. Cuando crees o cambies alguno, aparecerá aquí.' : 'No hay cambios pendientes. Cuando modifiques archivos aparecerán aquí para que los prepares y los confirmes.'}
+        accion={
+          estado.sinCommits ? undefined : (
+            <button onClick={() => (setSoloMensaje(true), setEnmendar(true))} title="Cambiar el mensaje del último commit (no lo hagas si ya lo enviaste)">
+              Editar el mensaje del último commit
+            </button>
+          )
+        }
       />
     )
   }
@@ -170,7 +180,7 @@ export function VersionesCambios({ c }: { c: ContextoGit }) {
           <textarea
             value={mensaje}
             rows={3}
-            placeholder={enmendar ? 'Sin mensaje se conserva el del commit anterior' : 'Mensaje del commit (Ctrl+Enter para confirmar)'}
+            placeholder={enmendar ? 'Sin mensaje se conserva el del commit anterior' : estado.operacion ? 'Sin mensaje se usa el que propone git (Ctrl+Enter para confirmar)' : 'Mensaje del commit (Ctrl+Enter para confirmar)'}
             onChange={(e) => setMensaje(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && puedeCommit) hacerCommit()
@@ -187,6 +197,14 @@ export function VersionesCambios({ c }: { c: ContextoGit }) {
           </div>
           {conflictos.length > 0 && <p className="vc-nota">Resuelve los conflictos y márcalos como resueltos (＋) para poder confirmar.</p>}
           {conflictos.length === 0 && listos.length === 0 && !enmendar && !estado.operacion && <p className="vc-nota">Prepara (＋) los archivos que quieras incluir.</p>}
+          {soloMensaje && (
+            <p className="vc-nota">
+              Solo se cambia el mensaje del último commit.{' '}
+              <button className="enlace" onClick={() => (setSoloMensaje(false), setEnmendar(false))}>
+                Cancelar
+              </button>
+            </p>
+          )}
         </div>
       </div>
       {sel ? (

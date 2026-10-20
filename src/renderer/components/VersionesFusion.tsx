@@ -12,7 +12,7 @@ import { ModalConfirmar } from './ModalConfirmar'
 const ETIQUETA: Record<string, string> = { A: 'añadido', M: 'modificado', D: 'borrado' }
 
 /** Archivo abierto: o el editor de tres paneles, o (si un lado lo borró o no es texto) la elección de una versión entera. */
-type Abierto = { ruta: string; datos: DatosArchivoFusion } | { ruta: string; entero: true; borrado: { actual: boolean; origen: boolean } }
+type Abierto = { ruta: string; datos: DatosArchivoFusion } | { ruta: string; entero: true; borrado: { actual: boolean; origen: boolean }; soloOrigen: boolean }
 
 /**
  * Fusión asistida: compara la rama actual con otra y deja integrarla archivo a archivo en un editor de tres paneles (origen · resultado ·
@@ -71,16 +71,20 @@ export function VersionesFusion({ c }: { c: ContextoGit }) {
 
   const abrir = (a: ArchivoFusion): void => {
     setError('')
+    // `soloOrigen`: la rama actual no tocó el archivo, así que git lo integra solo y no hay nada que elegir.
+    const soloOrigen = a.estado === 'origen'
     git('fusionArchivo', { proyectoId, origen: previa!.origen, ruta: a.ruta })
       .then((datos) => {
-        // Si una rama borró el archivo no hay nada que mezclar línea a línea: se elige una versión entera.
-        if (!datos.existe.actual || !datos.existe.origen) setAbierto({ ruta: a.ruta, entero: true, borrado: { actual: !datos.existe.actual, origen: !datos.existe.origen } })
+        const { base, actual, origen } = datos.existe
+        // Solo si el archivo existía en la base y un lado lo borró no hay nada que mezclar línea a línea: se elige una versión entera.
+        // Un archivo que una rama añadió y la otra no tiene se muestra en el editor (no es un borrado).
+        if (base && (!actual || !origen)) setAbierto({ ruta: a.ruta, entero: true, borrado: { actual: !actual, origen: !origen }, soloOrigen })
         else setAbierto({ ruta: a.ruta, datos })
       })
       .catch((e) => {
         const m = mensajeDe(e)
         // Binario o enorme: solo se puede elegir una versión entera.
-        if (/binario|demasiado grande/i.test(m) || a.noTexto) setAbierto({ ruta: a.ruta, entero: true, borrado: { actual: false, origen: false } })
+        if (/binario|demasiado grande/i.test(m) || a.noTexto) setAbierto({ ruta: a.ruta, entero: true, borrado: { actual: false, origen: false }, soloOrigen })
         else setError(m)
       })
   }
@@ -112,17 +116,25 @@ export function VersionesFusion({ c }: { c: ContextoGit }) {
               <h3 className="mono">{abierto.ruta}</h3>
             </div>
             <p className="vc-nota">
-              {abierto.borrado.actual || abierto.borrado.origen
-                ? `${abierto.borrado.origen ? `«${previa.origen}»` : `«${previa.actual}»`} borró este archivo y la otra rama lo cambió: elige con cuál quedarte.`
-                : 'Este archivo es binario o demasiado grande para mostrarlo línea a línea: elige la versión de una de las dos ramas.'}
+              {abierto.soloOrigen
+                ? abierto.borrado.origen
+                  ? `«${previa.origen}» borró este archivo y «${previa.actual}» no lo tocó: al fusionar se borrará solo. No hay nada que elegir.`
+                  : `Este archivo es binario o demasiado grande para mostrarlo línea a línea. Solo cambió en «${previa.origen}»: al fusionar se integra tal cual.`
+                : abierto.borrado.actual || abierto.borrado.origen
+                  ? `${abierto.borrado.origen ? `«${previa.origen}»` : `«${previa.actual}»`} borró este archivo y la otra rama lo cambió: elige con cuál quedarte.`
+                  : 'Este archivo es binario o demasiado grande para mostrarlo línea a línea: elige la versión de una de las dos ramas.'}
             </p>
             <div className="vc-acciones visibles">
-              <button className="primario" onClick={() => (setResoluciones((r) => ({ ...r, [abierto.ruta]: { tipo: 'origen' } })), setAbierto(null))}>
-                Quedarme con la de «{previa.origen}»{abierto.borrado.origen ? ' (borrar el archivo)' : ''}
-              </button>
-              <button className="primario" onClick={() => (setResoluciones((r) => ({ ...r, [abierto.ruta]: { tipo: 'actual' } })), setAbierto(null))}>
-                Quedarme con la de «{previa.actual}»{abierto.borrado.actual ? ' (borrar el archivo)' : ''}
-              </button>
+              {!abierto.soloOrigen && (
+                <>
+                  <button className="primario" onClick={() => (setResoluciones((r) => ({ ...r, [abierto.ruta]: { tipo: 'origen' } })), setAbierto(null))}>
+                    Quedarme con la de «{previa.origen}»{abierto.borrado.origen ? ' (borrar el archivo)' : ''}
+                  </button>
+                  <button className="primario" onClick={() => (setResoluciones((r) => ({ ...r, [abierto.ruta]: { tipo: 'actual' } })), setAbierto(null))}>
+                    Quedarme con la de «{previa.actual}»{abierto.borrado.actual ? ' (borrar el archivo)' : ''}
+                  </button>
+                </>
+              )}
               <button onClick={() => setAbierto(null)}>Volver</button>
             </div>
           </section>

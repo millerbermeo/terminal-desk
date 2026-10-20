@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { ClaseSolicitud, DecisionHumana, EventoAgente } from '@shared/core/agente'
+import type { ClaseSolicitud, DecisionHumana, EventoAgente, PreguntaUsuario } from '@shared/core/agente'
 
 export interface Solicitud {
   solicitudId: string
@@ -11,6 +11,7 @@ export interface Solicitud {
   destructivo?: boolean
   herramienta?: string
   puedeSiempre?: boolean // se puede ofrecer «Permitir siempre»
+  preguntas?: PreguntaUsuario[] // clase `pregunta`: opciones que el modelo le plantea al usuario
   destino?: string // proyecto o celda que la originó (si se conoce)
 }
 
@@ -36,7 +37,7 @@ export function escucharSolicitudes(): () => void {
       ...solicitudes,
       {
         solicitudId: e.solicitudId, ejecucionId: e.ejecucionId, agente: e.agente, clase: e.clase, contenido: e.contenido,
-        ...(e.detalle ? { detalle: e.detalle } : {}), ...(e.destructivo ? { destructivo: true } : {}), ...(e.herramienta ? { herramienta: e.herramienta } : {}), ...(e.puedeSiempre ? { puedeSiempre: true } : {}),
+        ...(e.detalle ? { detalle: e.detalle } : {}), ...(e.destructivo ? { destructivo: true } : {}), ...(e.herramienta ? { herramienta: e.herramienta } : {}), ...(e.puedeSiempre ? { puedeSiempre: true } : {}), ...(e.preguntas ? { preguntas: e.preguntas } : {}),
         ...(destino ? { destino } : {})
       }
     ])

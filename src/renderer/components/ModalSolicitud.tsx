@@ -4,10 +4,10 @@ import { responderSolicitud, useSolicitudes, type Solicitud } from '../agente/so
 interface Props {
   solicitud: Solicitud
   pendientes: number // cuántas hay en cola (incluida esta)
-  onResponder: (aprobado: boolean, comentario?: string, recordar?: boolean, siempre?: boolean) => void
+  onResponder: (aprobado: boolean, comentario?: string, recordar?: boolean, siempre?: boolean, respuestas?: Record<string, string>) => void
 }
 
-const TITULOS = { plan: 'Aprobar el plan', confirmacion: 'Confirmar el resultado', accion: 'Confirmar una acción' } as const
+const TITULOS = { plan: 'Aprobar el plan', confirmacion: 'Confirmar el resultado', accion: 'Confirmar una acción', pregunta: 'El asistente te pregunta' } as const
 
 /** Confirmación humana: bloquea hasta que se responde (el agente espera). */
 export function ModalSolicitud({ solicitud: s, pendientes, onResponder }: Props) {
@@ -15,7 +15,23 @@ export function ModalSolicitud({ solicitud: s, pendientes, onResponder }: Props)
   const [recordar, setRecordar] = useState(false)
   const [siempre, setSiempre] = useState(false)
 
+  // Clase `pregunta`: por pregunta, las opciones marcadas y el texto libre («Otra»).
+  const [elegidas, setElegidas] = useState<Record<string, string[]>>({})
+  const [libres, setLibres] = useState<Record<string, string>>({})
+  const respuestas = Object.fromEntries(
+    (s.preguntas ?? []).map((q) => [q.pregunta, [...(elegidas[q.pregunta] ?? []), ...(libres[q.pregunta]?.trim() ? [libres[q.pregunta]!.trim()] : [])].join(', ')])
+  )
+  const completa = (s.preguntas ?? []).every((q) => respuestas[q.pregunta])
+  const marcar = (pregunta: string, etiqueta: string, multiple: boolean): void =>
+    setElegidas((m) => {
+      const actual = m[pregunta] ?? []
+      if (!multiple) return { ...m, [pregunta]: [etiqueta] }
+      return { ...m, [pregunta]: actual.includes(etiqueta) ? actual.filter((x) => x !== etiqueta) : [...actual, etiqueta] }
+    })
+
   useEffect(() => {
+    setElegidas({})
+    setLibres({})
     setComentario('')
     setRecordar(false)
     setSiempre(false)
@@ -43,14 +59,49 @@ export function ModalSolicitud({ solicitud: s, pendientes, onResponder }: Props)
           </span>
         </div>
         {s.detalle && <p className={`ag-detalle${s.destructivo ? ' peligro' : ''}`}>{s.detalle}</p>}
-        <pre className="ag-contenido">{s.contenido || '(vacío)'}</pre>
-        <textarea
+        {s.clase === 'pregunta' ? (
+          (s.preguntas ?? []).map((q) => (
+            <fieldset key={q.pregunta} className="ag-pregunta">
+              <legend>
+                {q.encabezado && <span className="chip">{q.encabezado}</span>} {q.pregunta}
+              </legend>
+              {q.opciones.map((o) => (
+                <label key={o.etiqueta} className="ag-recordar" title={o.descripcion}>
+                  <input
+                    type={q.multiple ? 'checkbox' : 'radio'}
+                    name={q.pregunta}
+                    checked={(elegidas[q.pregunta] ?? []).includes(o.etiqueta)}
+                    onChange={() => {
+                      marcar(q.pregunta, o.etiqueta, q.multiple === true)
+                      if (!q.multiple) setLibres((m) => ({ ...m, [q.pregunta]: '' }))
+                    }}
+                  />
+                  <strong>{o.etiqueta}</strong>
+                  {o.descripcion && <span> — {o.descripcion}</span>}
+                </label>
+              ))}
+              <input
+                type="text"
+                className="ag-comentario"
+                placeholder="Otra respuesta…"
+                value={libres[q.pregunta] ?? ''}
+                onChange={(e) => {
+                  setLibres((m) => ({ ...m, [q.pregunta]: e.target.value }))
+                  if (!q.multiple && e.target.value) setElegidas((m) => ({ ...m, [q.pregunta]: [] }))
+                }}
+              />
+            </fieldset>
+          ))
+        ) : (
+          <pre className="ag-contenido">{s.contenido || '(vacío)'}</pre>
+        )}
+        {s.clase !== 'pregunta' && <textarea
           className="ag-comentario"
           rows={2}
           placeholder={s.clase === 'accion' ? 'Comentario para el agente (opcional)' : 'Si lo rechazas, explica qué cambiar (se lo pasa al agente)'}
           value={comentario}
           onChange={(e) => setComentario(e.target.value)}
-        />
+        />}
         {s.clase === 'accion' && !s.destructivo && (
           <label className="ag-recordar">
             <input type="checkbox" checked={recordar} onChange={(e) => setRecordar(e.target.checked)} />
@@ -64,8 +115,13 @@ export function ModalSolicitud({ solicitud: s, pendientes, onResponder }: Props)
           </label>
         )}
         <div className="cfg-acciones">
-          <button className={s.destructivo ? 'peligro-solido' : 'primario'} autoFocus={!s.destructivo} onClick={() => onResponder(true, comentario || undefined, recordar, siempre)}>
-            {s.clase === 'plan' ? 'Aprobar plan' : s.clase === 'confirmacion' ? 'Aceptar resultado' : s.destructivo ? 'Permitir (destructiva)' : 'Permitir'}
+          <button
+            className={s.destructivo ? 'peligro-solido' : 'primario'}
+            autoFocus={!s.destructivo && s.clase !== 'pregunta'}
+            disabled={s.clase === 'pregunta' && !completa}
+            onClick={() => (s.clase === 'pregunta' ? onResponder(true, undefined, false, false, respuestas) : onResponder(true, comentario || undefined, recordar, siempre))}
+          >
+            {s.clase === 'pregunta' ? 'Responder' : s.clase === 'plan' ? 'Aprobar plan' : s.clase === 'confirmacion' ? 'Aceptar resultado' : s.destructivo ? 'Permitir (destructiva)' : 'Permitir'}
           </button>
           <button autoFocus={s.destructivo} onClick={() => onResponder(false, comentario || undefined)}>
             Rechazar
@@ -85,8 +141,8 @@ export function ModalSolicitudGlobal() {
     <ModalSolicitud
       solicitud={s}
       pendientes={solicitudes.length}
-      onResponder={(aprobado, comentario, recordar, siempre) =>
-        responderSolicitud(s, { aprobado, ...(comentario ? { comentario } : {}), ...(recordar ? { recordar: true } : {}), ...(siempre ? { siempre: true } : {}) })
+      onResponder={(aprobado, comentario, recordar, siempre, respuestas) =>
+        responderSolicitud(s, { aprobado, ...(comentario ? { comentario } : {}), ...(recordar ? { recordar: true } : {}), ...(siempre ? { siempre: true } : {}), ...(respuestas ? { respuestas } : {}) })
       }
     />
   )

@@ -16,7 +16,7 @@ import type { ModoAutonomia } from '@shared/core/permisos'
 const WINDOWS = process.platform === 'win32'
 
 /** Sin estas variables el CLI usaría la clave de API (y se cobraría por tokens) en vez de la suscripción. */
-function entornoSuscripcion(carpeta?: string): NodeJS.ProcessEnv {
+export function entornoSuscripcion(carpeta?: string): NodeJS.ProcessEnv {
   const env = { ...process.env }
   // App lanzada desde el menú: su PATH no trae nvm/pnpm/node. Se usa el del shell de login (ver `cargarPathShell`).
   if (pathShell) env.PATH = pathShell
@@ -192,7 +192,13 @@ const LECTURA = ['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch']
 /** Comandos que ni el modo autónomo puede ejecutar. */
 export const COMANDOS_BLOQUEADOS = ['Bash(sudo:*)', 'Bash(rm -rf /:*)', 'Bash(rm -rf ~:*)', 'Bash(git push --force:*)', 'Bash(git push -f:*)', 'Bash(mkfs:*)', 'Bash(dd:*)']
 
-export function permisosCli(autonomia: ModoAutonomia, verificaciones: string[], conHerramientas = false): string[] {
+/** Servidor MCP externo (Playwright, los de `mcp.json`): su riesgo decide desde qué autonomía se permiten sus herramientas. */
+export interface McpExterno {
+  nombre: string
+  riesgo: 'lectura' | 'escritura' | 'ejecucion'
+}
+
+export function permisosCli(autonomia: ModoAutonomia, verificaciones: string[], conHerramientas = false, externos: McpExterno[] = []): string[] {
   const permitidas = [...LECTURA]
   // Herramientas de la app (servidor MCP: tareas, git y GitHub). Consultar siempre; cambiar, como las ediciones de archivos, desde
   // «Aceptar ediciones»; lo que sale de la máquina (enviar, publicar en GitHub) solo en modo «Autónomo»: aquí no hay quien confirme.
@@ -201,6 +207,10 @@ export function permisosCli(autonomia: ModoAutonomia, verificaciones: string[], 
       const permitida = h.riesgo === 'lectura' || (h.riesgo === 'escritura' && autonomia !== 'preguntar') || (h.riesgo === 'ejecucion' && autonomia === 'autonomo')
       if (permitida) permitidas.push(PREFIJO_MCP + h.nombre)
     }
+  }
+  // Servidores externos: mismas reglas que las herramientas de la app (`mcp__<servidor>` permite todas las del servidor).
+  for (const e of externos) {
+    if (e.riesgo === 'lectura' || (e.riesgo === 'escritura' && autonomia !== 'preguntar') || (e.riesgo === 'ejecucion' && autonomia === 'autonomo')) permitidas.push(`mcp__${e.nombre}`)
   }
   if (autonomia === 'autonomo') {
     // Autónomo = sin nadie que apruebe: terminal y ediciones libres. Los archivos quedan limitados a la carpeta del proyecto y a las
@@ -224,6 +234,8 @@ export interface OpcionesEjecucion {
   senal: AbortSignal
   /** Archivo `--mcp-config` con el servidor MCP de tareas de la app (y se permiten sus herramientas según la autonomía). */
   mcpTareas?: string
+  /** Servidores MCP externos incluidos en `mcpTareas` (para permitir sus herramientas según la autonomía). */
+  mcpExternos?: McpExterno[]
   /** Carpetas de plugins (`--plugin-dir`): la de los agentes y skills activos del proyecto y la de Caveman. */
   pluginDirs?: string[]
   /** Carpeta de configuración de la cuenta con la que se ejecuta (ausente = la principal). */
@@ -232,9 +244,22 @@ export interface OpcionesEjecucion {
   omitirInicio?: boolean
   /** No emitir `fin`: lo emite quien llama (puede decidir reintentar con otra cuenta). */
   retenerFin?: boolean
+  /**
+   * Quien responde cuando el CLI pide permiso para una herramienta (o le hace una pregunta al usuario con `AskUserQuestion`).
+   * Con él el CLI habla por stdio (`--input-format stream-json --permission-prompt-tool stdio`); sin él, lo no permitido se deniega.
+   */
+  alPermiso?: (p: PeticionPermiso) => Promise<RespuestaPermiso>
   /** Recibe los eventos sin `ejecucionId`, `agente` ni `profundidad` (los pone quien llama). */
   alEvento: (e: Record<string, unknown> & { tipo: EventoAgente['tipo'] }) => void
 }
+
+/** Petición de permiso del CLI (`control_request` / `can_use_tool`). */
+export interface PeticionPermiso {
+  herramienta: string
+  entrada: Record<string, unknown>
+}
+
+export type RespuestaPermiso = { permitir: true; entrada?: Record<string, unknown> } | { permitir: false; mensaje: string }
 
 interface BloqueCli {
   type: string
@@ -256,6 +281,8 @@ interface UsoCli {
 
 interface MensajeCli {
   type?: string
+  request_id?: string
+  request?: { subtype?: string; tool_name?: string; input?: Record<string, unknown> }
   subtype?: string
   session_id?: string
   model?: string
@@ -349,7 +376,8 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
     '--output-format', 'stream-json',
     '--verbose',
     '--include-partial-messages',
-    ...permisosCli(o.autonomia, o.verificaciones, Boolean(o.mcpTareas)),
+    ...(o.alPermiso ? ['--input-format', 'stream-json', '--permission-prompt-tool', 'stdio'] : []),
+    ...permisosCli(o.autonomia, o.verificaciones, Boolean(o.mcpTareas), o.mcpExternos),
     ...(o.mcpTareas ? ['--mcp-config', o.mcpTareas] : []),
     ...(o.pluginDirs ?? []).flatMap((d) => ['--plugin-dir', d]),
     ...(o.modelo ? ['--model', o.modelo] : []),
@@ -379,6 +407,21 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
     if (typeof m.session_id === 'string') sesionCli = m.session_id
     const propio = m.parent_tool_use_id == null
     switch (m.type) {
+      case 'control_request': {
+        const r = m.request
+        if (!o.alPermiso || r?.subtype !== 'can_use_tool' || !m.request_id) return
+        const id = m.request_id
+        const entrada = r.input ?? {}
+        const responder = (response: Record<string, unknown>): void => {
+          if (!hijo.stdin.writable) return
+          hijo.stdin.write(JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: id, response } }) + '\n')
+        }
+        o.alPermiso({ herramienta: r.tool_name ?? '', entrada }).then(
+          (d) => responder(d.permitir ? { behavior: 'allow', updatedInput: d.entrada ?? entrada } : { behavior: 'deny', message: d.mensaje }),
+          () => responder({ behavior: 'deny', message: 'El usuario no respondió.' })
+        )
+        return
+      }
       case 'system':
         if (m.subtype === 'init' && typeof m.model === 'string') modelo = m.model
         return
@@ -417,7 +460,9 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
         for (const b of m.message?.content ?? []) {
           if (b.type !== 'tool_result' || !b.tool_use_id) continue
           const llamada = llamadas.get(b.tool_use_id)
-          if (llamada) o.alEvento({ tipo: 'herramienta_fin', llamada, resultado: { texto: textoDe(b.content), ...(b.is_error ? { error: true } : {}) } })
+          // Los valores de las credenciales de prueba llegan al modelo, pero no se guardan en la transcripción (que se sincroniza con la cuenta).
+          const texto = llamada?.nombre.endsWith('credenciales_obtener') && !b.is_error ? '[valores de la credencial entregados al asistente]' : textoDe(b.content)
+          if (llamada) o.alEvento({ tipo: 'herramienta_fin', llamada, resultado: { texto, ...(b.is_error ? { error: true } : {}) } })
         }
         return
       }
@@ -428,6 +473,7 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
         if (!limite && (m.api_error_status === 429 || (m.is_error === true && typeof m.result === 'string' && esErrorDeLimite(m.result)))) limite = {}
         for (const [id, u] of ventanas) ventanasObservadas.set(id, u.contextWindow!)
         if (propia) ventana = propia[1].contextWindow
+        if (o.alPermiso) hijo.stdin.end() // con entrada por stream el CLI espera más mensajes: no hay más
         final = { esError: m.is_error === true || (typeof m.subtype === 'string' && m.subtype.startsWith('error')), texto: typeof m.result === 'string' ? m.result : '', ...(m.usage ? { uso: m.usage } : {}), ...(typeof m.result === 'string' && m.is_error ? { error: m.result } : {}) }
         return
       }
@@ -452,7 +498,8 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
   hijo.stderr.on('data', (d: Buffer) => (errores = (errores + d.toString('utf8')).slice(-2000)))
 
   hijo.stdin.on('error', () => undefined)
-  hijo.stdin.end(o.prompt)
+  if (o.alPermiso) hijo.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: o.prompt } }) + '\n')
+  else hijo.stdin.end(o.prompt)
 
   const codigo = await new Promise<number | null>((res, rej) => {
     hijo.on('error', rej)

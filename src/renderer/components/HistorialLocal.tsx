@@ -114,7 +114,7 @@ export function HistorialLocal({ proyectoId, tick = 0, avisar }: { proyectoId: s
           {v.texto}
         </span>
         <span className="hl-cifras">
-          {estado.archivos} archivo{estado.archivos === 1 ? '' : 's'} · {estado.versiones} versión{estado.versiones === 1 ? '' : 'es'} · {mb(estado.bytes)}
+          {estado.archivos} archivo{estado.archivos === 1 ? '' : 's'} · {estado.versiones} {estado.versiones === 1 ? 'versión' : 'versiones'} · {mb(estado.bytes)}
         </span>
         <span className="ag-espacio" />
         <div className="hl-uso" title={`${mb(estado.bytes)} de ${mb(estado.limiteBytes)} (al llenarse se descarta lo más antiguo). Se conserva todo ${estado.diasCompletos} días; después, una versión por día y luego por semana.`}>

@@ -13,6 +13,8 @@ interface Archivo {
 export class RutasLocales {
   private datos?: Record<string, string>
   private cola: Promise<unknown> = Promise.resolve()
+  /** Se avisa tras cada cambio de rutas (proyecto agregado, movido o quitado), para que lo que depende de ellas no espere a su siguiente ronda. */
+  alCambiar?: () => void
 
   constructor(private readonly archivo: string) {}
 
@@ -35,6 +37,11 @@ export class RutasLocales {
       const tmp = `${this.archivo}.${process.pid}.tmp`
       await writeFile(tmp, JSON.stringify({ version: 1, rutas: d } satisfies Archivo, null, 2) + '\n', 'utf8')
       await rename(tmp, this.archivo)
+      try {
+        this.alCambiar?.()
+      } catch {
+        /* el aviso no puede romper el guardado */
+      }
       return r
     })
     this.cola = p.catch(() => undefined)

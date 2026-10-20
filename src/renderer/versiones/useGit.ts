@@ -88,7 +88,9 @@ export function useGit(proyectoId: string, activo: boolean) {
   }, [])
 
   const aplicar = useCallback((e: EstadoGit): void => {
+    solicitud.current++ // una lectura que salió antes de esta operación trae un estado viejo: se descarta
     setEstado(e)
+    setCargando(false)
     setTick((t) => t + 1)
   }, [])
 

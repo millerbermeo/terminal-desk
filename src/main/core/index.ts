@@ -38,7 +38,9 @@ import { MotorGuardrails } from './guardrails/motor'
 import { AlmacenTrazas } from './tracing/almacen'
 import { LlmTrazado } from './tracing/llm-trazado'
 import { Trazador } from './tracing/trazador'
+import { credencialesDe } from '../credenciales'
 import { crearAprobadorHumano } from './hitl/aprobador'
+import { crearPermisoCli } from './hitl/permiso-cli'
 import { AlmacenAdjuntos } from './adjuntos/almacen'
 import { LlmMedido, Medidor } from './uso/medidor'
 import { ComandosStore, dividirArgumentos } from './comandos/store'
@@ -66,7 +68,7 @@ import { servidor } from '../servidor/cliente'
 import { Sincronizador } from '../servidor/sincronizador'
 import { ServicioGitHub } from '../github/servicio'
 import { ejecutarOperacionTareas } from './tareas/operaciones'
-import { archivoMcpTareas } from './tareas/mcp-config'
+import { archivoMcpTareas, servidoresExternos } from './tareas/mcp-config'
 import { cerrarSesion, ejecutarSuscripcion, estadoCuenta, estadoSesion, iniciarSesion, listarModelosCli, Preferencias, SesionesCli } from './suscripcion'
 import { registrarIntegradas } from './tools/integradas'
 import { RegistroHerramientas } from './tools/registro'
@@ -176,7 +178,7 @@ export class Nucleo {
     })
     // Todas las herramientas de la aplicación (tareas, git y GitHub) salen de un único ejecutor: el registro del núcleo las usa en modo
     // API y el servidor MCP en suscripción y en las terminales ✦.
-    this.ejecutarHerramienta = crearEjecutorOdesk({ tareas: this.tareas, github: this.github, carpetaDe: carpetaDeProyecto, credenciales: this.github.credencialesPara })
+    this.ejecutarHerramienta = crearEjecutorOdesk({ tareas: this.tareas, github: this.github, carpetaDe: carpetaDeProyecto, credenciales: this.github.credencialesPara, credencialesPrueba: credencialesDe })
     for (const h of herramientasOdesk(this.ejecutarHerramienta)) this.registro.registrar(h)
   }
 
@@ -338,7 +340,11 @@ export class Nucleo {
     const memoria = await this.memoria.contextoPara(prompt, proyecto?.id)
     const tareas = proyecto ? await this.tareas.contextoParaIA(proyecto.id, proyecto.nombre).catch(() => '') : ''
     const gitCtx = proyecto ? await this.contextoGit(proyecto.ruta) : ''
-    return [memoria, tareas, gitCtx, conAdjuntos ? AVISO_ADJUNTOS : ''].filter(Boolean).join('\n\n').trim()
+    const pruebas = proyecto ? await credencialesDe(proyecto.id).catch(() => []) : []
+    const credsCtx = pruebas.length
+      ? `Hay ${pruebas.length} credencial(es) de PRUEBA guardadas en este equipo para este proyecto (${pruebas.map((c) => c.nombre).join(', ')}). Cuando necesites un usuario, clave o URL para probar, consúltalas con credenciales_listar / credenciales_obtener en vez de pedírselas al usuario; no las escribas en archivos versionados ni en commits.`
+      : ''
+    return [memoria, tareas, gitCtx, credsCtx, conAdjuntos ? AVISO_ADJUNTOS : ''].filter(Boolean).join('\n\n').trim()
   }
 
   /** Cuentas de suscripción con el estado de su sesión (se consulta al CLI de cada una en paralelo). */
@@ -468,7 +474,9 @@ export class Nucleo {
     void (async () => {
       let estado: 'completado' | 'cancelado' | 'error' = 'completado'
       try {
-        const mcpTareas = await archivoMcpTareas(proyecto?.id).catch(() => undefined)
+        // Playwright de serie y los servidores de mcp.json también llegan al CLI (antes solo existían en modo API).
+        const externos = servidoresExternos((await leerConfigMcp().catch(() => ({ servidores: {} }))).servidores)
+        const mcpTareas = await archivoMcpTareas(proyecto?.id, externos).catch(() => undefined)
         const pluginDirs = [await pluginAgentesAsistente(proyecto?.id), await pluginCaveman()].filter((d): d is string => Boolean(d))
         // Dentro de un grupo, el Asistente puede leer y editar también las carpetas de los demás proyectos del grupo.
         const hermanas = await carpetasHermanas(proyecto?.id)
@@ -476,6 +484,16 @@ export class Nucleo {
           ? `Este proyecto pertenece a un grupo. Tienes acceso completo (leer, crear y modificar archivos) a las carpetas de los demás proyectos del grupo:\n${hermanas.map((h) => `- ${h.nombre}: ${h.ruta}`).join('\n')}`
           : ''
         const sistema = [sistemaExtra, extraGrupo].filter(Boolean).join('\n\n')
+        // Permisos y preguntas del CLI: salen como confirmaciones del modal (antes, en `-p`, lo no permitido se denegaba sin avisar).
+        const alPermiso = crearPermisoCli({
+          puerta: this.puerta,
+          ejecucionId: id,
+          alEvento: (e) => emitir(e as unknown as Record<string, unknown>),
+          senal: ctl.signal,
+          validar: (l) => this.guardrails.validarLlamada(l),
+          reglas: () => this.permisos.efectivas(sol.proyectoId),
+          guardarRegla: async (r) => void (await this.permisos.agregar(r, sol.proyectoId ?? 'global'))
+        })
         const probadas = new Set<string>()
         let cuenta = await this.cuentaParaEjecutar()
         const previa = await this.sesionesCli.obtener(sesionId)
@@ -503,8 +521,9 @@ export class Nucleo {
             ...(sistema ? { sistemaExtra: sistema } : {}),
             ...(carpeta || hermanas.length ? { carpetasExtra: [...(carpeta ? [carpeta] : []), ...hermanas.map((h) => h.ruta)] } : {}),
             ...(carpetaCuenta ? { carpetaCuenta } : {}),
-            ...(mcpTareas ? { mcpTareas } : {}),
+            ...(mcpTareas ? { mcpTareas, mcpExternos: Object.entries(externos).map(([nombre, s]) => ({ nombre, riesgo: s.riesgo })) } : {}),
             ...(pluginDirs.length ? { pluginDirs } : {}),
+            alPermiso,
             senal: ctl.signal,
             alEvento: emitir,
             retenerFin: true,
