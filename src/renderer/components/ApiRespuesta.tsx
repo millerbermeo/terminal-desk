@@ -68,7 +68,7 @@ function Detalle({ r, onGuardar }: { r: RespuestaApi; onGuardar: () => void }) {
         </span>
         {r.redirecciones.length > 0 && (
           <span className="chip chip-aviso" title={`${r.redirecciones.join(' → ')} → ${r.urlFinal}`}>
-            {r.redirecciones.length} redirección{r.redirecciones.length === 1 ? '' : 'es'}
+            {r.redirecciones.length} {r.redirecciones.length === 1 ? 'redirección' : 'redirecciones'}
           </span>
         )}
         {r.cuerpo.truncado && <span className="chip chip-aviso">cuerpo cortado</span>}

@@ -68,7 +68,7 @@ function HistorialEquipo({ e }: { e: EquipoProyecto }) {
   return (
     <div className="eq-archivos eq-hist">
       <button className="enlace" onClick={() => setAbierto(!abierto)} aria-expanded={abierto}>
-        {abierto ? '▾' : '▸'} 🕘 {e.versionesHistorial} versión{e.versionesHistorial === 1 ? '' : 'es' } en su historial local
+        {abierto ? '▾' : '▸'} 🕘 {e.versionesHistorial} {e.versionesHistorial === 1 ? 'versión' : 'versiones'} en su historial local
       </button>
       {abierto && (
         <>

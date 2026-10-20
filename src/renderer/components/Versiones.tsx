@@ -81,7 +81,10 @@ export function Versiones({ datos, visible, onDatos, avisos = [] }: Props) {
     window.clearTimeout(temporizador.current)
     temporizador.current = window.setTimeout(() => setAviso(''), 6000)
   }, [])
-  useEffect(() => setConflictos(''), [proyectoId])
+  useEffect(() => {
+    setConflictos('')
+    setAviso('')
+  }, [proyectoId])
   // Cuando ya no hay conflictos el aviso destacado sobra.
   useEffect(() => {
     if (estado && enConflicto(estado).length === 0 && !estado.operacion) setConflictos('')
@@ -125,7 +128,7 @@ export function Versiones({ datos, visible, onDatos, avisos = [] }: Props) {
   const local = pestana === 'historial-local' && Boolean(proyecto)
   let cuerpo: React.ReactNode
   if (local) {
-    cuerpo = <HistorialLocal proyectoId={proyectoId} tick={tick} avisar={avisar} />
+    cuerpo = <HistorialLocal key={proyectoId} proyectoId={proyectoId} tick={tick} avisar={avisar} />
   } else if (!proyecto) {
     cuerpo = <EstadoVacio icono={<IconoRama />} titulo="Aún no hay proyectos" texto="Agrega un proyecto desde la barra lateral para gestionar sus versiones con git." />
   } else if (!estado) {
@@ -149,14 +152,15 @@ export function Versiones({ datos, visible, onDatos, avisos = [] }: Props) {
   } else if (contexto) {
     cuerpo = (
       <>
-        {pestana === 'cambios' && <VersionesCambios c={contexto} />}
-        {pestana === 'historial' && <VersionesHistorial c={contexto} />}
-        {pestana === 'ramas' && <VersionesRamas c={contexto} />}
-        {pestana === 'fusion' && <VersionesFusion c={contexto} />}
-        {pestana === 'versiones' && <VersionesEtiquetas c={contexto} />}
-        {pestana === 'stash' && <VersionesStash c={contexto} />}
-        {pestana === 'github' && <VersionesGitHub c={contexto} />}
-        {pestana === 'equipos' && <VersionesEquipos c={contexto} />}
+        {/* `key`: al cambiar de proyecto cada pestaña empieza de cero (formularios, selección, filtros del proyecto anterior). */}
+        {pestana === 'cambios' && <VersionesCambios key={proyectoId} c={contexto} />}
+        {pestana === 'historial' && <VersionesHistorial key={proyectoId} c={contexto} />}
+        {pestana === 'ramas' && <VersionesRamas key={proyectoId} c={contexto} />}
+        {pestana === 'fusion' && <VersionesFusion key={proyectoId} c={contexto} />}
+        {pestana === 'versiones' && <VersionesEtiquetas key={proyectoId} c={contexto} />}
+        {pestana === 'stash' && <VersionesStash key={proyectoId} c={contexto} />}
+        {pestana === 'github' && <VersionesGitHub key={proyectoId} c={contexto} />}
+        {pestana === 'equipos' && <VersionesEquipos key={proyectoId} c={contexto} />}
       </>
     )
   }

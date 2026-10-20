@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { ClaseSolicitud, DecisionHumana } from '@shared/core/agente'
+import type { ClaseSolicitud, DecisionHumana, PreguntaUsuario } from '@shared/core/agente'
 
 export interface SolicitudHumana {
   clase: ClaseSolicitud
@@ -9,6 +9,7 @@ export interface SolicitudHumana {
   herramienta?: string
   /** Se puede ofrecer «Permitir siempre» (hay una regla exacta que guardar). */
   puedeSiempre?: boolean
+  preguntas?: PreguntaUsuario[]
 }
 
 interface Pendiente {
@@ -48,7 +49,11 @@ export class PuertaHumana {
     const p = this.pendientes.get(solicitudId)
     if (!p) return false
     this.pendientes.delete(solicitudId)
-    p.resolver({ aprobado: decision.aprobado === true, ...(decision.comentario ? { comentario: String(decision.comentario).slice(0, 2000) } : {}), ...(decision.recordar === true ? { recordar: true } : {}), ...(decision.siempre === true ? { siempre: true } : {}) })
+    p.resolver({ aprobado: decision.aprobado === true, ...(decision.comentario ? { comentario: String(decision.comentario).slice(0, 2000) } : {}), ...(decision.recordar === true ? { recordar: true } : {}), ...(decision.siempre === true ? { siempre: true } : {}), ...(decision.respuestas ? { respuestas: respuestasLimpias(decision.respuestas) } : {}) })
     return true
   }
+}
+
+function respuestasLimpias(r: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(r).slice(0, 20).map(([k, v]) => [String(k).slice(0, 500), String(v).slice(0, 2000)]))
 }

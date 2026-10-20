@@ -255,6 +255,28 @@ describe('Repositorio (git real)', () => {
     await expect(r.detalleCommit('no-es-hash')).rejects.toThrow(/no válido/)
   })
 
+  it('historial: la búsqueda por texto recorre todo el historial (mensaje, autor y hash), no solo la página cargada', async () => {
+    const { dir, r } = await repoConCommit()
+    for (let n = 1; n <= 8; n++) {
+      await escribir(dir, 'f.txt', `${n}\n`)
+      await r.preparar(['f.txt'])
+      await r.commit(n === 2 ? 'Arregla el LOGIN roto' : `Paso ${n}`)
+    }
+    // «Primer commit» y «login» quedan fuera de una página de 3, pero la búsqueda los encuentra
+    expect((await r.historial({ limite: 3, texto: 'primer' })).commits.map((c) => c.asunto)).toEqual(['Primer commit'])
+    expect((await r.historial({ limite: 3, texto: 'login' })).commits.map((c) => c.asunto)).toEqual(['Arregla el LOGIN roto'])
+    const todos = await r.historial({ limite: 50 })
+    const corto = todos.commits.at(-1)!.corto
+    expect((await r.historial({ texto: corto })).commits.map((c) => c.asunto)).toEqual(['Primer commit'])
+    const pagina = await r.historial({ limite: 3, texto: 'Paso' })
+    expect(pagina.commits).toHaveLength(3)
+    expect(pagina.hayMas).toBe(true)
+    expect((await r.historial({ limite: 3, saltar: 3, texto: 'Paso' })).commits).toHaveLength(3)
+    expect((await r.historial({ texto: 'no-existe-zzz' })).commits).toEqual([])
+    // los caracteres de expresión regular se toman al pie de la letra
+    expect((await r.historial({ texto: '.*' })).commits).toEqual([])
+  })
+
   it('ramas: crear, cambiar, fusionar (avance rápido y con commit), eliminar y proteger la actual', async () => {
     const { dir, r } = await repoConCommit()
     await expect(r.crearRama('rama con espacios')).rejects.toThrow()
@@ -330,6 +352,56 @@ describe('Repositorio (git real)', () => {
     e = await r.estado()
     expect(e.operacion).toBeUndefined()
     expect((await r.historial()).commits[0]!.padres).toHaveLength(2)
+  })
+
+  it('no deja marcar como resuelto un archivo que aún tiene marcadores de conflicto', async () => {
+    const { dir, r } = await repoConCommit()
+    await r.crearRama('otra', undefined, true)
+    await escribir(dir, 'a.txt', 'uno\nOTRA\ntres\n')
+    await r.preparar()
+    await r.commit('Cambio en otra')
+    await r.cambiarRama('main')
+    await escribir(dir, 'a.txt', 'uno\nMAIN\ntres\n')
+    await r.preparar()
+    await r.commit('Cambio en main')
+    expect((await r.fusionar('otra')).conflictos).toBe(true)
+    // sin editar: el archivo trae <<<<<<< / >>>>>>>
+    await expect(r.preparar(['a.txt'])).rejects.toThrow(/marcadores de conflicto/)
+    await expect(r.preparar()).rejects.toThrow(/marcadores de conflicto/)
+    expect((await r.estado()).archivos.some((a) => a.conflicto)).toBe(true)
+    await writeFile(join(dir, 'a.txt'), 'uno\nRESUELTO\ntres\n')
+    expect((await r.preparar(['a.txt'])).archivos.some((a) => a.conflicto)).toBe(false)
+    await r.commit('Fusión resuelta')
+    // un archivo que no está en conflicto y contiene «<<<<<<<» como texto normal sí se puede preparar
+    await escribir(dir, 'doc.md', '<<<<<<< ejemplo\n=======\n>>>>>>> fin\n')
+    expect((await r.preparar(['doc.md'])).archivos.find((a) => a.ruta === 'doc.md')?.indice).toBe('A')
+  })
+
+  it('al cerrar una fusión se puede confirmar sin mensaje (se usa el de git); sin operación en curso sigue haciendo falta', async () => {
+    const { dir, r } = await repoConCommit()
+    await r.crearRama('otra', undefined, true)
+    await escribir(dir, 'a.txt', 'uno\nOTRA\ntres\n')
+    await r.preparar()
+    await r.commit('Cambio en otra')
+    await r.cambiarRama('main')
+    await escribir(dir, 'a.txt', 'uno\nMAIN\ntres\n')
+    await r.preparar()
+    await r.commit('Cambio en main')
+    await r.fusionar('otra')
+    await writeFile(join(dir, 'a.txt'), 'uno\nRESUELTO\ntres\n')
+    await r.preparar(['a.txt'])
+    await r.commit('')
+    const ultimo = (await r.historial()).commits[0]!
+    expect(ultimo.padres).toHaveLength(2)
+    expect(ultimo.asunto).toMatch(/Merge branch 'otra'/)
+    await escribir(dir, 'x.txt', 'x\n')
+    await r.preparar(['x.txt'])
+    await expect(r.commit('')).rejects.toThrow(/Escribe un mensaje/)
+    // enmendar solo el mensaje, sin cambios pendientes
+    await r.commit('Preparado')
+    const e = await r.commit('Mensaje nuevo', true)
+    expect((await r.historial()).commits[0]!.asunto).toBe('Mensaje nuevo')
+    expect(e.estado.archivos).toEqual([])
   })
 
   it('revertir crea un commit inverso y avisa de los conflictos', async () => {

@@ -32,7 +32,8 @@ export function analizarConfigMcp(crudo: unknown): ConfigMcp {
  */
 const SERVIDORES_DE_SERIE: Record<string, ServidorMcpConfig> = {
   // Navegador controlado por la IA (pruebas de UI, capturas, scraping). Headless para no abrir ventanas en medio del trabajo.
-  playwright: { comando: 'npx', args: ['-y', '@playwright/mcp@latest', '--headless'], env: {}, deshabilitado: false, riesgo: 'ejecucion' }
+  // «escritura»: en suscripción se permite desde «Aceptar ediciones» (en «Preguntar» no hay quien confirme); en modo API sigue pidiendo confirmación.
+  playwright: { comando: 'npx', args: ['-y', '@playwright/mcp@latest', '--headless'], env: {}, deshabilitado: false, riesgo: 'escritura' }
 }
 
 export function conServidoresDeSerie(config: ConfigMcp): ConfigMcp {

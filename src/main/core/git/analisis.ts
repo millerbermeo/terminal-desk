@@ -194,7 +194,7 @@ export function limpiarStderr(stderr: string, max = 1200): string {
       omitidas++
       return false
     }
-    return true
+    return !/^hint:/i.test(l.trim()) // consejos de git sobre su propia línea de comandos: aquí no sirven
   })
   if (omitidas) lineas.push(`(${omitidas} carpeta${omitidas === 1 ? '' : 's'} sin permiso de lectura omitida${omitidas === 1 ? '' : 's'})`)
   const t = lineas.join('\n').trim()

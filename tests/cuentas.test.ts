@@ -22,8 +22,16 @@ if (a[0] === 'auth' && a[1] === 'status') {
   process.exit(si ? 0 : 1)
 }
 let entrada = ''
-process.stdin.on('data', (d) => (entrada += d))
-process.stdin.on('end', () => {
+let hecho = false
+// Con entrada por stream (permisos por stdio) el CLI real responde sin esperar al cierre de stdin: se arranca con la primera línea.
+process.stdin.on('data', (d) => {
+  entrada += d
+  if (entrada.includes('\\n')) arrancar()
+})
+process.stdin.on('end', arrancar)
+function arrancar() {
+  if (hecho) return
+  hecho = true
   const i = a.indexOf('--resume')
   const reanuda = i >= 0 ? a[i + 1] : null
   const sesionOk = !reanuda || (fs.existsSync(path.join(dir, 'projects')) && fs.readdirSync(path.join(dir, 'projects')).some((p) => fs.existsSync(path.join(dir, 'projects', p, reanuda + '.jsonl'))))
@@ -41,7 +49,7 @@ process.stdin.on('end', () => {
   }
   l({ type: 'assistant', session_id: 'cli-1', parent_tool_use_id: null, message: { model: 'claude-sonnet-5-5', usage: { input_tokens: 5, output_tokens: 2 }, content: [{ type: 'text', text: 'hola desde ' + path.basename(dir) }] } })
   l({ type: 'result', subtype: 'success', is_error: false, session_id: 'cli-1', result: 'hola desde ' + path.basename(dir), usage: { input_tokens: 5, output_tokens: 2 } })
-})
+}
 `
 
 let home: string

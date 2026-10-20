@@ -102,7 +102,7 @@ function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
     case 'guardrail':
       return <div className="ag-guardrail">🛡 Guardrail bloqueó «{e.herramienta}»: {e.motivo}</div>
     case 'solicitud_humana':
-      return <div className="ag-nota">Esperando tu confirmación: {e.clase === 'plan' ? 'plan' : e.clase === 'confirmacion' ? 'resultado' : e.herramienta}</div>
+      return <div className="ag-nota">Esperando tu confirmación: {e.clase === 'plan' ? 'plan' : e.clase === 'confirmacion' ? 'resultado' : e.clase === 'pregunta' ? 'una respuesta tuya' : e.herramienta}</div>
     case 'worktree':
       return (
         <div className="ag-worktree">
@@ -229,13 +229,14 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const cambiarModelo = (id: string): void => {
     versionAjustes.current++
     setModeloSel(id)
-    void window.api.ajustes.fijar(claveAjustes, { modelo: id === 'auto' ? null : id }).catch(() => undefined)
+    // Al terminar de guardar se vuelve a subir la versión: una lectura que empezó mientras se guardaba trae el valor viejo y se descarta.
+    void window.api.ajustes.fijar(claveAjustes, { modelo: id === 'auto' ? null : id }).catch(() => undefined).finally(() => void versionAjustes.current++)
   }
   const cambiarAutonomia = async (nuevo: ModoAutonomia): Promise<void> => {
     if (nuevo === 'autonomo' && !(await confirmar({ titulo: 'Activar el modo autónomo', tono: 'aviso', etiqueta: 'Activar', texto: 'El agente escribirá archivos, ejecutará typecheck, lint y pruebas, y (en el Flujo) aprobará el plan sin preguntarte, con un límite de tokens.\n\nSeguirá pidiendo confirmación para lo destructivo (borrar, git push…), para comandos desconocidos y para aceptar el resultado del Flujo.\n\nLo más seguro es usarlo con el Flujo aislado en una rama.\n\nEste modo solo vale en este equipo: no se sincroniza con tu cuenta.' }))) return
     versionAjustes.current++
     setAutonomiaEstado(nuevo)
-    void window.api.ajustes.fijar(claveAjustes, { autonomia: nuevo }).catch(() => undefined)
+    void window.api.ajustes.fijar(claveAjustes, { autonomia: nuevo }).catch(() => undefined).finally(() => void versionAjustes.current++)
   }
   const fin = useRef<HTMLDivElement>(null)
 

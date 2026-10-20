@@ -147,7 +147,7 @@ export interface OperacionesGit {
   /** Deshace los cambios de esas rutas (los archivos sin seguimiento se borran): no se puede recuperar. */
   descartar: { entrada: P & { rutas: string[] }; salida: EstadoGit }
   commit: { entrada: P & { mensaje: string; enmendar?: boolean }; salida: { hash: string; estado: EstadoGit } }
-  historial: { entrada: P & { limite?: number; saltar?: number; rama?: string; todas?: boolean; ruta?: string }; salida: { commits: Commit[]; hayMas: boolean } }
+  historial: { entrada: P & { limite?: number; saltar?: number; rama?: string; todas?: boolean; ruta?: string; texto?: string }; salida: { commits: Commit[]; hayMas: boolean } }
   detalleCommit: { entrada: P & { hash: string }; salida: DetalleCommit }
   ramas: { entrada: P; salida: Rama[] }
   crearRama: { entrada: P & { nombre: string; desde?: string; cambiar?: boolean }; salida: EstadoGit }

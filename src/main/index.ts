@@ -16,6 +16,7 @@ import { verificarPassword } from './autenticacion'
 import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones } from './agentes'
 import { resolverPerfil } from './migracion'
 import { mantenerCavemanActualizado } from './caveman'
+import { mantenerNavegadorPlaywright } from './playwright'
 import { instalarZoom } from './zoom'
 import { repararWorktrees } from './core/git/reparar'
 import { ejecutarOperacionGitHub } from './github/operaciones'
@@ -44,6 +45,7 @@ import { servidoresLocales } from './puertos'
 import { HistorialComandos } from './historial-comandos'
 import { Registro } from './registro'
 import { cierreAnteriorInesperado, LimitadorRecargas, marcarCierreLimpio, marcarInicio, motivoRecuperable } from './estabilidad'
+import { ejecutarOperacionCredenciales } from './credenciales'
 import { fijarAjustes, leerAjustes } from './ajustes'
 import { iniciarServidorTareas, type ServidorTareas } from './core/tareas/servidor'
 
@@ -296,6 +298,8 @@ async function sincronizarHistorial(): Promise<void> {
     console.warn('No se pudo preparar el historial local:', (err as Error).message)
   }
 }
+// Un proyecto recién agregado o clonado ya tiene historial: sin esto fallaba con «no está en este equipo» hasta la siguiente ronda (15 s).
+rutasLocales.alCambiar = () => void sincronizarHistorial()
 
 let bucleCuenta: NodeJS.Timeout | undefined
 const CADA_MS = 30_000
@@ -436,6 +440,7 @@ function registrarIpc(): void {
   ipcMain.handle(Canales.gitOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGit(carpetaDeProyecto, op, entrada, nucleo.github.credencialesPara))
   ipcMain.handle(Canales.githubOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGitHub(nucleo.github, op, entrada))
   ipcMain.handle(Canales.historialOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionHistorial(historial, op, entrada))
+  ipcMain.handle(Canales.credencialesOperar, (_e, op: 'listar' | 'guardar' | 'eliminar', entrada: unknown) => ejecutarOperacionCredenciales(op, entrada as never))
   ipcMain.handle(Canales.equiposOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionEquipos(equipos, depsEquipos, op, entrada))
   ipcMain.handle(Canales.apiOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionApi(servicioApi, op, entrada))
   ipcMain.handle(Canales.navegadorAbrir, (_e, url: string) => navegador.abrir(String(url)))
@@ -611,6 +616,7 @@ app.whenReady().then(() => {
   registrarIpc()
   void limpiarSesiones()
   mantenerCavemanActualizado()
+  mantenerNavegadorPlaywright()
   void nucleo.iniciarMcp()
   void nucleo.adjuntos.limpiar().catch(() => undefined) // adjuntos de más de 30 días
   principal = crearVentana()
