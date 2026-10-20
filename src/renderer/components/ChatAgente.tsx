@@ -464,7 +464,6 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         ))}
         <div ref={fin} />
       </div>
-      <BarraUso {...(agente.contexto ? { contexto: agente.contexto } : {})} {...(modeloSel !== 'auto' ? { modelo: modeloSel } : {})} modelos={modelos} tokensSesion={agente.tokensSesion} />
       <div className="ag-compositor">
         <div className="ag-opciones">
           {!proyectoFijo && datos && (
@@ -522,16 +521,14 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             </label>
           )}
           <span className="ag-espacio" />
-          <button onClick={() => selector.current?.click()} disabled={pendientes.length >= LIMITES_ADJUNTOS.porMensaje} title="Adjuntar imágenes, PDF o archivos de texto (también puedes pegarlos o arrastrarlos)" aria-label="Adjuntar archivos">
-            📎<span className="largo"> Adjuntar</span>
+          <button className="ag-icono" onClick={() => selector.current?.click()} disabled={pendientes.length >= LIMITES_ADJUNTOS.porMensaje} title="Adjuntar imágenes, PDF o archivos de texto (también puedes pegarlos o arrastrarlos)" aria-label="Adjuntar archivos">
+            📎
           </button>
-          <button onClick={() => setVerHistorial((v) => !v)} aria-expanded={verHistorial} title="Conversaciones guardadas">
-            <span className="largo">Historial</span>
-            <span className="corto">Hist.</span>
+          <button className="ag-icono" onClick={() => setVerHistorial((v) => !v)} aria-expanded={verHistorial} aria-label="Historial" title="Historial: conversaciones guardadas">
+            🕘
           </button>
-          <button onClick={agente.nuevaConversacion} disabled={agente.enCurso || agente.turnos.length === 0} title="Nueva conversación: la actual queda guardada en el historial">
-            <span className="largo">Nueva conversación</span>
-            <span className="corto">Nueva</span>
+          <button className="ag-icono" onClick={agente.nuevaConversacion} disabled={agente.enCurso || agente.turnos.length === 0} aria-label="Nueva conversación" title="Nueva conversación: la actual queda guardada en el historial">
+            ＋
           </button>
           <input
             ref={selector}
@@ -578,7 +575,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             </ul>
           )}
           <textarea
-            rows={3}
+            rows={2}
             value={texto}
             placeholder={pendientes.length > 0 ? 'Mensaje opcional: pulsa Enter para enviar solo los archivos…' : modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo…  (Ctrl+Enter envía · «/» comandos · pega o arrastra archivos)'}
             onPaste={(e) => {
@@ -625,6 +622,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             {agente.enCurso ? 'Encolar' : !texto.trim() && pendientes.length > 0 ? 'Enviar archivos' : 'Enviar'}
           </button>
         </div>
+        <BarraUso {...(agente.contexto ? { contexto: agente.contexto } : {})} {...(modeloSel !== 'auto' ? { modelo: modeloSel } : {})} modelos={modelos} tokensSesion={agente.tokensSesion} />
       </div>
     </div>
   )
