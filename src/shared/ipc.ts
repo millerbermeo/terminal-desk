@@ -128,6 +128,7 @@ export const Canales = {
 /** Canales del editor de archivos integrado. */
 export const CanalesArchivos = {
   listar: 'archivos:listar',
+  listarTodos: 'archivos:listar-todos',
   leer: 'archivos:leer',
   guardar: 'archivos:guardar',
   crear: 'archivos:crear',
@@ -239,6 +240,8 @@ export interface ApiCentro {
   archivos: {
     /** Contenido de una carpeta (ruta relativa; vacía = raíz): carpetas primero, sin `.git` ni `node_modules`. */
     listar(proyectoId: string, ruta?: string): Promise<EntradaArchivo[]>
+    /** Rutas de todos los archivos del proyecto (para el buscador): respeta `.gitignore` si es un repositorio. */
+    listarTodos(proyectoId: string): Promise<string[]>
     leer(proyectoId: string, ruta: string): Promise<ResultadoLeer>
     /** Guarda de forma atómica; con `mtimeEsperado` no pisa un archivo que cambió en disco (devuelve `conflicto`). */
     guardar(proyectoId: string, ruta: string, contenido: string, mtimeEsperado?: number): Promise<ResultadoGuardar>

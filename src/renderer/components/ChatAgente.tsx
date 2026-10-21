@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EventoAgente } from '@shared/core/agente'
 import { LIMITES_ADJUNTOS, type Adjunto } from '@shared/core/adjuntos'
-import { COMANDOS_INCLUIDOS, PLANTILLAS_INCLUIDAS, expandirPlantilla, type ComandoUsuario } from '@shared/core/comandos'
+import { COMANDOS_CLAUDE, COMANDOS_INCLUIDOS, NOMBRES_CLAUDE_CODE, PLANTILLAS_INCLUIDAS, expandirPlantilla, type ComandoUsuario } from '@shared/core/comandos'
 import type { ModoAutonomia } from '@shared/core/permisos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { Agente, Turno } from '../agente/useAgente'
@@ -16,6 +16,8 @@ import { GestionProyecto } from './GestionProyecto'
 import { EstadoVacio } from './EstadoVacio'
 import { HistorialAgente } from './HistorialAgente'
 import { IconoChispa } from './Iconos'
+import { aplicarMencion, detectarMencion, opcionesMencion } from '../agente/menciones'
+import { SolicitudesChat } from './ModalSolicitud'
 
 interface Props {
   agente: Agente
@@ -193,6 +195,12 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [errorAdjunto, setErrorAdjunto] = useState('')
   const [cola, setCola] = useState<{ prompt: string; adjuntos: Adjunto[] }[]>([]) // mensajes escritos mientras el agente trabaja
   const [arrastrando, setArrastrando] = useState(false)
+  const areaTexto = useRef<HTMLTextAreaElement>(null)
+  const [cursor, setCursor] = useState(0)
+  const [archivosProyecto, setArchivosProyecto] = useState<string[] | null>(null) // para las menciones «@»
+  const [mencionOculta, setMencionOculta] = useState(false)
+  const [selMencion, setSelMencion] = useState(0)
+  const cursorPendiente = useRef<number | null>(null)
   const selector = useRef<HTMLInputElement>(null)
   const modelos = useModelos()
   const { cuenta } = useCuenta()
@@ -264,10 +272,43 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     const m = /^\/([a-z0-9_-]*)$/.exec(texto)
     if (!m || sugOculta) return []
     return [
-      ...COMANDOS_INCLUIDOS.map((c) => ({ nombre: c.nombre, uso: c.uso as string, descripcion: c.descripcion as string, propio: false })),
-      ...comandos.map((c) => ({ nombre: c.nombre, uso: `/${c.nombre}${c.tipo === 'ejecutable' && c.argumentos ? ' <argumentos>' : c.tipo === 'prompt' ? ' [texto]' : ''}`, descripcion: c.descripcion, propio: true }))
+      ...COMANDOS_INCLUIDOS.map((c) => ({ nombre: c.nombre, uso: c.uso as string, descripcion: c.descripcion as string, propio: false, oficial: false })),
+      // Los oficiales de Claude Code que pasan por su CLI solo funcionan con la suscripción.
+      ...COMANDOS_CLAUDE.filter((c) => c.ejecuta === 'app' || conSuscripcion).map((c) => ({ nombre: c.nombre, uso: c.uso, descripcion: c.descripcion, propio: false, oficial: true })),
+      ...comandos.map((c) => ({ nombre: c.nombre, uso: `/${c.nombre}${c.tipo === 'ejecutable' && c.argumentos ? ' <argumentos>' : c.tipo === 'prompt' ? ' [texto]' : ''}`, descripcion: c.descripcion, propio: true, oficial: false }))
     ].filter((c) => c.nombre.startsWith(m[1]!))
-  }, [texto, comandos, sugOculta])
+  }, [texto, comandos, sugOculta, conSuscripcion])
+
+  // Menciones «@archivo»: solo con un proyecto elegido. La lista de archivos se pide al empezar a escribir la mención.
+  const mencion = useMemo(() => (proyecto && !mencionOculta ? detectarMencion(texto, cursor) : null), [proyecto, mencionOculta, texto, cursor])
+  const abierta = mencion !== null
+  const proyectoId = proyecto?.id
+  useEffect(() => {
+    if (!abierta || !proyectoId) return
+    let vigente = true
+    void window.api.archivos.listarTodos(proyectoId).then((r) => vigente && setArchivosProyecto(r)).catch(() => vigente && setArchivosProyecto([]))
+    return () => {
+      vigente = false
+      setArchivosProyecto(null)
+    }
+  }, [abierta, proyectoId])
+  const opciones = useMemo(() => (mencion && archivosProyecto ? opcionesMencion(archivosProyecto, mencion.consulta) : []), [mencion, archivosProyecto])
+  const elegirMencion = (i: number): void => {
+    const o = opciones[i]
+    if (!mencion || !o) return
+    const r = aplicarMencion(texto, cursor, mencion, o.ruta, o.carpeta)
+    cursorPendiente.current = r.cursor
+    setTexto(r.texto)
+    setCursor(r.cursor)
+    setSelMencion(0)
+  }
+  // Tras insertar, el cursor se coloca después de lo insertado (el texto del campo se actualiza en el siguiente render).
+  useEffect(() => {
+    if (cursorPendiente.current === null) return
+    areaTexto.current?.setSelectionRange(cursorPendiente.current, cursorPendiente.current)
+    areaTexto.current?.focus()
+    cursorPendiente.current = null
+  }, [texto])
 
   /** Sube los archivos (imágenes, PDFs, texto) al almacén; el proceso principal los valida por su contenido. */
   const subir = async (archivos: File[]): Promise<void> => {
@@ -307,8 +348,10 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   }
 
   const lanzar = (prompt: string, forzarFlujo = false, adjuntos: Adjunto[] = pendientes): void => {
-    setPendientes([])
-    setErrorAdjunto('')
+    if (adjuntos === pendientes) {
+      setPendientes([])
+      setErrorAdjunto('')
+    }
     void agente.enviar({
       ...(adjuntos.length ? { adjuntos } : {}),
       destino: etiqueta,
@@ -347,7 +390,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         if (resto === 'preguntar' || resto === 'ediciones' || resto === 'autonomo') return void cambiarAutonomia(resto)
         return aviso('Uso: /modo preguntar | ediciones | autonomo')
       case 'nueva':
-        return agente.nuevaConversacion()
+        return void pedirNuevaConversacion()
       case 'historial':
         return setVerHistorial(true)
       case 'permisos':
@@ -357,6 +400,25 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         setSugOculta(false)
         return setTexto('/')
     }
+    const oficial = COMANDOS_CLAUDE.find((x) => x.nombre === nombre)
+    if (oficial?.ejecuta === 'app') {
+      if (nombre === 'help') {
+        setSugOculta(false)
+        return setTexto('/')
+      }
+      if (nombre === 'clear') return void pedirNuevaConversacion()
+      return aviso('Aquí no hay nada que cerrar: usa ＋ para otra conversación o cierra la pestaña del asistente.')
+    }
+    if (oficial) {
+      if (!conSuscripcion) return aviso(`«/${nombre}» es de Claude Code y se ejecuta con tu suscripción: cambia a «Suscripción» en la barra de cuenta.`)
+      if (grupoSeleccionado) return aviso(`«/${nombre}» trabaja sobre un proyecto, no sobre un grupo: elige un proyecto.`)
+      // Va tal cual al CLI (sin plantillas ni adjuntos delante) y se muestra lo que responde.
+      return void agente.enviar({
+        destino: etiqueta,
+        solicitud: { prompt: linea, ...(proyecto ? { proyectoId: proyecto.id } : {}), ...(autonomia !== 'preguntar' ? { autonomia } : {}), ...(modeloSel !== 'auto' ? { modelo: modeloSel } : {}) }
+      })
+    }
+    if (NOMBRES_CLAUDE_CODE.has(nombre)) return aviso(`«/${nombre}» es un comando de Claude Code que necesita su terminal interactiva y no está disponible en el Asistente. Puedes usarlo en una terminal con Claude Code.`)
     if (PLANTILLAS_INCLUIDAS[nombre]) {
       if (!proyecto) return aviso(`«/${nombre}» trabaja sobre un proyecto: abre el asistente desde la celda de un proyecto o elígelo en el selector.`)
       return lanzar(expandirPlantilla(PLANTILLAS_INCLUIDAS[nombre]!, resto))
@@ -404,6 +466,13 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     setCola(resto)
     if (sig.prompt.startsWith('/')) return comandoSlash(sig.prompt)
     lanzar(sig.prompt, false, sig.adjuntos)
+  }
+
+  /** Empezar otra conversación pide confirmación: la actual no se pierde, queda en el historial. */
+  const pedirNuevaConversacion = async (): Promise<void> => {
+    if (agente.enCurso) return agente.avisar('/nueva', 'Espera a que termine la tarea en curso (o cancélala) para empezar una conversación nueva.', etiqueta)
+    if (agente.turnos.length === 0) return
+    if (await confirmar({ titulo: 'Nueva conversación', tono: 'info', etiqueta: 'Empezar nueva', texto: 'La conversación actual se guarda en el historial y empiezas una en blanco.\n\nPodrás volver a abrirla desde 🕘 Historial.' })) agente.nuevaConversacion()
   }
 
   const completar = (nombre: string): void => {
@@ -464,6 +533,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         ))}
         <div ref={fin} />
       </div>
+      <SolicitudesChat ejecuciones={agente.turnos.map((t) => t.ejecucionId)} />
       <div className="ag-compositor">
         <div className="ag-opciones">
           {!proyectoFijo && datos && (
@@ -527,7 +597,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           <button className="ag-icono" onClick={() => setVerHistorial((v) => !v)} aria-expanded={verHistorial} aria-label="Historial" title="Historial: conversaciones guardadas">
             🕘
           </button>
-          <button className="ag-icono" onClick={agente.nuevaConversacion} disabled={agente.enCurso || agente.turnos.length === 0} aria-label="Nueva conversación" title="Nueva conversación: la actual queda guardada en el historial">
+          <button className="ag-icono" onClick={() => void pedirNuevaConversacion()} disabled={agente.enCurso || agente.turnos.length === 0} aria-label="Nueva conversación" title="Nueva conversación: la actual queda guardada en el historial">
             ＋
           </button>
           <input
@@ -549,11 +619,31 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           {sugerencias.length > 0 && (
             <div className="ag-sugerencias" role="listbox" aria-label="Comandos">
               {sugerencias.map((c, i) => (
-                <button key={`${c.propio}-${c.nombre}`} role="option" aria-selected={i === seleccion} className={i === seleccion ? 'sel' : ''} onMouseDown={(e) => e.preventDefault()} onClick={() => completar(c.nombre)}>
+                <button key={`${c.propio}-${c.oficial}-${c.nombre}`} role="option" aria-selected={i === seleccion} className={i === seleccion ? 'sel' : ''} onMouseDown={(e) => e.preventDefault()} onClick={() => completar(c.nombre)}>
                   <strong className={c.propio ? 'propio' : ''}>{c.uso}</strong>
+                  {c.oficial && <span className="chip" title="Comando oficial de Claude Code">Claude Code</span>}
                   <small>{c.descripcion}</small>
                 </button>
               ))}
+            </div>
+          )}
+          {abierta && sugerencias.length === 0 && (archivosProyecto === null || opciones.length > 0) && (
+            <div className="ag-sugerencias ag-menciones" role="listbox" aria-label="Archivos del proyecto">
+              {archivosProyecto === null ? (
+                <div className="ag-sug-vacio">Buscando archivos…</div>
+              ) : (
+                opciones.map((o, i) => {
+                  const nombre = o.ruta.split('/').pop() ?? o.ruta
+                  const dir = o.ruta.includes('/') ? o.ruta.slice(0, o.ruta.lastIndexOf('/')) : ''
+                  return (
+                    <button key={o.ruta + o.carpeta} role="option" aria-selected={i === selMencion} className={i === selMencion ? 'sel' : ''} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setSelMencion(i)} onClick={() => elegirMencion(i)}>
+                      <span className="ag-sug-ico" aria-hidden>{o.carpeta ? '📁' : '📄'}</span>
+                      <strong>{nombre}{o.carpeta ? '/' : ''}</strong>
+                      {dir && <small>{dir}/</small>}
+                    </button>
+                  )
+                })
+              )}
             </div>
           )}
           {cola.length > 0 && (
@@ -575,9 +665,10 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             </ul>
           )}
           <textarea
+            ref={areaTexto}
             rows={2}
             value={texto}
-            placeholder={pendientes.length > 0 ? 'Mensaje opcional: pulsa Enter para enviar solo los archivos…' : modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo…  (Ctrl+Enter envía · «/» comandos · pega o arrastra archivos)'}
+            placeholder={pendientes.length > 0 ? 'Mensaje opcional: pulsa Enter para enviar solo los archivos…' : modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo…  (Ctrl+Enter envía · «/» comandos · «@» archivos · pega o arrastra archivos)'}
             onPaste={(e) => {
               const archivos = [...e.clipboardData.files]
               if (archivos.length) {
@@ -587,10 +678,25 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             }}
             onChange={(e) => {
               setTexto(e.target.value)
+              setCursor(e.target.selectionStart)
               setSugOculta(false)
               setSeleccion(0)
+              setMencionOculta(false)
+              setSelMencion(0)
             }}
+            onSelect={(e) => setCursor(e.currentTarget.selectionStart)}
             onKeyDown={(e) => {
+              if (abierta && opciones.length > 0 && sugerencias.length === 0) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  return setSelMencion((s) => (s + (e.key === 'ArrowDown' ? 1 : opciones.length - 1)) % opciones.length)
+                }
+                if ((e.key === 'Tab' || e.key === 'Enter') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+                  e.preventDefault()
+                  return elegirMencion(Math.min(selMencion, opciones.length - 1))
+                }
+              }
+              if (abierta && e.key === 'Escape') return setMencionOculta(true)
               if (sugerencias.length > 0) {
                 if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                   e.preventDefault()

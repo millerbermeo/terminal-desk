@@ -10,7 +10,6 @@ import { Tareas } from './components/Tareas'
 import { Versiones } from './components/Versiones'
 import { Api } from './components/Api'
 import { Navegador } from './components/Navegador'
-import { ModalSolicitudGlobal } from './components/ModalSolicitud'
 import { escucharSolicitudes, useSolicitudes } from './agente/solicitudes'
 import { ConfigAgentes } from './components/ConfigAgentes'
 import { GitHubCuenta } from './components/GitHubCuenta'
@@ -613,8 +612,6 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
           </section>
         ))}
       </main>
-
-      <ModalSolicitudGlobal />
 
       {ventanaConfirmar && (
         <ModalConfirmar

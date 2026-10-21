@@ -26,6 +26,7 @@ describe('validación y utilidades', () => {
     expect(validarComando(ejecutable('test', ['pnpm', 'test'], { permitido: true }))).toBeNull()
     expect(validarComando(prompt('Mal Nombre', 'x'))).toMatch(/nombre/i)
     expect(validarComando(prompt('flujo', 'x'))).toMatch(/aplicación/)
+    for (const oficial of ['compact', 'clear', 'help', 'init', 'cost', 'memory', 'status', 'review']) expect(validarComando(prompt(oficial, 'x'))).toMatch(/oficial de Claude Code/)
     expect(validarComando(prompt('vacio', '  '))).toMatch(/plantilla/i)
     expect(validarComando(ejecutable('x', []))).toMatch(/programa/)
     expect(validarComando(ejecutable('x', ['git push']))).toMatch(/espacios/)

@@ -3,7 +3,6 @@ import { IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, IconoVolver } fr
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
 import type { TerminalInfo } from './App'
 import { aPayload, reducirPestanas } from './duplicar'
-import { ModalSolicitudGlobal } from './components/ModalSolicitud'
 import { escucharSolicitudes } from './agente/solicitudes'
 
 let contador = 0
@@ -104,7 +103,6 @@ export function VentanaSeparada({ token }: { token: string }) {
           onVista={(id, vista) => setTerminales((ts) => (ts ?? []).map((t) => (t.id === id ? { ...t, vista, extraActiva: undefined } : t)))}
           onPestanas={(id, op) => setTerminales((ts) => (ts ?? []).map((t) => (t.id === id ? reducirPestanas(t, op) : t)))}
         />
-        <ModalSolicitudGlobal />
       </main>
     </div>
   )

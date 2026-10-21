@@ -192,7 +192,8 @@ export function useAgente(opciones: { clave?: string } = {}) {
       enVuelo.current++
       try {
         // Las salidas de comandos `/` recientes se adjuntan al mensaje para que el agente sepa qué pasó.
-        const contexto = salidasPendientes.current.splice(0).join('\n\n')
+        // Un comando oficial de Claude Code (`/compact`…) va solo: cualquier texto delante dejaría de ser un comando.
+        const contexto = solicitud.prompt.startsWith('/') ? '' : salidasPendientes.current.splice(0).join('\n\n')
         const { ejecucionId, sesionId: sid } = await window.api.core.ejecutar({
           ...solicitud,
           ...(contexto ? { prompt: `${contexto}\n\n${solicitud.prompt}` } : {}),

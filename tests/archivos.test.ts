@@ -24,6 +24,22 @@ beforeEach(async () => {
   await writeFile(join(dir, 'alfa.txt'), 'a')
 })
 
+describe('listarTodos', () => {
+  it('sin git recorre todo el proyecto salvo .git y node_modules', async () => {
+    expect((await g.listarTodos('p')).sort()).toEqual(['README.md', 'Zeta.txt', 'alfa.txt', 'src/index.ts', 'src/util/b.ts'])
+  })
+  it('en un repositorio respeta .gitignore', async () => {
+    const d = await mkdtemp(join(tmpdir(), 'repo-'))
+    execFileSync('git', ['init', '-q'], { cwd: d })
+    await mkdir(join(d, 'dist'))
+    await writeFile(join(d, '.gitignore'), 'dist\n')
+    await writeFile(join(d, 'dist/salida.js'), 'x')
+    await writeFile(join(d, 'app.ts'), 'x')
+    const gr = new GestorArchivos({ raiz: async () => d, papelera: async () => undefined })
+    expect((await gr.listarTodos('p')).sort()).toEqual(['.gitignore', 'app.ts'])
+  })
+})
+
 describe('listar', () => {
   it('carpetas primero, orden natural, sin .git ni node_modules, con rutas relativas', async () => {
     expect((await g.listar('p')).map((e) => `${e.tipo}:${e.nombre}`)).toEqual(['carpeta:src', 'archivo:alfa.txt', 'archivo:README.md', 'archivo:Zeta.txt'])

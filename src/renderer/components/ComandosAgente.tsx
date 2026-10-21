@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { dividirArgumentos, type ComandoUsuario } from '@shared/core/comandos'
+import { dividirArgumentos, nombreReservado, type ComandoUsuario } from '@shared/core/comandos'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoRayo } from './Iconos'
 
@@ -107,9 +107,10 @@ export function ComandosAgente({ proyectoId, visible = true }: Props) {
               </div>
             </>
           )}
+          {c.nombre && nombreReservado(c.nombre) && <div className="cfg-error">{nombreReservado(c.nombre)}</div>}
           {error && <div className="cfg-error">{error}</div>}
           <div className="cfg-acciones">
-            <button className="primario" disabled={!c.nombre.trim() || !c.descripcion.trim()} onClick={guardar}>Guardar</button>
+            <button className="primario" disabled={!c.nombre.trim() || !c.descripcion.trim() || nombreReservado(c.nombre.trim()) !== null} onClick={guardar}>Guardar</button>
           </div>
         </div>
       </section>
