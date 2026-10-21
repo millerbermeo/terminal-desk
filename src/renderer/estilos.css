@@ -437,7 +437,12 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
 .ag-entrada textarea { flex: 1; width: 100%; min-height: 64px; border-radius: var(--radio-lg); padding: 10px 14px; background: var(--bg-elevado); }
 .ag-entrada button { align-self: stretch; min-width: 96px; }
 
-.ag-solicitud { max-width: 760px; }
+.ag-solicitud-fondo { flex: none; border-top: 1px solid var(--borde); padding: 10px 20px 0; background: var(--bg); }
+.ag-solicitud { display: flex; flex-direction: column; gap: 10px; max-height: 55%; overflow-y: auto; background: var(--bg-elevado); border: 1px solid var(--borde-fuerte); border-radius: var(--radio-lg); padding: 12px 14px; animation: subir var(--medio) var(--ease) both; }
+.ag-solicitud-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ag-solicitud-cab h3 { margin: 0; font-size: 13px; font-weight: 650; }
+.ag-solicitud label { display: flex; flex-direction: column; gap: 6px; color: var(--texto-suave); font-size: 12px; }
+.ag-solicitud .ag-contenido { max-height: 28vh; }
 .ag-solicitud.destructiva { border-color: rgba(248, 113, 113, 0.6); }
 .ag-contenido { margin: 0; max-height: 46vh; overflow: auto; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--borde); border-radius: var(--radio); padding: 12px 14px; white-space: pre-wrap; word-break: break-word; font: 12px 'JetBrains Mono', 'DejaVu Sans Mono', monospace; }
 .ag-detalle { margin: 0; color: var(--texto-suave); }
@@ -1162,3 +1167,29 @@ button.enlace:hover:not(:disabled) { background: none; text-decoration: underlin
 @container chat (min-width: 1100px) {
   .ag-compositor { padding-left: max(28px, calc((100cqw - 980px) / 2)); padding-right: max(28px, calc((100cqw - 980px) / 2)); }
 }
+
+/* Buscador de archivos del editor */
+.ed-busqueda { flex: none; padding: 6px 8px; border-bottom: 1px solid var(--borde); }
+.ed-busqueda input { width: 100%; height: 26px; padding: 2px 8px; font-size: 12px; }
+.ed-busq { list-style: none; margin: 0; padding: 0; }
+.ed-res { gap: 6px; padding-left: 8px; }
+.ed-res.sel { background: rgba(129, 140, 248, 0.22); }
+.ed-res .ed-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-busq-dir { color: var(--texto-tenue); font-size: 11px; }
+.ed-res mark { background: transparent; color: var(--acento); font-weight: 700; }
+.ed-busq-vacio { padding: 10px 12px; font-size: 12px; color: var(--texto-suave); }
+
+/* Menciones «@archivo» del asistente */
+.ag-menciones button { align-items: center; }
+.ag-menciones strong { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.ag-menciones small { text-align: right; }
+.ag-sug-ico { flex: none; width: 16px; text-align: center; font-size: 12px; }
+.ag-sug-vacio { padding: 6px 10px; font-size: 12px; color: var(--texto-suave); }
+
+/* Imagen adjunta en grande */
+.ag-miniatura-boton { padding: 0; border: 0; background: transparent; display: grid; flex: none; cursor: zoom-in; border-radius: 5px; }
+.ag-miniatura-boton:hover:not(:disabled) { background: transparent; box-shadow: 0 0 0 2px var(--acento); }
+.ag-visor { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px; background: rgba(0, 0, 0, 0.82); cursor: zoom-out; }
+.ag-visor-barra { display: flex; align-items: center; gap: 8px; max-width: min(100%, 900px); cursor: default; }
+.ag-visor-nombre { color: var(--texto); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-visor-img { max-width: 100%; max-height: calc(100vh - 90px); object-fit: contain; border-radius: 8px; box-shadow: var(--sombra); background: var(--bg); cursor: default; }

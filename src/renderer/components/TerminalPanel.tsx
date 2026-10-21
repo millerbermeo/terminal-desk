@@ -8,6 +8,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { IconoChispa, IconoCopiar, IconoPegar, IconoSeleccionar, IconoLimpiar } from './Iconos'
 import { fijarSugerencias, SugerenciasTerminal, sugerenciasActivadas } from '../terminal/sugerencias'
+import { fijarWebglDesactivado, VigilanteAtlas, webglDesactivado } from '../terminal/reparacion'
 
 interface Props {
   id: string
@@ -24,6 +25,7 @@ interface Props {
 /**
  * Chromium reparte unos 16 contextos WebGL por proceso; con muchas celdas (y más ventanas) los más viejos se pierden y dejan la terminal
  * en blanco. Solo las primeras 8 usan WebGL; el resto usa el renderer normal de xterm, que no tiene ese límite.
+ * Además solo la terminal que se ve tiene contexto: al ocultarse lo suelta y al mostrarse crea uno (y un atlas de glifos) limpio.
  */
 const MAX_WEBGL = 8
 let contextosWebgl = 0
@@ -36,6 +38,9 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
   const term = useRef<Terminal | null>(null)
   const fit = useRef<FitAddon | null>(null)
   const remedirRef = useRef<() => void>(() => undefined)
+  const webglRef = useRef<{ activar: () => void; soltar: () => void }>({ activar: () => undefined, soltar: () => undefined })
+  const visibleRef = useRef(visible)
+  visibleRef.current = visible
   const alPty = useRef(onPty)
   alPty.current = onPty
   const [menu, setMenu] = useState<{ x: number; y: number; haySeleccion: boolean } | null>(null)
@@ -80,7 +85,6 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
 
   useEffect(() => {
     const el = contenedor.current!
-    let liberarWebgl: () => void = () => undefined
     const t = new Terminal({
       fontFamily: "'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', Menlo, Consolas, monospace",
       fontSize: 14,
@@ -105,25 +109,43 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
     t.loadAddon(new WebLinksAddon((_e, uri) => window.open(uri)))
     t.open(el)
 
-    try {
-      if (contextosWebgl < MAX_WEBGL) {
-        const gl = new WebglAddon()
-        contextosWebgl++
-        liberarWebgl = (): void => {
-          liberarWebgl = () => undefined
-          contextosWebgl--
-        }
-        gl.onContextLoss(() => {
-          gl.dispose()
-          liberarWebgl()
+    let gl: WebglAddon | null = null
+    const soltarWebgl = (): void => {
+      if (!gl) return
+      const g = gl
+      gl = null
+      contextosWebgl--
+      try {
+        g.dispose() // xterm vuelve solo al renderer normal (DOM)
+      } catch {
+        /* ya liberado */
+      }
+    }
+    const activarWebgl = (): void => {
+      if (gl || !vivo || webglDesactivado() || contextosWebgl >= MAX_WEBGL) return
+      const nuevo = new WebglAddon()
+      contextosWebgl++
+      try {
+        nuevo.onContextLoss(() => {
+          if (gl !== nuevo) return
+          soltarWebgl()
           window.api.registro.enviar({ level: 'info', kind: 'webgl-context-lost', message: 'Se perdió el contexto WebGL de una terminal (usa el renderer normal)', context: { activos: contextosWebgl } })
         })
-        t.loadAddon(gl)
+        t.loadAddon(nuevo)
+        gl = nuevo
+      } catch {
+        // sin WebGL: xterm usa el renderer DOM
+        contextosWebgl--
+        try {
+          nuevo.dispose()
+        } catch {
+          /* no llegó a cargarse */
+        }
       }
-    } catch {
-      liberarWebgl()
-      // sin WebGL: xterm usa el renderer DOM
     }
+    webglRef.current = { activar: activarWebgl, soltar: soltarWebgl }
+    let vivo = true
+    if (visibleRef.current) activarWebgl()
 
     let ptyActual: string | null = null
     const sugerencias = new SugerenciasTerminal(t, () => ptyActual)
@@ -167,7 +189,6 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
     term.current = t
     fit.current = f
 
-    let vivo = true
     let ptyId: string | null = null
     const bajas: Array<() => void> = []
 
@@ -196,6 +217,21 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
     }
     f.fit()
     let enviado = { cols: t.cols, rows: t.rows } // tamaño con el que nace el pty
+    // Salida del pty -> terminal. Tras ráfagas grandes de salida se vacía el atlas de glifos (ver `VigilanteAtlas`).
+    const vigilante = new VigilanteAtlas(() => repararAtlas())
+    const escribir = (datos: string): void => {
+      t.write(datos)
+      vigilante.alEscribir(datos.length)
+    }
+    const repararAtlas = (): void => {
+      if (!vivo) return
+      try {
+        t.clearTextureAtlas()
+      } catch {
+        // sin WebGL no hay atlas
+      }
+      t.refresh(0, t.rows - 1)
+    }
     const conectar = (pid: string): void => {
       ptyId = pid
       ptyActual = pid
@@ -212,7 +248,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
         window.api.terminal.onDatos((e) => {
           if (e.id !== pid) return
           if (cola) cola.push({ datos: e.datos, fin: e.fin })
-          else t.write(e.datos)
+          else escribir(e.datos)
         }),
         window.api.terminal.onSalida((e) => e.id === pid && t.write('\r\n[proceso terminado]\r\n'))
       )
@@ -220,7 +256,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
         if (!vivo) return
         t.write(texto)
         // lo que ya viene incluido en el historial (fin <= histórico) no se vuelve a escribir
-        cola?.forEach((d) => d.fin > fin && t.write(d.datos))
+        cola?.forEach((d) => d.fin > fin && escribir(d.datos))
         cola = null
         conectar(pid)
         ajustarYa()
@@ -232,7 +268,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
           return
         }
         bajas.push(
-          window.api.terminal.onDatos((e) => e.id === pid && t.write(e.datos)),
+          window.api.terminal.onDatos((e) => e.id === pid && escribir(e.datos)),
           window.api.terminal.onSalida((e) => e.id === pid && t.write('\r\n[proceso terminado]\r\n'))
         )
         conectar(pid)
@@ -249,11 +285,8 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
     // zoom, xterm y el shell quedarían con columnas distintas y el cursor aparecería descolocado. Se vuelve a medir y a repintar.
     const remedir = (): void => {
       if (!vivo) return
-      try {
-        t.clearTextureAtlas()
-      } catch {
-        // sin WebGL no hay atlas
-      }
+      repararAtlas()
+      vigilante.alReparar()
       ajustarYa()
       t.refresh(0, t.rows - 1)
     }
@@ -272,6 +305,16 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
     escucharDpr()
     bajas.push(() => consultaDpr?.removeEventListener('change', alCambiarDpr))
     remedirRef.current = remedir
+    // Al volver a la ventana (otra pantalla, suspensión, cambio de aplicación) el controlador gráfico pudo perder texturas.
+    const alVolver = (): void => {
+      if (visibleRef.current && document.visibilityState === 'visible') remedir()
+    }
+    window.addEventListener('focus', alVolver)
+    document.addEventListener('visibilitychange', alVolver)
+    bajas.push(() => {
+      window.removeEventListener('focus', alVolver)
+      document.removeEventListener('visibilitychange', alVolver)
+    })
 
     return () => {
       vivo = false
@@ -279,7 +322,8 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
       clearTimeout(temporizador)
       bajas.forEach((b) => b())
       sugerencias.destruir()
-      liberarWebgl()
+      vigilante.destruir()
+      soltarWebgl()
       if (ptyId && !transferidas.delete(ptyId)) window.api.terminal.cerrar(ptyId)
       t.dispose()
     }
@@ -287,7 +331,11 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
 
   // Al volver a verse (cambio de pestaña de la celda, otra ventana…) el lienzo pudo quedar sin repintar y con medidas viejas.
   useEffect(() => {
-    if (!visible) return
+    if (!visible) {
+      webglRef.current.soltar() // oculta no necesita contexto; al volver se crea uno limpio
+      return
+    }
+    webglRef.current.activar()
     const r = requestAnimationFrame(() => {
       remedirRef.current()
       if (activa) {
@@ -309,7 +357,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
           <div
             className="menu-ia menu-terminal"
             role="menu"
-            style={{ left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 240) }}
+            style={{ left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 330) }}
             onMouseDown={(e) => e.stopPropagation()}
             onContextMenu={(e) => e.preventDefault()}
           >
@@ -333,6 +381,26 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
               <span>Limpiar pantalla</span>
             </button>
             <div className="menu-sep" />
+            <button role="menuitem" onClick={() => accion(() => remedirRef.current())} title="Si las letras se ven cambiadas, cortadas o borrosas: vuelve a dibujar la terminal">
+              <IconoLimpiar />
+              <span>Reparar pantalla</span>
+            </button>
+            <button
+              role="menuitem"
+              onClick={() =>
+                accion(() => {
+                  const desactivar = !webglDesactivado()
+                  fijarWebglDesactivado(desactivar)
+                  if (desactivar) webglRef.current.soltar()
+                  else webglRef.current.activar()
+                  remedirRef.current()
+                })
+              }
+              title="Dibuja las terminales con la tarjeta gráfica (más rápido). Desactívala si el texto sigue saliendo roto: usa un modo más lento pero a prueba de fallos"
+            >
+              <IconoChispa />
+              <span>Aceleración gráfica: {webglDesactivado() ? 'desactivada' : 'activada'}</span>
+            </button>
             <button role="menuitem" onClick={() => accion(() => fijarSugerencias(!sugerenciasActivadas()))} title="Sugiere en gris comandos que ya escribiste; Tab, Mayús (pulsar y soltar) o → los aceptan, Ctrl+→ una palabra">
               <IconoChispa />
               <span>Sugerencias del historial: {sugerenciasActivadas() ? 'activadas' : 'desactivadas'}</span>

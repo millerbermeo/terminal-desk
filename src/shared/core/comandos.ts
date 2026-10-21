@@ -29,6 +29,59 @@ export const COMANDOS_INCLUIDOS = [
   { nombre: 'ayuda', descripcion: 'Lista todos los comandos', uso: '/ayuda' }
 ] as const
 
+/**
+ * Comandos oficiales de Claude Code que se pueden usar en el Asistente.
+ * - `cli`: se envían tal cual al CLI (`claude -p`), que los resuelve y devuelve su salida; solo con la suscripción.
+ * - `app`: los resuelve la interfaz (equivalen a algo que la aplicación ya hace).
+ */
+export interface ComandoClaude {
+  nombre: string
+  descripcion: string
+  uso: string
+  ejecuta: 'cli' | 'app'
+}
+
+export const COMANDOS_CLAUDE: readonly ComandoClaude[] = [
+  { nombre: 'help', descripcion: 'Muestra los comandos disponibles', uso: '/help', ejecuta: 'app' },
+  { nombre: 'clear', descripcion: 'Empieza una conversación en blanco (la actual queda en el historial)', uso: '/clear', ejecuta: 'app' },
+  { nombre: 'exit', descripcion: 'Salir: aquí se cierra la pestaña o se empieza otra conversación', uso: '/exit', ejecuta: 'app' },
+  { nombre: 'compact', descripcion: 'Resume el contexto para liberar espacio sin perder el hilo', uso: '/compact [instrucciones]', ejecuta: 'cli' },
+  { nombre: 'context', descripcion: 'Muestra cuánto contexto se está usando', uso: '/context', ejecuta: 'cli' },
+  { nombre: 'cost', descripcion: 'Muestra el uso de tokens y el consumo de la suscripción', uso: '/cost', ejecuta: 'cli' },
+  { nombre: 'usage', descripcion: 'Muestra los límites de uso de la suscripción', uso: '/usage', ejecuta: 'cli' },
+  { nombre: 'model', descripcion: 'Muestra o cambia el modelo', uso: '/model [nombre]', ejecuta: 'cli' },
+  { nombre: 'effort', descripcion: 'Nivel de esfuerzo del modelo', uso: '/effort <low|medium|high|xhigh|max|auto>', ejecuta: 'cli' },
+  { nombre: 'config', descripcion: 'Muestra o cambia la configuración de Claude Code', uso: '/config [clave=valor]', ejecuta: 'cli' },
+  { nombre: 'mcp', descripcion: 'Estado de los servidores MCP conectados', uso: '/mcp', ejecuta: 'cli' },
+  { nombre: 'init', descripcion: 'Genera un CLAUDE.md con instrucciones del proyecto', uso: '/init', ejecuta: 'cli' },
+  { nombre: 'doctor', descripcion: 'Diagnostica la instalación de Claude Code', uso: '/doctor', ejecuta: 'cli' },
+  { nombre: 'recap', descripcion: 'Resume lo hecho en la conversación', uso: '/recap', ejecuta: 'cli' },
+  { nombre: 'rename', descripcion: 'Pone nombre a la conversación', uso: '/rename [nombre]', ejecuta: 'cli' },
+  { nombre: 'output-style', descripcion: 'Estilo de respuesta de Claude Code', uso: '/output-style [estilo]', ejecuta: 'cli' },
+  { nombre: 'security-review', descripcion: 'Revisión de seguridad de los cambios pendientes', uso: '/security-review', ejecuta: 'cli' }
+]
+
+/**
+ * Comandos oficiales de Claude Code que dependen de su terminal interactiva y no funcionan en el Asistente. Se reservan igualmente:
+ * un comando propio con su nombre llevaría a confusión (y chocaría si se usa Claude Code en una terminal).
+ */
+const OFICIALES_SIN_SOPORTE = [
+  'add-dir', 'agents', 'autocompact', 'bug', 'color', 'copy', 'diff', 'export', 'extra-usage', 'feedback', 'focus', 'goal', 'heapdump', 'hooks', 'ide',
+  'import', 'insights', 'install-github-app', 'keybindings', 'list-agents', 'login', 'logout', 'memory', 'permissions', 'pr-comments', 'privacy-settings',
+  'quit', 'release-notes', 'reload-plugins', 'reload-skills', 'remote-control', 'resume', 'review', 'rewind', 'sandbox', 'skills', 'stats', 'status',
+  'statusline', 'tasks', 'terminal-setup', 'theme', 'todos', 'ultrareview', 'upgrade', 'usage-credits', 'vim'
+] as const
+
+/** Todos los nombres oficiales de Claude Code (los que el Asistente ejecuta y los que no). */
+export const NOMBRES_CLAUDE_CODE: ReadonlySet<string> = new Set([...COMANDOS_CLAUDE.map((c) => c.nombre), ...OFICIALES_SIN_SOPORTE])
+
+/** ¿Por qué no se puede usar este nombre para un comando propio? (`null` si está libre). */
+export function nombreReservado(nombre: string): string | null {
+  if (COMANDOS_INCLUIDOS.some((i) => i.nombre === nombre)) return `«/${nombre}» es un comando de la aplicación`
+  if (NOMBRES_CLAUDE_CODE.has(nombre)) return `«/${nombre}» es un comando oficial de Claude Code: elige otro nombre`
+  return null
+}
+
 /** Comandos incluidos que se expanden a una petición para el agente (el resto los resuelve la interfaz). */
 export const PLANTILLAS_INCLUIDAS: Record<string, string> = {
   plan:

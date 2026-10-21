@@ -23,6 +23,7 @@ export function registrarIpcArchivos(historial?: ServicioHistorial): void {
   const c = CanalesArchivos
 
   ipcMain.handle(c.listar, (_e, id: string, ruta?: string) => gestor.listar(String(id), String(ruta ?? '')))
+  ipcMain.handle(c.listarTodos, (_e, id: string) => gestor.listarTodos(String(id)))
   ipcMain.handle(c.leer, (_e, id: string, ruta: string) => gestor.leer(String(id), String(ruta)))
   ipcMain.handle(c.guardar, (_e, id: string, ruta: string, contenido: string, mtime?: number) =>
     gestor.guardar(String(id), String(ruta), String(contenido), typeof mtime === 'number' ? mtime : undefined)

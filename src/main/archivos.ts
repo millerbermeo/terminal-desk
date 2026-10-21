@@ -7,6 +7,7 @@ import { rutaSegura } from './core/tools/integradas/ruta'
 
 const IGNORADOS = new Set(['.git', 'node_modules', '.DS_Store'])
 const MAX_VIGILADAS = 200
+const MAX_BUSQUEDA = 50_000
 
 const aPosix = (p: string): string => p.split(sep).join('/')
 
@@ -65,6 +66,31 @@ export class GestorArchivos {
         })
     )
     return entradas.sort((a, b) => (a.tipo === 'carpeta') === (b.tipo === 'carpeta') ? a.nombre.localeCompare(b.nombre, undefined, { numeric: true, sensitivity: 'base' }) : a.tipo === 'carpeta' ? -1 : 1)
+  }
+
+  /**
+   * Rutas relativas de todos los archivos del proyecto, para el buscador. En un repositorio usa git (versionados y nuevos, sin los
+   * ignorados); si no, recorre las carpetas sin entrar en `.git` ni `node_modules`.
+   */
+  async listarTodos(proyectoId: string): Promise<string[]> {
+    const { raiz } = await this.abs(proyectoId, '')
+    const r = await git(raiz, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { timeoutMs: 15_000 })
+    if (r.ok && !r.desbordado) {
+      return [...new Set(r.stdout.split('\0').filter(Boolean))].slice(0, MAX_BUSQUEDA)
+    }
+    const salida: string[] = []
+    const pendientes = ['']
+    while (pendientes.length > 0 && salida.length < MAX_BUSQUEDA) {
+      const carpeta = pendientes.pop()!
+      const items = await readdir(join(raiz, carpeta), { withFileTypes: true }).catch(() => [])
+      for (const i of items) {
+        if (IGNORADOS.has(i.name)) continue
+        const rel = carpeta ? `${carpeta}/${i.name}` : i.name
+        if (i.isDirectory()) pendientes.push(rel)
+        else if (i.isFile()) salida.push(rel)
+      }
+    }
+    return salida
   }
 
   async leer(proyectoId: string, ruta: string): Promise<ResultadoLeer> {

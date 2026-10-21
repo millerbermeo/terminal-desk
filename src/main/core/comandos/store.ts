@@ -1,6 +1,6 @@
 import { readdir, readFile, rename } from 'node:fs/promises'
 import { basename, join } from 'node:path'
-import { COMANDOS_INCLUIDOS, type ComandoUsuario } from '@shared/core/comandos'
+import { nombreReservado, type ComandoUsuario } from '@shared/core/comandos'
 
 export { dividirArgumentos, expandirPlantilla } from '@shared/core/comandos'
 import { esDestructiva } from '../guardrails/destructivo'
@@ -13,7 +13,8 @@ const NOMBRE = /^[a-z][a-z0-9_-]{0,31}$/
 /** Motivo por el que un comando no es válido, o null. */
 export function validarComando(c: ComandoUsuario): string | null {
   if (!NOMBRE.test(c.nombre)) return 'El nombre debe empezar por una letra y usar solo a-z, 0-9, «-» y «_» (máx. 32)'
-  if (COMANDOS_INCLUIDOS.some((i) => i.nombre === c.nombre)) return `«/${c.nombre}» es un comando de la aplicación`
+  const reservado = nombreReservado(c.nombre)
+  if (reservado) return reservado
   if (!c.descripcion.trim() || c.descripcion.length > 200) return 'La descripción es obligatoria (máx. 200 caracteres)'
   if (c.tipo === 'prompt') {
     if (!c.plantilla?.trim()) return 'La plantilla no puede estar vacía'

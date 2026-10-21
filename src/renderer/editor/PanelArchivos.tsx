@@ -5,6 +5,8 @@ import { EstadoVacio } from '../components/EstadoVacio'
 import { ModalHistorialArchivo } from '../components/ModalHistorialArchivo'
 import { IconoArchivo } from '../components/Iconos'
 import { ArbolArchivos, type CreandoEn } from './ArbolArchivos'
+import { BuscadorArchivos } from './BuscadorArchivos'
+import { buscarArchivos } from './busqueda'
 import { EditorCodigo, type ManejoEditor } from './EditorCodigo'
 import { lenguajeDe } from './lenguajes'
 import { confirmar } from '../confirmar'
@@ -93,6 +95,11 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
   const [errorArbol, setErrorArbol] = useState('')
   const [arbolVisible, setArbolVisible] = useState(false) // en paneles estrechos el árbol es un cajón
   const [cursor, setCursor] = useState({ l: 1, c: 1 })
+  const [consulta, setConsulta] = useState('')
+  const [todos, setTodos] = useState<string[] | null>(null) // todas las rutas del proyecto, pedidas al empezar a buscar
+  const [errorBusqueda, setErrorBusqueda] = useState('')
+  const [selBusqueda, setSelBusqueda] = useState(0)
+  const campoBusqueda = useRef<HTMLInputElement>(null)
   const [auto, setAuto] = useState<boolean>(() => {
     try {
       return localStorage.getItem('editor:autoguardado') !== '0'
@@ -208,6 +215,24 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
     },
     [parche, programar]
   )
+
+  // ---- buscador de archivos ----
+  const buscando = consulta.trim().length > 0
+  useEffect(() => {
+    if (!buscando) return
+    let vigente = true
+    setErrorBusqueda('')
+    api
+      .listarTodos(proyectoId)
+      .then((r) => vigente && setTodos(r))
+      .catch((e: Error) => vigente && setErrorBusqueda(limpiar(e.message)))
+    return () => {
+      vigente = false
+      setTodos(null)
+    }
+  }, [api, proyectoId, buscando])
+  const resultados = useMemo(() => (todos ? buscarArchivos(todos, consulta) : null), [todos, consulta])
+  useEffect(() => setSelBusqueda(0), [consulta])
 
   // ---- abrir y cerrar ----
   const abrir = useCallback(
@@ -510,8 +535,29 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
   const actual = abiertos.find((a) => a.ruta === activa)
   const estado = !actual || actual.noEditable ? '' : actual.estado === 'guardando' ? 'Guardando…' : actual.estado === 'error' ? `Error: ${actual.mensaje}` : actual.estado === 'conflicto' ? 'Conflicto con el disco' : actual.sucio ? (auto ? 'Sin guardar…' : 'Sin guardar') : 'Guardado'
 
+  /** Abre un resultado de la búsqueda: despliega sus carpetas en el árbol, lo abre y deja la búsqueda. */
+  const abrirResultado = (ruta: string): void => {
+    const carpetas = ruta.split('/').slice(0, -1).map((_, i, a) => a.slice(0, i + 1).join('/'))
+    setExpandidas((s) => new Set([...s, ...carpetas]))
+    for (const c of carpetas) void cargar(c)
+    void abrir(ruta)
+    setConsulta('')
+    setArbolVisible(false)
+  }
+
   return (
-    <div className="ed" onKeyDown={(e) => e.key === 'Escape' && arbolVisible && setArbolVisible(false)}>
+    <div
+      className="ed"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && arbolVisible) setArbolVisible(false)
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') {
+          e.preventDefault()
+          setArbolVisible(true)
+          campoBusqueda.current?.focus()
+          campoBusqueda.current?.select()
+        }
+      }}
+    >
       <aside className={`ed-arbol${arbolVisible ? ' abierto' : ''}`} onMouseDown={(e) => e.stopPropagation()}>
         <div className="ed-arbol-cab">
           <strong title={nombre}>{nombre}</strong>
@@ -521,6 +567,36 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
           <button className="icono" title="Actualizar" aria-label="Actualizar" onClick={refrescarTodo}>↻</button>
           <button className="icono" title="Plegar todo" aria-label="Plegar todo" onClick={plegarTodo}>⊟</button>
         </div>
+        <div className="ed-busqueda">
+          <input
+            ref={campoBusqueda}
+            type="search"
+            value={consulta}
+            placeholder="Buscar archivos…  (Ctrl+P)"
+            aria-label="Buscar archivos por nombre"
+            spellCheck={false}
+            onChange={(e) => setConsulta(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.stopPropagation()
+                return setConsulta('')
+              }
+              if (!buscando || !resultados) return
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault()
+                setSelBusqueda((s) => Math.max(0, Math.min(s + (e.key === 'ArrowDown' ? 1 : -1), resultados.length - 1)))
+              } else if (e.key === 'Enter' && resultados[selBusqueda]) {
+                e.preventDefault()
+                abrirResultado(resultados[selBusqueda]!.ruta)
+              }
+            }}
+          />
+        </div>
+        {buscando ? (
+          <div className="ed-arbol-cuerpo">
+            <BuscadorArchivos consulta={consulta} resultados={resultados} error={errorBusqueda} sel={selBusqueda} marcas={marcas} onSel={setSelBusqueda} onAbrir={abrirResultado} />
+          </div>
+        ) : (
         <div className="ed-arbol-cuerpo" tabIndex={-1} onKeyDown={teclaArbol} onContextMenu={(ev) => (ev.preventDefault(), setMenu({ x: ev.clientX, y: ev.clientY, entrada: null }))}>
           <ArbolArchivos
             hijos={hijos}
@@ -544,6 +620,7 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
             }}
           />
         </div>
+        )}
       </aside>
 
       <section className="ed-principal">

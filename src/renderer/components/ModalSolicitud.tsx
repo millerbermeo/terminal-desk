@@ -9,8 +9,8 @@ interface Props {
 
 const TITULOS = { plan: 'Aprobar el plan', confirmacion: 'Confirmar el resultado', accion: 'Confirmar una acción', pregunta: 'El asistente te pregunta' } as const
 
-/** Confirmación humana: bloquea hasta que se responde (el agente espera). */
-export function ModalSolicitud({ solicitud: s, pendientes, onResponder }: Props) {
+/** Confirmación humana integrada en el chat: el agente espera hasta que se responde. */
+export function PanelSolicitud({ solicitud: s, pendientes, onResponder }: Props) {
   const [comentario, setComentario] = useState('')
   const [recordar, setRecordar] = useState(false)
   const [siempre, setSiempre] = useState(false)
@@ -37,18 +37,17 @@ export function ModalSolicitud({ solicitud: s, pendientes, onResponder }: Props)
     setSiempre(false)
   }, [s.solicitudId])
 
-  useEffect(() => {
-    const tecla = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onResponder(false, comentario || undefined)
-    }
-    window.addEventListener('keydown', tecla)
-    return () => window.removeEventListener('keydown', tecla)
-  }, [onResponder, comentario])
-
   return (
-    <div className="modal-fondo" role="presentation">
-      <div className={`modal ag-solicitud${s.destructivo ? ' destructiva' : ''}`} role="alertdialog" aria-modal="true" aria-label={TITULOS[s.clase]}>
-        <div className="modal-cab">
+    <div className="ag-solicitud-fondo">
+      <div
+        className={`ag-solicitud${s.destructivo ? ' destructiva' : ''}`}
+        role="alertdialog"
+        aria-label={TITULOS[s.clase]}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onResponder(false, comentario || undefined)
+        }}
+      >
+        <div className="ag-solicitud-cab">
           <h3>
             {s.destructivo ? '⚠ ' : ''}
             {TITULOS[s.clase]}
@@ -132,15 +131,15 @@ export function ModalSolicitud({ solicitud: s, pendientes, onResponder }: Props)
   )
 }
 
-/** Modal único para todas las celdas y pantallas: atiende la primera confirmación pendiente. */
-export function ModalSolicitudGlobal() {
-  const solicitudes = useSolicitudes()
-  const s = solicitudes[0]
+/** Atiende, dentro del chat, la primera confirmación pendiente de las ejecuciones de ese chat. */
+export function SolicitudesChat({ ejecuciones }: { ejecuciones: (string | undefined)[] }) {
+  const propias = useSolicitudes().filter((x) => ejecuciones.includes(x.ejecucionId))
+  const s = propias[0]
   if (!s) return null
   return (
-    <ModalSolicitud
+    <PanelSolicitud
       solicitud={s}
-      pendientes={solicitudes.length}
+      pendientes={propias.length}
       onResponder={(aprobado, comentario, recordar, siempre, respuestas) =>
         responderSolicitud(s, { aprobado, ...(comentario ? { comentario } : {}), ...(recordar ? { recordar: true } : {}), ...(siempre ? { siempre: true } : {}), ...(respuestas ? { respuestas } : {}) })
       }

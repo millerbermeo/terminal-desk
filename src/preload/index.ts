@@ -18,6 +18,7 @@ const api: ApiCentro = {
   },
   archivos: {
     listar: (id, ruta) => ipcRenderer.invoke(CA.listar, id, ruta),
+    listarTodos: (id) => ipcRenderer.invoke(CA.listarTodos, id),
     leer: (id, ruta) => ipcRenderer.invoke(CA.leer, id, ruta),
     guardar: (id, ruta, contenido, mtime) => ipcRenderer.invoke(CA.guardar, id, ruta, contenido, mtime),
     crear: (id, ruta, tipo) => ipcRenderer.invoke(CA.crear, id, ruta, tipo),
