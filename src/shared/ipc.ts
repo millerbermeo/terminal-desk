@@ -5,7 +5,7 @@ import type { CambioArchivo, EntradaArchivo, MarcaGit, ResultadoGuardar, Resulta
 import type { Adjunto } from './core/adjuntos'
 import type { ComandoUsuario } from './core/comandos'
 import type { NuevaRegla, ReglaPermiso } from './core/permisos'
-import type { InfoModelo, ResumenUso } from './core/uso'
+import type { ContextoUso, InfoModelo, ResumenUso } from './core/uso'
 import type { EstadoCuenta, ProveedorModelo } from './core/cuenta'
 import type { NombreOperacionTareas, OperacionesTareas } from './tareas'
 import type { NombreOperacionGit, OperacionesGit } from './versiones'
@@ -65,6 +65,8 @@ export const Canales = {
   coreEjecutar: 'core:ejecutar',
   coreCancelar: 'core:cancelar',
   coreLateral: 'core:lateral',
+  coreContextoUso: 'core:contexto-uso',
+  coreRebobinar: 'core:rebobinar',
   coreMcpEstado: 'core:mcp-estado',
   coreMcpReiniciar: 'core:mcp-reiniciar',
   coreEvento: 'core:evento',
@@ -265,6 +267,10 @@ export interface ApiCentro {
     ejecutar(solicitud: SolicitudAgente): Promise<EjecucionIniciada>
     /** Pregunta lateral: se responde ya, en paralelo, con el contexto de la ejecución en marcha, sin interrumpirla (solo suscripción). */
     lateral(ejecucionId: string, prompt: string): Promise<EjecucionIniciada>
+    /** Uso real del contexto de una conversación (lo informa el CLI; solo mientras su proceso sigue vivo, si no `undefined`). */
+    contextoUso(sesionId: string): Promise<ContextoUso | undefined>
+    /** Deshace los cambios de archivos que hizo la IA desde un mensaje del usuario (`soloVer`: solo dice cuáles cambiarían). */
+    rebobinar(sesionId: string, mensajeId: string, soloVer: boolean): Promise<{ puede: boolean; archivos: string[]; error?: string }>
     /** Responde a una `solicitud_humana` (aprobar/rechazar un plan o un resultado). */
     responder(solicitudId: string, decision: DecisionHumana): Promise<boolean>
     worktreesListar(proyectoId: string): Promise<InfoWorktree[]>
@@ -435,7 +441,7 @@ export interface ApiCentro {
   /** Modelo y autonomía del Asistente por proyecto (`global` o su UUID): se sincronizan con la cuenta. */
   ajustes: {
     leer(clave: string): Promise<AjustesAsistente>
-    fijar(clave: string, cambios: { modelo?: string | null; autonomia?: string | null }): Promise<AjustesAsistente>
+    fijar(clave: string, cambios: { modelo?: string | null; autonomia?: string | null; esfuerzo?: string | null }): Promise<AjustesAsistente>
   }
   terminal: {
     crear(opciones: OpcionesTerminal): Promise<string>

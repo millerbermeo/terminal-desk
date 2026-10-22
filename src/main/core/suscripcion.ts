@@ -7,6 +7,7 @@ import type { InfoModelo } from '@shared/core/uso'
 import { HERRAMIENTAS_ODESK, PREFIJO_MCP } from '@shared/herramientas-odesk'
 import type { CuentaSuscripcion, EstadoCuenta, ProveedorModelo } from '@shared/core/cuenta'
 import type { ModoAutonomia } from '@shared/core/permisos'
+import { aAcumulado, diferenciaUso, type AcumuladoModelo } from './consumo'
 
 /**
  * Modo «suscripción»: el modelo lo pone el CLI `claude` con la sesión de la cuenta de Claude (la misma que usa VSCode).
@@ -15,9 +16,23 @@ import type { ModoAutonomia } from '@shared/core/permisos'
 
 const WINDOWS = process.platform === 'win32'
 
+/**
+ * Ajustes del CLI que acotan el contexto (lo que más tokens consume: se reenvía entero en cada llamada). Sin ellos los modelos de
+ * 1 M de ventana solo compactan al 95 % de 1 M, es decir, casi nunca. Con una ventana de 200 k y el 70 % el CLI compacta solo a
+ * los ~140 k, y las salidas gigantes de comandos y de servidores MCP se recortan antes de entrar al contexto. El entorno del
+ * usuario manda: solo se fijan las que no estén ya definidas.
+ */
+export const AJUSTES_CONSUMO: Readonly<Record<string, string>> = {
+  CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000',
+  CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '70',
+  BASH_MAX_OUTPUT_LENGTH: '20000',
+  MAX_MCP_OUTPUT_TOKENS: '12000'
+}
+
 /** Sin estas variables el CLI usaría la clave de API (y se cobraría por tokens) en vez de la suscripción. */
 export function entornoSuscripcion(carpeta?: string): NodeJS.ProcessEnv {
   const env = { ...process.env }
+  for (const [k, v] of Object.entries(AJUSTES_CONSUMO)) env[k] ??= v
   // App lanzada desde el menú: su PATH no trae nvm/pnpm/node. Se usa el del shell de login (ver `cargarPathShell`).
   if (pathShell) env.PATH = pathShell
   delete env.ANTHROPIC_API_KEY
@@ -65,15 +80,19 @@ interface SalidaCli {
   error: string
 }
 
-async function correrCli(args: string[], opciones: { timeoutMs?: number; senal?: AbortSignal; carpeta?: string } = {}): Promise<SalidaCli> {
+async function correrCli(args: string[], opciones: { timeoutMs?: number; senal?: AbortSignal; carpeta?: string; entrada?: string; cwd?: string } = {}): Promise<SalidaCli> {
   const bin = await rutaClaude()
   if (!bin) throw new Error('No encuentro el CLI «claude». Instálalo (https://claude.com/claude-code) y vuelve a intentarlo.')
   return new Promise((res, rej) => {
-    const hijo = spawn(bin, args, { env: entornoSuscripcion(opciones.carpeta), stdio: ['ignore', 'pipe', 'pipe'], ...(WINDOWS ? { shell: true } : {}) })
+    const hijo = spawn(bin, args, { env: entornoSuscripcion(opciones.carpeta), stdio: [opciones.entrada === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], ...(opciones.cwd ? { cwd: opciones.cwd } : {}), ...(WINDOWS ? { shell: true } : {}) })
     let salida = ''
     let error = ''
-    hijo.stdout.on('data', (d: Buffer) => (salida += d))
-    hijo.stderr.on('data', (d: Buffer) => (error += d))
+    if (opciones.entrada !== undefined) {
+      hijo.stdin?.on('error', () => undefined)
+      hijo.stdin?.end(opciones.entrada) // por stdin: un texto largo como argumento supera el límite del sistema
+    }
+    hijo.stdout!.on('data', (d: Buffer) => (salida += d))
+    hijo.stderr!.on('data', (d: Buffer) => (error += d))
     const timer = opciones.timeoutMs ? setTimeout(() => hijo.kill(), opciones.timeoutMs) : undefined
     const abortar = (): void => void hijo.kill()
     opciones.senal?.addEventListener('abort', abortar, { once: true })
@@ -85,6 +104,39 @@ async function correrCli(args: string[], opciones: { timeoutMs?: number; senal?:
     })
   })
 }
+
+/** Modelo barato para resumir conversaciones y para las preguntas laterales. */
+export const MODELO_RESUMEN = 'haiku'
+
+/**
+ * Una consulta de una sola vuelta, sin herramientas, sin plugins ni conectores y sin guardar sesión (modelo barato). Sirve para
+ * resumir una conversación antes de abrir una sesión nueva. Devuelve el texto y el consumo real por modelo (sesión nueva: no acumula).
+ */
+export async function consultarCli(
+  prompt: string,
+  entrada: string,
+  opciones: { modelo?: string; carpeta?: string; cwd?: string; senal?: AbortSignal; timeoutMs?: number } = {}
+): Promise<{ texto: string; uso: UsoPorModelo[] }> {
+  const args = [
+    '-p',
+    '--output-format', 'json',
+    '--model', opciones.modelo ?? MODELO_RESUMEN,
+    '--tools', '',
+    '--no-session-persistence',
+    '--setting-sources', 'project,local',
+    '--strict-mcp-config',
+    '--disable-slash-commands',
+    '--max-budget-usd', '1',
+    '--exclude-dynamic-system-prompt-sections',
+    '--append-system-prompt', prompt
+  ]
+  const r = await correrCli(args, { timeoutMs: opciones.timeoutMs ?? 120_000, entrada, ...(opciones.carpeta ? { carpeta: opciones.carpeta } : {}), ...(opciones.cwd ? { cwd: opciones.cwd } : {}), ...(opciones.senal ? { senal: opciones.senal } : {}) })
+  const j = JSON.parse(r.salida.trim() || '{}') as { is_error?: boolean; result?: unknown; modelUsage?: Record<string, UsoModeloCli> }
+  if (r.codigo !== 0 || j.is_error || typeof j.result !== 'string' || !j.result.trim()) throw new Error((r.error || String(j.result ?? 'sin respuesta')).trim().slice(-300))
+  return { texto: j.result.trim(), uso: Object.entries(j.modelUsage ?? {}).map(([modelo, u]) => usoPorModelo(modelo, aAcumulado(u))) }
+}
+
+const usoPorModelo = (modelo: string, a: AcumuladoModelo): UsoPorModelo => ({ modelo, uso: { tokensEntrada: a.entrada, tokensSalida: a.salida }, cache: a.cache, costo: a.costo })
 
 export interface SesionCli {
   cli: boolean
@@ -246,6 +298,20 @@ export interface OpcionesEjecucion {
   pluginDirs?: string[]
   /** Carpeta de configuración de la cuenta con la que se ejecuta (ausente = la principal). */
   carpetaCuenta?: string
+  /** Acumulado que el CLI informó en la ejecución anterior de la misma sesión: se resta para anotar solo lo de esta (`diferenciaUso`). */
+  acumulado?: Record<string, AcumuladoModelo>
+  /** Texto que se antepone al mensaje que recibe el CLI sin cambiar el `prompt` que ve el usuario (p. ej. el resumen de la sesión anterior). */
+  prefijoPrompt?: string
+  /** Id del mensaje del usuario (se manda al CLI como `uuid`): con él se pueden deshacer los cambios de archivos hasta ese mensaje. */
+  mensajeId?: string
+  /** El proyecto tiene agentes o skills activos: se ofrecen las herramientas `Agent` y `Skill`. */
+  conAgentes?: boolean
+  /** Esfuerzo de razonamiento (`--effort`). */
+  esfuerzo?: Esfuerzo
+  /** Recibe el mando sobre el proceso del CLI en cuanto se lanza (preguntas laterales, interrupciones). */
+  alProceso?: (c: ControlProceso) => void
+  /** Tope de gasto de esta ejecución (`--max-budget-usd`); sin valor o 0, sin tope. Corta bucles que se descontrolan. */
+  presupuestoUsd?: number
   /** No emitir `inicio` (reintento con otra cuenta: el turno ya lo mostró). */
   omitirInicio?: boolean
   /** No emitir `fin`: lo emite quien llama (puede decidir reintentar con otra cuenta). */
@@ -321,6 +387,8 @@ interface MensajeCli {
   api_error_status?: number | null
   rate_limit_info?: { status?: string; resetsAt?: number; rateLimitType?: string }
   modelUsage?: Record<string, UsoModeloCli>
+  /** Respuesta del CLI a una petición de control nuestra. */
+  response?: { subtype?: string; request_id?: string; response?: unknown; error?: string }
 }
 
 const textoDe = (c: unknown): string =>
@@ -393,20 +461,63 @@ const TEXTO_LIMITE = /\b(?:usage|rate)[ _-]limit|hit your (?:\w+ )?limit|(?:5-ho
 
 export const esErrorDeLimite = (texto: string): boolean => TEXTO_LIMITE.test(texto) && !/context limit|budget limit/i.test(texto)
 
-/** Ejecuta `claude -p` con salida stream-json y la traduce a los eventos del Asistente. */
-export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesionCli?: string; resultado: ResultadoAgente; limite?: LimiteUso; herramientas: number }> {
-  const bin = await rutaClaude()
-  if (!bin) throw new Error('No encuentro el CLI «claude».')
-  const args = [
+export interface SalidaEjecucion {
+  sesionCli?: string
+  resultado: ResultadoAgente
+  limite?: LimiteUso
+  herramientas: number
+  /** Tokens del contexto en la última llamada (lo que se reenviará en la próxima ejecución de esta sesión). */
+  contexto: number
+  ventana?: number
+  /** Imágenes que entraron al contexto en esta ejecución. */
+  imagenes: number
+  /** Acumulado que informó el CLI por modelo (para restárselo la próxima vez); ausente si no llegó a informarlo. */
+  acumulado?: Record<string, AcumuladoModelo>
+}
+
+/**
+ * Herramientas propias del CLI que se ofrecen al Asistente. Cada herramienta que el CLI describe pesa en el contexto de TODAS las
+ * llamadas: el conjunto por defecto (con Agent, Skill, Task, notebooks, cron, worktrees… y 22 k tokens más «diferidos») deja 24,7 k
+ * tokens antes de escribir nada; esta lista, 11,4 k (medido con `get_context_usage`). `Agent` y `Skill` solo si el proyecto tiene
+ * agentes o skills activos. `ODESK_HERRAMIENTAS=todas` vuelve al conjunto completo; con una lista separada por comas, usa esa.
+ */
+export const HERRAMIENTAS_BASE = ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch', 'AskUserQuestion', 'TodoWrite']
+
+export function herramientasCli(conAgentes: boolean, env: NodeJS.ProcessEnv = process.env): string[] | undefined {
+  const v = env.ODESK_HERRAMIENTAS?.trim()
+  if (v === 'todas') return undefined
+  if (v) return v.split(',').map((s) => s.trim()).filter(Boolean)
+  return conAgentes ? [...HERRAMIENTAS_BASE, 'Agent', 'Skill'] : [...HERRAMIENTAS_BASE]
+}
+
+/** Esfuerzo de razonamiento del CLI (`--effort`): menos esfuerzo = menos tokens de pensamiento. */
+export const ESFUERZOS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+export type Esfuerzo = (typeof ESFUERZOS)[number]
+
+/** Lo que fija los argumentos del proceso del CLI (si cambia, hay que lanzar otro). */
+export type OpcionesProceso = Pick<
+  OpcionesEjecucion,
+  'autonomia' | 'verificaciones' | 'cwd' | 'modelo' | 'reanudar' | 'sistemaExtra' | 'carpetasExtra' | 'mcpTareas' | 'mcpExternos' | 'pluginDirs' | 'carpetaCuenta' | 'presupuestoUsd' | 'esfuerzo' | 'conAgentes'
+>
+
+/** Argumentos de `claude -p`. Con `entradaPorStream` el CLI habla por stdio (permisos, preguntas y peticiones de control). */
+export function argumentosCli(o: OpcionesProceso, entradaPorStream: boolean): string[] {
+  const herramientas = herramientasCli(Boolean(o.conAgentes))
+  return [
     '-p',
     '--output-format', 'stream-json',
     '--verbose',
     '--include-partial-messages',
-    ...(o.alPermiso ? ['--input-format', 'stream-json', '--permission-prompt-tool', 'stdio'] : []),
+    ...(entradaPorStream ? ['--input-format', 'stream-json', '--permission-prompt-tool', 'stdio'] : []),
+    ...(herramientas ? ['--tools', herramientas.join(',')] : []),
     ...sinSubagentesIntegrados(permisosCli(o.autonomia, o.verificaciones, Boolean(o.mcpTareas), o.mcpExternos)),
     // Aislado del `~/.claude` del usuario: sin sus skills, agentes, plugins ni conectores; solo lo del proyecto y lo que pasa la app.
     '--setting-sources', 'project,local',
     '--strict-mcp-config',
+    // Lo propio de cada equipo (carpeta, git, memoria) va al primer mensaje y no al prompt del sistema: la caché del prefijo se reutiliza.
+    '--exclude-dynamic-system-prompt-sections',
+    ...(o.presupuestoUsd && o.presupuestoUsd > 0 ? ['--max-budget-usd', String(o.presupuestoUsd)] : []),
+    ...(o.esfuerzo ? ['--effort', o.esfuerzo] : []),
     ...(o.mcpTareas ? ['--mcp-config', o.mcpTareas] : []),
     ...(o.pluginDirs ?? []).flatMap((d) => ['--plugin-dir', d]),
     ...(o.modelo ? ['--model', o.modelo] : []),
@@ -414,27 +525,114 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
     ...(o.sistemaExtra ? ['--append-system-prompt', o.sistemaExtra] : []),
     ...(o.carpetasExtra?.length ? ['--add-dir', ...o.carpetasExtra] : [])
   ]
-  const hijo = spawn(bin, args, { cwd: o.cwd, env: entornoSuscripcion(o.carpetaCuenta), stdio: ['pipe', 'pipe', 'pipe'], ...(WINDOWS ? { shell: true } : {}) })
-  const abortar = (): void => void hijo.kill()
-  o.senal.addEventListener('abort', abortar, { once: true })
+}
 
-  const llamadas = new Map<string, { id: string; nombre: string; entrada: Record<string, unknown> }>()
-  let sesionCli: string | undefined
-  let pasos = 0
-  let ultimoTexto = ''
-  let ultimoUso: UsoCli = {}
-  let modelo: string | undefined
-  let ventana: number | undefined
-  let limite: LimiteUso | undefined
-  let usoModelos: UsoPorModelo[] = []
-  let herramientas = 0
-  let final: { error?: string; texto?: string; uso?: UsoCli; esError: boolean } | undefined
-  let errores = ''
+/** Entorno de una ejecución: el de la suscripción más los puntos de control de archivos (permiten deshacer lo que edite la IA). */
+export function entornoEjecucion(carpeta?: string): NodeJS.ProcessEnv {
+  const env = entornoSuscripcion(carpeta)
+  env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING ??= 'true'
+  return env
+}
 
-  if (!o.omitirInicio) o.alEvento({ tipo: 'inicio', prompt: o.prompt })
+/** Pasos (llamadas al modelo) de una sola ejecución a partir de los cuales se corta: un bucle descontrolado gasta sin parar. */
+export const MAX_PASOS_EJECUCION = Number(process.env.ODESK_MAX_PASOS) > 0 ? Number(process.env.ODESK_MAX_PASOS) : 200
 
-  const procesar = (m: MensajeCli): void => {
-    if (typeof m.session_id === 'string') sesionCli = m.session_id
+/** Canal de peticiones de control (`control_request` / `control_response`) con el CLI: interrumpir, preguntas laterales, uso del contexto… */
+export class CanalControl {
+  private readonly pendientes = new Map<string, (r: NonNullable<MensajeCli['response']>) => void>()
+  private n = 0
+  constructor(private readonly escribir: (linea: string) => boolean) {}
+
+  /** `true` si el mensaje era la respuesta a una petición nuestra. */
+  recibir(m: MensajeCli): boolean {
+    if (m.type !== 'control_response' || !m.response?.request_id) return false
+    const r = this.pendientes.get(m.response.request_id)
+    if (!r) return false
+    this.pendientes.delete(m.response.request_id)
+    r(m.response)
+    return true
+  }
+
+  enviar<T = unknown>(request: Record<string, unknown>, esperaMs = 5000): Promise<T> {
+    return new Promise<T>((res, rej) => {
+      const id = `odesk-${++this.n}`
+      const timer = setTimeout(() => {
+        this.pendientes.delete(id)
+        rej(new Error('El CLI no respondió a la petición de control'))
+      }, esperaMs)
+      this.pendientes.set(id, (r) => {
+        clearTimeout(timer)
+        if (r.subtype === 'error') rej(new Error(String(r.error ?? 'Petición de control rechazada')))
+        else res(r.response as T)
+      })
+      if (!this.escribir(JSON.stringify({ type: 'control_request', request_id: id, request }) + '\n')) {
+        clearTimeout(timer)
+        this.pendientes.delete(id)
+        rej(new Error('El CLI ya no está en marcha'))
+      }
+    })
+  }
+
+  /** El proceso terminó: lo pendiente no se va a responder. */
+  cerrar(): void {
+    for (const r of this.pendientes.values()) r({ subtype: 'error', error: 'El CLI terminó' })
+    this.pendientes.clear()
+  }
+}
+
+/** Mando sobre el proceso del CLI que atiende una ejecución (para preguntas laterales, interrupciones y consultas). */
+export interface ControlProceso {
+  control<T = unknown>(request: Record<string, unknown>, esperaMs?: number): Promise<T>
+  /** Interrumpe el turno en marcha sin matar el proceso. */
+  interrumpir(): void
+}
+
+/** Lo que necesita un turno para leer el stream del CLI y traducirlo (lo comparten el proceso por turno y el persistente). */
+export type EntradaTurno = Pick<
+  OpcionesEjecucion,
+  'prompt' | 'prefijoPrompt' | 'mensajeId' | 'alPermiso' | 'alEvento' | 'alUso' | 'omitirInicio' | 'retenerFin' | 'acumulado' | 'senal'
+>
+
+/** Lee los mensajes stream-json de UN turno (petición → resultado) y los traduce a eventos del Asistente. */
+export class LectorTurno {
+  private readonly llamadas = new Map<string, { id: string; nombre: string; entrada: Record<string, unknown> }>()
+  private sesionCli: string | undefined
+  private pasos = 0
+  private ultimoTexto = ''
+  private ultimoUso: UsoCli = {}
+  private modelo: string | undefined
+  private ventana: number | undefined
+  private limite: LimiteUso | undefined
+  private usoModelos: UsoPorModelo[] = []
+  private herramientas = 0
+  private imagenes = 0
+  private acumulado: Record<string, AcumuladoModelo> | undefined
+  private final: { error?: string; texto?: string; uso?: UsoCli; esError: boolean } | undefined
+  private cortado: string | undefined
+
+  /**
+   * @param responder escribe una línea en el stdin del CLI (respuestas a permisos)
+   * @param alResultado el CLI informó el resultado del turno
+   * @param alExceso demasiados pasos en un solo turno: quien llama interrumpe o mata el proceso
+   */
+  constructor(
+    private readonly o: EntradaTurno,
+    private readonly responder: (linea: string) => void,
+    private readonly alResultado: () => void,
+    private readonly alExceso: () => void = () => undefined
+  ) {}
+
+  get listo(): boolean {
+    return this.final !== undefined
+  }
+
+  iniciar(): void {
+    if (!this.o.omitirInicio) this.o.alEvento({ tipo: 'inicio', prompt: this.o.prompt, ...(this.o.mensajeId ? { mensajeId: this.o.mensajeId } : {}) })
+  }
+
+  procesar(m: MensajeCli): void {
+    if (typeof m.session_id === 'string') this.sesionCli = m.session_id
+    const o = this.o
     const propio = m.parent_tool_use_id == null
     switch (m.type) {
       case 'control_request': {
@@ -442,10 +640,8 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
         if (!o.alPermiso || r?.subtype !== 'can_use_tool' || !m.request_id) return
         const id = m.request_id
         const entrada = r.input ?? {}
-        const responder = (response: Record<string, unknown>): void => {
-          if (!hijo.stdin.writable) return
-          hijo.stdin.write(JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: id, response } }) + '\n')
-        }
+        const responder = (response: Record<string, unknown>): void =>
+          this.responder(JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: id, response } }) + '\n')
         o.alPermiso({ herramienta: r.tool_name ?? '', entrada }).then(
           (d) => responder(d.permitir ? { behavior: 'allow', updatedInput: d.entrada ?? entrada } : { behavior: 'deny', message: d.mensaje }),
           () => responder({ behavior: 'deny', message: 'El usuario no respondió.' })
@@ -453,11 +649,11 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
         return
       }
       case 'system':
-        if (m.subtype === 'init' && typeof m.model === 'string') modelo = m.model
+        if (m.subtype === 'init' && typeof m.model === 'string') this.modelo = m.model
         return
       case 'rate_limit_event': {
         const i = m.rate_limit_info
-        if (i?.status === 'rejected' && propio) limite = { ...(typeof i.resetsAt === 'number' && i.resetsAt > 0 ? { hasta: i.resetsAt < 1e12 ? i.resetsAt * 1000 : i.resetsAt } : {}) }
+        if (i?.status === 'rejected' && propio) this.limite = { ...(typeof i.resetsAt === 'number' && i.resetsAt > 0 ? { hasta: i.resetsAt < 1e12 ? i.resetsAt * 1000 : i.resetsAt } : {}) }
         return
       }
       case 'stream_event': {
@@ -468,30 +664,35 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
       case 'assistant': {
         if (!propio) return
         const bloques = m.message?.content ?? []
-        if (m.message?.usage) ultimoUso = m.message.usage
-        if (typeof m.message?.model === 'string') modelo = m.message.model
-        o.alEvento({ tipo: 'paso', numero: ++pasos })
+        if (m.message?.usage) this.ultimoUso = m.message.usage
+        if (typeof m.message?.model === 'string') this.modelo = m.message.model
+        o.alEvento({ tipo: 'paso', numero: ++this.pasos })
+        if (this.pasos === MAX_PASOS_EJECUCION + 1 && !this.cortado) {
+          this.cortado = `Se detuvo la ejecución: pasó de ${MAX_PASOS_EJECUCION} pasos en una sola respuesta (posible bucle). Puedes pedirle que continúe.`
+          this.alExceso()
+        }
         const texto = bloques.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('')
         if (texto) {
-          ultimoTexto = texto
+          this.ultimoTexto = texto
           o.alEvento({ tipo: 'texto', texto })
         }
         for (const b of bloques) {
           if (b.type !== 'tool_use' || !b.id) continue
           const llamada = { id: b.id, nombre: b.name ?? 'herramienta', entrada: b.input ?? {} }
-          llamadas.set(b.id, llamada)
-          herramientas++
+          this.llamadas.set(b.id, llamada)
+          this.herramientas++
           o.alEvento({ tipo: 'herramienta_inicio', llamada })
         }
         return
       }
       case 'user': {
-        if (!propio) return
-        for (const b of m.message?.content ?? []) {
+        if (!propio || !Array.isArray(m.message?.content)) return // (el eco de los mensajes del usuario trae el texto como cadena)
+        for (const b of m.message.content) {
           if (b.type !== 'tool_result' || !b.tool_use_id) continue
-          const llamada = llamadas.get(b.tool_use_id)
+          const llamada = this.llamadas.get(b.tool_use_id)
           // Los valores de las credenciales de prueba llegan al modelo, pero no se guardan en la transcripción (que se sincroniza con la cuenta).
           const texto = llamada?.nombre.endsWith('credenciales_obtener') && !b.is_error ? '[valores de la credencial entregados al asistente]' : textoDe(b.content)
+          if (Array.isArray(b.content)) this.imagenes += (b.content as BloqueCli[]).filter((x) => x.type === 'image').length
           if (llamada) o.alEvento({ tipo: 'herramienta_fin', llamada, resultado: { texto, ...(b.is_error ? { error: true } : {}) } })
         }
         return
@@ -499,28 +700,60 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
       case 'result': {
         // El CLI informa la ventana real de cada modelo usado (p. ej. 200000 o 1000000).
         const ventanas = Object.entries(m.modelUsage ?? {}).filter(([, u]) => typeof u.contextWindow === 'number' && u.contextWindow > 0)
-        const propia = ventanas.find(([id]) => modelo && (id === modelo || id.startsWith(modelo) || modelo.startsWith(id))) ?? ventanas[0]
-        if (!limite && (m.api_error_status === 429 || (m.is_error === true && typeof m.result === 'string' && esErrorDeLimite(m.result)))) limite = {}
+        const propia = ventanas.find(([id]) => this.modelo && (id === this.modelo || id.startsWith(this.modelo) || this.modelo.startsWith(id))) ?? ventanas[0]
+        if (!this.limite && (m.api_error_status === 429 || (m.is_error === true && typeof m.result === 'string' && esErrorDeLimite(m.result)))) this.limite = {}
         for (const [id, u] of ventanas) ventanasObservadas.set(id, u.contextWindow!)
-        usoModelos = Object.entries(m.modelUsage ?? {}).map(([id, u]) => ({
-          modelo: id,
-          uso: {
-            tokensEntrada: (u.inputTokens ?? 0) + (u.cacheReadInputTokens ?? 0) + (u.cacheCreationInputTokens ?? 0),
-            tokensSalida: u.outputTokens ?? 0
-          },
-          cache: u.cacheReadInputTokens ?? 0,
-          costo: u.costUSD ?? 0
-        }))
-        if (propia) ventana = propia[1].contextWindow
-        if (o.alPermiso) hijo.stdin.end() // con entrada por stream el CLI espera más mensajes: no hay más
-        final = { esError: m.is_error === true || (typeof m.subtype === 'string' && m.subtype.startsWith('error')), texto: typeof m.result === 'string' ? m.result : '', ...(m.usage ? { uso: m.usage } : {}), ...(typeof m.result === 'string' && m.is_error ? { error: m.result } : {}) }
+        // El CLI acumula `modelUsage` en toda la sesión reanudada: se anota solo la diferencia con la ejecución anterior.
+        this.acumulado = Object.fromEntries(Object.entries(m.modelUsage ?? {}).map(([id, u]) => [id, aAcumulado(u)]))
+        this.usoModelos = Object.entries(this.acumulado).map(([id, a]) => usoPorModelo(id, diferenciaUso(a, o.acumulado?.[id])))
+        if (propia) this.ventana = propia[1].contextWindow
+        this.final = { esError: m.is_error === true || (typeof m.subtype === 'string' && m.subtype.startsWith('error')), texto: typeof m.result === 'string' ? m.result : '', ...(m.usage ? { uso: m.usage } : {}), ...(typeof m.result === 'string' && m.is_error ? { error: m.result } : {}) }
+        this.alResultado()
         return
       }
     }
   }
 
+  /** Cierra el turno (el CLI informó su resultado o el proceso terminó) y arma lo que se devuelve. */
+  finalizar(codigo: number | null, errores: string): SalidaEjecucion {
+    const o = this.o
+    const cancelado = o.senal.aborted
+    if (this.usoModelos.length) o.alUso?.(this.usoModelos)
+    const contexto = (this.ultimoUso.input_tokens ?? 0) + (this.ultimoUso.cache_read_input_tokens ?? 0) + (this.ultimoUso.cache_creation_input_tokens ?? 0)
+    if (contexto > 0) o.alEvento({ tipo: 'uso_contexto', tokens: contexto, ...(this.modelo ? { modelo: this.modelo } : {}), ...(this.ventana ? { ventana: this.ventana } : {}) })
+
+    const uso = this.final?.uso ?? this.ultimoUso
+    const fallo = this.cortado ? true : this.final ? this.final.esError : codigo !== 0
+    const mensaje = cancelado ? undefined : this.cortado ? this.cortado : fallo ? (this.final?.error || errores.trim() || `El CLI terminó con código ${codigo}`) : undefined
+    const resultado: ResultadoAgente = {
+      estado: cancelado ? 'cancelado' : fallo ? 'error' : 'completado',
+      texto: this.final?.texto || this.ultimoTexto,
+      mensajes: [],
+      // El total de la ejecución es la suma de lo consumido por todos los modelos (subagentes incluidos); sin eso, la última llamada.
+      uso: this.usoModelos.length
+        ? { tokensEntrada: this.usoModelos.reduce((t, u) => t + u.uso.tokensEntrada, 0), tokensSalida: this.usoModelos.reduce((t, u) => t + u.uso.tokensSalida, 0) }
+        : { tokensEntrada: (uso.input_tokens ?? 0) + (uso.cache_read_input_tokens ?? 0) + (uso.cache_creation_input_tokens ?? 0), tokensSalida: uso.output_tokens ?? 0 },
+      pasos: this.pasos,
+      ...(mensaje ? { error: mensaje } : {})
+    }
+    if (!o.retenerFin) o.alEvento({ tipo: 'fin', resultado })
+    return {
+      ...(this.sesionCli ? { sesionCli: this.sesionCli } : {}),
+      resultado,
+      ...(this.limite && resultado.estado === 'error' ? { limite: this.limite } : {}),
+      herramientas: this.herramientas,
+      contexto,
+      ...(this.ventana ? { ventana: this.ventana } : {}),
+      imagenes: this.imagenes,
+      ...(this.acumulado ? { acumulado: this.acumulado } : {})
+    }
+  }
+}
+
+/** Parte un flujo de bytes en líneas JSON y entrega cada mensaje (las líneas que no son JSON se ignoran). */
+export function lectorDeLineas(alMensaje: (m: MensajeCli) => void): (d: Buffer) => void {
   let pendiente = ''
-  hijo.stdout.on('data', (d: Buffer) => {
+  return (d) => {
     pendiente += d.toString('utf8')
     let i: number
     while ((i = pendiente.indexOf('\n')) >= 0) {
@@ -528,41 +761,88 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
       pendiente = pendiente.slice(i + 1)
       if (!linea) continue
       try {
-        procesar(JSON.parse(linea) as MensajeCli)
+        alMensaje(JSON.parse(linea) as MensajeCli)
       } catch {
         /* línea que no es JSON: se ignora */
       }
     }
+  }
+}
+
+/** Resultado de `rewind_files` del CLI. */
+export interface ResultadoRebobinado {
+  puede: boolean
+  /** Archivos que cambiarían (o cambiaron). */
+  archivos: string[]
+  error?: string
+}
+
+/**
+ * Deshace los cambios de archivos que hizo la IA con sus herramientas de edición desde un mensaje del usuario (`rewind_files`): los
+ * archivos vuelven a como estaban justo antes de ese mensaje y los creados después se borran. No cubre lo que hizo `Bash`. Con
+ * `soloVer` solo informa qué cambiaría. Si hay un proceso vivo de la conversación se usa ese; si no, se reanuda la sesión en uno de
+ * un solo uso (sin llamadas al modelo).
+ */
+export async function rebobinarArchivos(o: { claudeId: string; mensajeId: string; cwd: string; soloVer?: boolean; carpetaCuenta?: string; vivo?: ControlProceso }): Promise<ResultadoRebobinado> {
+  const peticion = { subtype: 'rewind_files', user_message_id: o.mensajeId, ...(o.soloVer ? { dry_run: true } : {}) }
+  const leer = (r: { canRewind?: boolean; filesChanged?: string[]; error?: string }): ResultadoRebobinado => ({ puede: r.canRewind === true, archivos: r.filesChanged ?? [], ...(r.error ? { error: r.error } : {}) })
+  if (o.vivo) return leer(await o.vivo.control<{ canRewind?: boolean; filesChanged?: string[]; error?: string }>(peticion, 30_000))
+  const bin = await rutaClaude()
+  if (!bin) throw new Error('No encuentro el CLI «claude».')
+  const hijo = spawn(bin, ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--resume', o.claudeId, '--setting-sources', 'project,local', '--strict-mcp-config'], {
+    cwd: o.cwd,
+    env: entornoEjecucion(o.carpetaCuenta),
+    stdio: ['pipe', 'pipe', 'ignore'],
+    ...(WINDOWS ? { shell: true } : {})
   })
+  hijo.stdin.on('error', () => undefined)
+  const canal = new CanalControl((l) => (hijo.stdin.writable ? (hijo.stdin.write(l), true) : false))
+  hijo.stdout.on('data', lectorDeLineas((m) => void canal.recibir(m)))
+  const fin = new Promise<void>((res) => hijo.on('close', () => res()))
+  try {
+    return leer(await canal.enviar<{ canRewind?: boolean; filesChanged?: string[]; error?: string }>(peticion, 60_000))
+  } finally {
+    hijo.stdin.end()
+    setTimeout(() => hijo.kill(), 3000).unref()
+    await Promise.race([fin, new Promise((r) => setTimeout(r, 4000).unref())])
+  }
+}
+
+/** Ejecuta `claude -p` con salida stream-json (un proceso por ejecución) y la traduce a los eventos del Asistente. */
+export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<SalidaEjecucion> {
+  const bin = await rutaClaude()
+  if (!bin) throw new Error('No encuentro el CLI «claude».')
+  const args = argumentosCli(o, Boolean(o.alPermiso))
+  const hijo = spawn(bin, args, { cwd: o.cwd, env: entornoEjecucion(o.carpetaCuenta), stdio: ['pipe', 'pipe', 'pipe'], ...(WINDOWS ? { shell: true } : {}) })
+  const abortar = (): void => void hijo.kill()
+  o.senal.addEventListener('abort', abortar, { once: true })
+
+  const escribir = (linea: string): boolean => {
+    if (!hijo.stdin.writable) return false
+    hijo.stdin.write(linea)
+    return true
+  }
+  const canal = new CanalControl(escribir)
+  // Con entrada por stream el CLI espera más mensajes tras el resultado: no hay más, se cierra la entrada.
+  const lector = new LectorTurno(o, (l) => void escribir(l), () => { if (o.alPermiso) hijo.stdin.end() }, () => hijo.kill())
+  o.alProceso?.({ control: (r, t) => canal.enviar(r, t), interrumpir: () => void canal.enviar({ subtype: 'interrupt' }, 2000).catch(() => hijo.kill()) })
+  let errores = ''
+  lector.iniciar()
+
+  hijo.stdout.on('data', lectorDeLineas((m) => void (canal.recibir(m) || lector.procesar(m))))
   hijo.stderr.on('data', (d: Buffer) => (errores = (errores + d.toString('utf8')).slice(-2000)))
 
   hijo.stdin.on('error', () => undefined)
-  if (o.alPermiso) hijo.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: o.prompt } }) + '\n')
-  else hijo.stdin.end(o.prompt)
+  const entradaCli = o.prefijoPrompt ? `${o.prefijoPrompt}\n\n${o.prompt}` : o.prompt
+  if (o.alPermiso) hijo.stdin.write(JSON.stringify({ type: 'user', ...(o.mensajeId ? { uuid: o.mensajeId } : {}), message: { role: 'user', content: entradaCli } }) + '\n')
+  else hijo.stdin.end(entradaCli)
 
   const codigo = await new Promise<number | null>((res, rej) => {
     hijo.on('error', rej)
     hijo.on('close', res)
   }).finally(() => o.senal.removeEventListener('abort', abortar))
-
-  const cancelado = o.senal.aborted
-  if (usoModelos.length) o.alUso?.(usoModelos)
-  const contexto = (ultimoUso.input_tokens ?? 0) + (ultimoUso.cache_read_input_tokens ?? 0) + (ultimoUso.cache_creation_input_tokens ?? 0)
-  if (contexto > 0) o.alEvento({ tipo: 'uso_contexto', tokens: contexto, ...(modelo ? { modelo } : {}), ...(ventana ? { ventana } : {}) })
-
-  const uso = final?.uso ?? ultimoUso
-  const fallo = final ? final.esError : codigo !== 0
-  const mensaje = cancelado ? undefined : fallo ? (final?.error || errores.trim() || `El CLI terminó con código ${codigo}`) : undefined
-  const resultado: ResultadoAgente = {
-    estado: cancelado ? 'cancelado' : fallo ? 'error' : 'completado',
-    texto: final?.texto || ultimoTexto,
-    mensajes: [],
-    uso: { tokensEntrada: (uso.input_tokens ?? 0) + (uso.cache_read_input_tokens ?? 0) + (uso.cache_creation_input_tokens ?? 0), tokensSalida: uso.output_tokens ?? 0 },
-    pasos,
-    ...(mensaje ? { error: mensaje } : {})
-  }
-  if (!o.retenerFin) o.alEvento({ tipo: 'fin', resultado })
-  return { ...(sesionCli ? { sesionCli } : {}), resultado, ...(limite && resultado.estado === 'error' ? { limite } : {}), herramientas }
+  canal.cerrar()
+  return lector.finalizar(codigo, errores)
 }
 
 export async function estadoCuenta(proveedor: ProveedorModelo, claveApi: boolean, cuentas: CuentaSuscripcion[], activaId: string, cambioAutomatico: boolean): Promise<EstadoCuenta> {

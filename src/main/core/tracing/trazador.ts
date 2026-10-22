@@ -20,7 +20,7 @@ const recortar = (t: string): string => {
 }
 
 /** Eventos que aportan información propia (el resto ya queda reflejado en los spans de agente, llm y herramienta). */
-const EVENTOS_REGISTRADOS = new Set(['ruta', 'flujo_nodo', 'solicitud_humana', 'guardrail', 'worktree', 'contexto', 'a2a', 'flujo_fin', 'aprobacion_automatica'])
+const EVENTOS_REGISTRADOS = new Set(['ruta', 'flujo_nodo', 'solicitud_humana', 'guardrail', 'worktree', 'contexto', 'a2a', 'flujo_fin', 'aprobacion_automatica', 'contexto_compactado'])
 
 /**
  * Observabilidad: construye el árbol de spans de cada ejecución. El padre de cada span se propaga con
@@ -63,6 +63,15 @@ export class Trazador {
     t.estado = ((fin?.atributos?.estado ?? raiz?.atributos?.estado ?? porDefecto) as EstadoTraza)
     await this.almacen?.guardar(t).catch((err) => console.error('No se pudo guardar la traza:', err))
     return t
+  }
+
+  /**
+   * Suma consumo que no pasó por un span `llm` (el CLI de suscripción ejecuta el bucle por su cuenta y solo informa el total de
+   * la ejecución). Sin esto las trazas de suscripción quedaban con 0 tokens.
+   */
+  anotarUso(id: string, uso: Uso): void {
+    const t = this.activas.get(id)
+    if (t) this.sumar(t.uso, uso)
   }
 
   /** Traza en curso o recién finalizada en memoria (para tests y la UI en vivo). */

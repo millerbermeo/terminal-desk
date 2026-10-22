@@ -21,7 +21,7 @@ const MAX_TEXTO_EVENTO = 20_000
 const MAX_TEXTO_HERRAMIENTA = 4_000
 const MAX_BYTES_TRANSCRIPCION = 1_500_000
 // Eventos que aportan algo al releer una conversación (sin deltas de streaming ni pasos internos).
-const EVENTOS_GUARDADOS = new Set(['ruta', 'flujo_nodo', 'texto', 'herramienta_inicio', 'herramienta_fin', 'a2a', 'guardrail', 'solicitud_humana', 'worktree', 'contexto', 'flujo_fin', 'aprobacion_automatica', 'comando_salida', 'fin'])
+const EVENTOS_GUARDADOS = new Set(['ruta', 'flujo_nodo', 'texto', 'herramienta_inicio', 'herramienta_fin', 'a2a', 'guardrail', 'solicitud_humana', 'worktree', 'contexto', 'flujo_fin', 'aprobacion_automatica', 'comando_salida', 'contexto_compactado', 'fin'])
 
 const recortar = (t: string, max: number): string => (t.length > max ? t.slice(0, max) + `… [+${t.length - max} caracteres]` : t)
 
@@ -96,6 +96,26 @@ export class MemoriaCortoPlazo {
         actualizada: new Date().toISOString()
       }
     })
+  }
+
+  /** Suma el consumo de una ejecución al acumulado de la conversación (si ya existe; la crea `guardarTranscripcion` al terminar el turno). */
+  async anotarUso(id: string, uso: Uso): Promise<void> {
+    if (!(await this.almacen.leer(id))) return // aún no existe: devolver `undefined` desde `actualizar` la borraría (y lo avisaría a la nube)
+    await this.almacen.actualizar(id, (previa) =>
+      previa ? { ...previa, uso: { tokensEntrada: previa.uso.tokensEntrada + uso.tokensEntrada, tokensSalida: previa.uso.tokensSalida + uso.tokensSalida } } : previa
+    )
+  }
+
+  /**
+   * Cambia el título de la conversación si aún lleva el automático (el principio de la primera petición) y no uno puesto a mano.
+   * Devuelve `false` si la conversación todavía no está guardada (quien llama lo reintenta al guardarla).
+   */
+  async fijarTituloAuto(id: string, titulo: string): Promise<boolean> {
+    const actual = await this.almacen.leer(id)
+    if (!actual) return false
+    if (actual.titulo !== tituloDe(actual.transcripcion) && actual.titulo !== 'Conversación') return true // lo cambió el usuario: se respeta
+    await this.almacen.actualizar(id, (previa) => (previa ? { ...previa, titulo } : previa))
+    return true
   }
 
   /** Lo que se ve en pantalla (solo turnos terminados). Crea la sesión si aún no existe y poda las más antiguas del proyecto. */

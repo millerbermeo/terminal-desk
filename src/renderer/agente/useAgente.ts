@@ -22,6 +22,8 @@ export interface Turno {
   adjuntos?: Adjunto[]
   /** Pregunta lateral: respondida aparte mientras otra tarea seguía en marcha (no es parte del hilo principal). */
   lateral?: boolean
+  /** Id del mensaje en el CLI (para deshacer los cambios de archivos de este turno). */
+  mensajeId?: string
 }
 
 export interface OpcionesEnvio {
@@ -58,8 +60,9 @@ function aplicar(t: Turno, e: EventoAgente): Turno {
   switch (e.tipo) {
     case 'texto_delta':
       return { ...t, parcial: t.parcial + e.texto }
-    case 'texto':
     case 'inicio':
+      return { ...t, parcial: '', eventos: [...t.eventos, e], ...(e.mensajeId ? { mensajeId: e.mensajeId } : {}) }
+    case 'texto':
     case 'paso':
       return { ...t, parcial: '', eventos: [...t.eventos, e] }
     case 'fin':

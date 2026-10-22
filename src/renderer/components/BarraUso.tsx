@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { InfoModelo, LimiteApi, ResumenUso, UsoModelo } from '@shared/core/uso'
+import type { ContextoUso, InfoModelo, LimiteApi, ResumenUso, UsoModelo } from '@shared/core/uso'
 import type { ContextoActual } from '../agente/useAgente'
 import { fmt, useUso, ventanaDe } from '../agente/uso'
 
 interface Props {
+  /** Desglose real que informa el CLI (solo mientras su proceso sigue vivo). */
+  detalle?: ContextoUso
   contexto?: ContextoActual
   /** Modelo fijado a mano (si lo hay) o, en automático, el último que usó el router. */
   modelo?: string
@@ -78,12 +80,14 @@ function Detalle({ uso, tokensSesion }: { uso: ResumenUso; tokensSesion: number 
 }
 
 /** Barra de estado del chat: cuánto contexto lleva la conversación, consumo en tiempo real y límites de la API. */
-export function BarraUso({ contexto, modelo, modelos, tokensSesion }: Props) {
+export function BarraUso({ detalle, contexto, modelo, modelos, tokensSesion }: Props) {
   const uso = useUso()
   const [abierto, setAbierto] = useState(false)
   const real = contexto?.ventana && (!modelo || modelo === contexto.modelo) ? contexto.ventana : undefined
-  const ventana = real ?? ventanaDe(modelos, modelo ?? contexto?.modelo)
+  // La ventana efectiva es la que el CLI aplica (con la compactación temprana: 200 k aunque el modelo admita 1 M).
+  const ventana = detalle?.maximo || (real ?? ventanaDe(modelos, modelo ?? contexto?.modelo))
   const pct = contexto && ventana ? Math.min(100, Math.round((contexto.tokens / ventana) * 100)) : 0
+  const desglose = detalle?.categorias.map((c) => `${c.nombre}: ${c.tokens.toLocaleString()}${c.reservado ? ' (margen para compactar)' : ''}`).join('\n')
   const nivel = pct >= 90 ? 'rojo' : pct >= 70 ? 'ambar' : ''
   const limiteTokens = uso?.limites?.tokens ?? uso?.limites?.entrada
   const libre = limiteTokens && limiteTokens.limite > 0 ? Math.round((limiteTokens.restante / limiteTokens.limite) * 100) : undefined
@@ -95,7 +99,7 @@ export function BarraUso({ contexto, modelo, modelos, tokensSesion }: Props) {
         title={
           contexto
             ? ventana
-              ? `La conversación ocupa ${contexto.tokens.toLocaleString()} de ${ventana.toLocaleString()} tokens del modelo${contexto.aprox ? ' (estimación)' : ' (dato real de la última llamada)'}. Al llegar al 70 % se comprime sola: se podan los resultados y adjuntos antiguos y se resume lo anterior.`
+              ? `La conversación ocupa ${contexto.tokens.toLocaleString()} de ${ventana.toLocaleString()} tokens del modelo${contexto.aprox ? ' (estimación)' : ' (dato real de la última llamada)'}. Se compacta sola antes de llenarse y, si crece demasiado, la conversación sigue en una sesión nueva con un resumen.${desglose ? `\n\nDesglose:\n${desglose}` : ''}`
               : `La conversación ocupa ${contexto.tokens.toLocaleString()} tokens. El tamaño de la ventana de este modelo aún no se conoce: se sabrá cuando el CLI lo informe.`
             : ventana
               ? `Aún no hay contexto: ventana de ${ventana.toLocaleString()} tokens.`
