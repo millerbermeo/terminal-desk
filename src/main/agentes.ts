@@ -5,7 +5,8 @@ import type { BibliotecaAgentes, Recurso } from '@shared/modelos'
 import type { DestinoActivacion, ResultadoRecurso } from '@shared/ipc'
 import { activosDe, slug } from '@shared/agentes'
 import { DIR, leerProyectos } from './proyectos'
-import { COMANDOS_BLOQUEADOS } from './core/suscripcion'
+import { AJUSTES_CONSUMO, COMANDOS_BLOQUEADOS } from './core/suscripcion'
+import { pluginGuardia } from './guardia'
 import { cavemanEnAjustes, pluginCavemanLigero } from './caveman'
 import { configMcpTareas } from './core/tareas/mcp-config'
 import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
@@ -264,7 +265,12 @@ export async function comandoConAgentes(comando: string, proyectoId?: string): P
   // Caveman es global: va en toda terminal de Claude Code, con o sin proyecto y con cualquier cuenta (no depende de su ~/.claude).
   // Si los ajustes de la cuenta ya activan Caveman (ganchos de `~/.claude/settings.json`), no se añade: sus ganchos se ejecutarían dos veces.
   const caveman = (await cavemanEnAjustes()) ? undefined : await pluginCavemanLigero()
-  const conCaveman = (c: string): string => (caveman ? `${c} --plugin-dir ${citar(caveman)}` : c)
+  // Menos tokens por llamada, como en el Asistente: la guardia reduce y limita las imágenes que lee la IA, y el entorno hace que el CLI
+  // compacte el contexto a los ~140 k (en modelos de 1 M no lo haría hasta el 95 %) y recorte las salidas gigantes. En Windows el
+  // shell puede ser cmd o PowerShell y no hay una sintaxis común para variables: solo se añade el plugin.
+  const guardia = await pluginGuardia()
+  const entorno = process.platform === 'win32' ? '' : Object.entries(AJUSTES_CONSUMO).filter(([k]) => process.env[k] === undefined).map(([k, v]) => `${k}=${v} `).join('')
+  const conCaveman = (c: string): string => `${entorno}${c}${caveman ? ` --plugin-dir ${citar(caveman)}` : ''}${guardia ? ` --plugin-dir ${citar(guardia)}` : ''}`
   if (!proyectoId) return conCaveman(comando)
   try {
     const dir = await construirPlugin(proyectoId)

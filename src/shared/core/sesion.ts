@@ -17,6 +17,8 @@ export interface TurnoGuardado {
   adjuntos?: Adjunto[]
   /** Pregunta lateral: se respondió aparte mientras otra tarea seguía en marcha. */
   lateral?: boolean
+  /** Id del mensaje en el CLI: con él se pueden deshacer los cambios de archivos de este turno. */
+  mensajeId?: string
 }
 
 export interface SesionGuardada {

@@ -32,7 +32,7 @@ export interface ResultadoAgente {
 
 /** Eventos de una ejecución. `agente` y `profundidad` identifican al subagente que los emite (0 = raíz). */
 export type EventoAgente = { ejecucionId: string; agente: string; profundidad: number } & (
-  | { tipo: 'inicio'; prompt: string }
+  | { tipo: 'inicio'; prompt: string; /** Id del mensaje del usuario en el CLI: permite deshacer los cambios de archivos hasta ahí. */ mensajeId?: string }
   | { tipo: 'paso'; numero: number }
   | { tipo: 'texto'; texto: string }
   | { tipo: 'texto_delta'; texto: string } // trozo del texto que se está escribiendo; el evento `texto` lo reemplaza al terminar el paso
@@ -53,6 +53,10 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
   | { tipo: 'a2a'; de: string; a: string; fase: 'envio' | 'respuesta'; texto: string }
   /** La cuenta de suscripción activa llegó a su límite y la ejecución continúa con otra. */
   | { tipo: 'cuenta_cambiada'; de: string; a: string; hasta?: number }
+  /** El Asistente abrió una sesión nueva con un resumen en vez de seguir arrastrando un contexto enorme (cada llamada lo reenvía entero). */
+  | { tipo: 'contexto_compactado'; motivo: 'contexto' | 'imagenes' | 'inactividad'; tokensAntes: number; imagenes: number; conModelo: boolean }
+  /** Aviso de consumo: el contexto de la conversación o el gasto de una ejecución son altos. */
+  | { tipo: 'aviso_consumo'; motivo: 'contexto' | 'costo'; tokens?: number; costo?: number }
 )
 
 export type Complejidad = 'simple' | 'media' | 'compleja'
@@ -106,6 +110,7 @@ export interface SolicitudAgente {
   modelo?: string // fuerza un modelo (desactiva el router)
   adjuntos?: string[] // ids de archivos subidos con `adjuntoSubir` (imágenes, PDFs, texto); máx. 5
   sesionId?: string // continúa esa conversación (memoria de corto plazo); sin él se crea una nueva
+  esfuerzo?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' // esfuerzo de razonamiento (solo suscripción); sin él, el del modelo
 }
 
 export interface EjecucionIniciada {

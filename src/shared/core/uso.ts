@@ -47,3 +47,12 @@ export const MODELOS_CONOCIDOS: readonly InfoModelo[] = [
 ]
 
 export const VENTANA_POR_DEFECTO = 200_000
+
+/** Uso real del contexto de una conversación, tal como lo informa el CLI (solo con su proceso vivo). */
+export interface ContextoUso {
+  total: number
+  maximo: number
+  /** 0–100 */
+  porcentaje: number
+  categorias: { nombre: string; tokens: number; /** Margen que el CLI reserva para compactar (no es contenido). */ reservado: boolean }[]
+}

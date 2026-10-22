@@ -568,7 +568,7 @@ function registrarIpc(): void {
     })
   })
   ipcMain.handle(Canales.ajustesLeer, (_e, clave: string) => leerAjustes(clave))
-  ipcMain.handle(Canales.ajustesFijar, (_e, clave: string, cambios: { modelo?: string | null; autonomia?: string | null }) => fijarAjustes(clave, cambios ?? {}))
+  ipcMain.handle(Canales.ajustesFijar, (_e, clave: string, cambios: { modelo?: string | null; autonomia?: string | null; esfuerzo?: string | null }) => fijarAjustes(clave, cambios ?? {}))
   ipcMain.handle(Canales.terminalEnShell, (_e, id: string) => terminales.enShell(String(id)))
   ipcMain.handle(Canales.terminalHistorialComandos, () => historialComandos.lista())
   ipcMain.on(Canales.terminalRegistrarComando, (_e, comando: string) => void historialComandos.agregar(comando))

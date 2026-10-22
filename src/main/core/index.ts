@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join, relative } from 'node:path'
@@ -6,7 +6,7 @@ import { BrowserWindow, ipcMain } from 'electron'
 import type { InfoSuite, ResultadoEvals } from '@shared/core/evals'
 import type { TurnoGuardado } from '@shared/core/sesion'
 import { LIMITES_ADJUNTOS } from '@shared/core/adjuntos'
-import { MODELOS_CONOCIDOS, type InfoModelo } from '@shared/core/uso'
+import { MODELOS_CONOCIDOS, type ContextoUso, type InfoModelo } from '@shared/core/uso'
 import type { ComandoUsuario } from '@shared/core/comandos'
 import type { CuentaSuscripcion, EstadoCuenta, ProveedorModelo } from '@shared/core/cuenta'
 import type { ModoAutonomia, NuevaRegla } from '@shared/core/permisos'
@@ -16,6 +16,9 @@ import type { NuevaEntradaMemoria } from '@shared/core/memoria'
 import { Canales } from '@shared/ipc'
 import { carpetasHermanas, pluginAgentesAsistente } from '../agentes'
 import { pluginCavemanLigero } from '../caveman'
+import { pluginGuardia } from '../guardia'
+import { AVISO_CONTEXTO, AVISO_COSTO_TURNO, bloqueContextoPrevio, decidirRotacion, MetaSesionesCli, presupuestoTurnoUsd, umbralesDeEntorno } from './consumo'
+import { prepararRotacion } from './rotacion'
 import { Bitacora } from './bitacora'
 import { leerProveedores } from '../proveedores'
 import { DIR, carpetaDeProyecto, leerProyectos, registrarProyecto, vincularCarpetaAProyecto } from '../proyectos'
@@ -69,7 +72,8 @@ import { Sincronizador } from '../servidor/sincronizador'
 import { ServicioGitHub } from '../github/servicio'
 import { ejecutarOperacionTareas } from './tareas/operaciones'
 import { archivoMcpTareas, servidoresExternos } from './tareas/mcp-config'
-import { cerrarSesion, ejecutarSuscripcion, estadoCuenta, estadoSesion, iniciarSesion, listarModelosCli, Preferencias, SesionesCli } from './suscripcion'
+import { cerrarSesion, consultarCli, ejecutarSuscripcion, ESFUERZOS, estadoCuenta, estadoSesion, iniciarSesion, listarModelosCli, Preferencias, rebobinarArchivos, SesionesCli, type ControlProceso, type ResultadoRebobinado, type SalidaEjecucion } from './suscripcion'
+import { ejecutarEnProceso, ProcesosCli } from './proceso-cli'
 import { registrarIntegradas } from './tools/integradas'
 import { RegistroHerramientas } from './tools/registro'
 
@@ -142,6 +146,8 @@ export class Nucleo {
   readonly medidor = new Medidor(join(DIR, 'uso'))
   readonly preferencias = new Preferencias(join(DIR, 'preferencias.json'))
   private readonly sesionesCli = new SesionesCli(join(DIR, 'sesiones-cli.json'))
+  /** Contexto, imágenes y acumulado del CLI por conversación: decide cuándo abrir una sesión nueva y permite medir solo lo de cada ejecución. */
+  private readonly metaCli = new MetaSesionesCli(join(DIR, 'sesiones-cli-meta.json'))
   readonly github: ServicioGitHub
   /** Token de GitHub (cifrado con el llavero del sistema). La bóveda de claves lo lleva a otros equipos. */
   readonly tokenGitHub = new AlmacenToken(join(DIR, 'github.json'), cifradorDelSistema())
@@ -168,8 +174,16 @@ export class Nucleo {
   readonly mcp = new OrquestadorMcp(this.registro)
   private readonly agentes = new Map(AGENTES_BASE.map((d) => [d.nombre, new Agente(d)]))
   private readonly activas = new Map<string, AbortController>()
+  /**
+   * Procesos del CLI que siguen vivos entre mensajes (como la extensión de VS Code): sin re-arranque por mensaje, y con interrupción,
+   * pregunta lateral, uso real del contexto y deshacer archivos sobre el mismo proceso. `ODESK_PROCESO_POR_TURNO=1` vuelve a uno por mensaje.
+   */
+  readonly procesos = new ProcesosCli()
+  private readonly persistente = process.env.ODESK_PROCESO_POR_TURNO !== '1'
+  /** Títulos generados por el modelo que aún no se pudieron aplicar (la conversación se guarda al terminar el turno). */
+  private readonly titulosPendientes = new Map<string, string>()
   /** Ejecuciones por suscripción en marcha: su bitácora y entorno, para responder preguntas laterales sin interrumpirlas. */
-  private readonly vivas = new Map<string, { bitacora: Bitacora; cwd: string; proyecto?: Proyecto; carpetasExtra: string[]; carpetaCuenta?: string }>()
+  private readonly vivas = new Map<string, { bitacora: Bitacora; cwd: string; proyecto?: Proyecto; carpetasExtra: string[]; carpetaCuenta?: string; control?: ControlProceso; contexto: number }>()
 
   constructor(private readonly aprobar?: Aprobador) {
     registrarIntegradas(this.registro)
@@ -324,28 +338,47 @@ export class Nucleo {
   }
 
   /** Resumen de git del proyecto para el prompt (rama, cambios, remoto): lo justo para que el asistente sepa dónde está parado. */
-  private async contextoGit(ruta: string): Promise<string> {
+  private async contextoGit(ruta: string): Promise<{ estado: string; guia: string }> {
     try {
       const e = await new Repositorio(ruta).estado()
-      if (!e.repo) return ''
+      if (!e.repo) return { estado: '', guia: '' }
       const preparados = e.archivos.filter((a) => !a.conflicto && a.indice !== '.').length
       const cambios = e.archivos.filter((a) => !a.conflicto && !a.sinSeguimiento && a.trabajo !== '.').length
       const nuevos = e.archivos.filter((a) => a.sinSeguimiento).length
       const remoto = e.remotos.length ? `remotos: ${e.remotos.join(', ')}` : 'sin remoto'
-      return [
-        `Git: rama «${e.rama ?? `(commit suelto ${e.desacoplado ?? ''})`}»${e.upstream ? ` (sigue a ${e.upstream}: ${e.adelante} por enviar, ${e.atras} por traer)` : ''}; ${preparados} preparados, ${cambios} modificados, ${nuevos} nuevos; ${remoto}${e.operacion ? `; operación en curso: ${e.operacion}` : ''}.`,
-        'Para git y GitHub usa las herramientas git_* y github_* (no ejecutes git a mano). Confirma solo lo que corresponde a un cambio, con un mensaje en el estilo del historial; nunca incluyas archivos con secretos; no envíes ni publiques nada sin que el usuario lo haya pedido.'
-      ].join('\n')
+      return {
+        estado: `Git: rama «${e.rama ?? `(commit suelto ${e.desacoplado ?? ''})`}»${e.upstream ? ` (sigue a ${e.upstream}: ${e.adelante} por enviar, ${e.atras} por traer)` : ''}; ${preparados} preparados, ${cambios} modificados, ${nuevos} nuevos; ${remoto}${e.operacion ? `; operación en curso: ${e.operacion}` : ''}.`,
+        guia: 'Para git y GitHub usa las herramientas git_* y github_* (no ejecutes git a mano). Confirma solo lo que corresponde a un cambio, con un mensaje en el estilo del historial; nunca incluyas archivos con secretos; no envíes ni publiques nada sin que el usuario lo haya pedido.'
+      }
     } catch {
-      return ''
+      return { estado: '', guia: '' }
     }
   }
 
-  /** Contexto que se añade al prompt de sistema: memoria de largo plazo, tareas del proyecto y, si hay, el aviso de adjuntos. */
+  /**
+   * Contexto del Asistente en dos partes. Lo ESTABLE (guía de git, credenciales de prueba, aviso de subagentes) va al prompt de sistema:
+   * si ese texto cambia, se pierde la caché de TODA la conversación. Lo que CAMBIA de un mensaje a otro (memoria relevante a la
+   * petición, tareas, estado de git, aviso de adjuntos) va delante del mensaje, y solo cuando cambió desde la última vez.
+   */
+  private async contextoPartes(prompt: string, proyecto: Proyecto | undefined, conAdjuntos: boolean): Promise<{ estable: string; dinamico: string }> {
+    const memoria = await this.memoria.contextoPara(prompt, proyecto?.id)
+    const tareas = proyecto ? await this.tareas.contextoParaIA(proyecto.id, proyecto.nombre).catch(() => '') : ''
+    const git = proyecto ? await this.contextoGit(proyecto.ruta) : { estado: '', guia: '' }
+    const pruebas = proyecto ? await credencialesDe(proyecto.id).catch(() => []) : []
+    const credsCtx = pruebas.length
+      ? `Hay ${pruebas.length} credencial(es) de PRUEBA guardadas en este equipo para este proyecto (${pruebas.map((c) => c.nombre).join(', ')}). Cuando necesites un usuario, clave o URL para probar, consúltalas con credenciales_listar / credenciales_obtener en vez de pedírselas al usuario; no las escribas en archivos versionados ni en commits.`
+      : ''
+    return {
+      estable: [git.guia, credsCtx, AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim(),
+      dinamico: [memoria, tareas, git.estado, conAdjuntos ? AVISO_ADJUNTOS : ''].filter(Boolean).join('\n\n').trim()
+    }
+  }
+
+  /** Contexto que se añade al prompt de sistema (modo API): memoria de largo plazo, tareas del proyecto y, si hay, el aviso de adjuntos. */
   private async contextoSistema(prompt: string, proyecto: Proyecto | undefined, conAdjuntos: boolean): Promise<string> {
     const memoria = await this.memoria.contextoPara(prompt, proyecto?.id)
     const tareas = proyecto ? await this.tareas.contextoParaIA(proyecto.id, proyecto.nombre).catch(() => '') : ''
-    const gitCtx = proyecto ? await this.contextoGit(proyecto.ruta) : ''
+    const gitCtx = proyecto ? (({ estado, guia }) => [estado, guia].filter(Boolean).join('\n'))(await this.contextoGit(proyecto.ruta)) : ''
     const pruebas = proyecto ? await credencialesDe(proyecto.id).catch(() => []) : []
     const credsCtx = pruebas.length
       ? `Hay ${pruebas.length} credencial(es) de PRUEBA guardadas en este equipo para este proyecto (${pruebas.map((c) => c.nombre).join(', ')}). Cuando necesites un usuario, clave o URL para probar, consúltalas con credenciales_listar / credenciales_obtener en vez de pedírselas al usuario; no las escribas en archivos versionados ni en commits.`
@@ -459,7 +492,8 @@ export class Nucleo {
     }
     const autonomia: ModoAutonomia = sol.autonomia === 'ediciones' || sol.autonomia === 'autonomo' ? sol.autonomia : 'preguntar'
     const verificaciones = autonomia === 'autonomo' && proyecto ? (await detectarVerificaciones(proyecto.ruta)).map((v) => v.comando.join(' ')) : []
-    const sistemaExtra = await this.contextoSistema(sol.prompt, proyecto, bloques.length > 0)
+    const { estable: sistemaExtra, dinamico } = await this.contextoPartes(sol.prompt, proyecto, bloques.length > 0)
+    const mensajeId = randomUUID()
 
     // Texto en línea; imágenes y PDF se dejan en una carpeta temporal para que el CLI los lea.
     const partes: string[] = []
@@ -483,7 +517,8 @@ export class Nucleo {
         // Playwright de serie y los servidores de mcp.json también llegan al CLI (antes solo existían en modo API).
         const externos = servidoresExternos((await leerConfigMcp().catch(() => ({ servidores: {} }))).servidores)
         const mcpTareas = await archivoMcpTareas(proyecto?.id, externos).catch(() => undefined)
-        const pluginDirs = [await pluginAgentesAsistente(proyecto?.id), await pluginCavemanLigero()].filter((d): d is string => Boolean(d))
+        const pluginProyecto = await pluginAgentesAsistente(proyecto?.id)
+        const pluginDirs = [pluginProyecto, await pluginCavemanLigero(), await pluginGuardia()].filter((d): d is string => Boolean(d))
         // Dentro de un grupo, el Asistente puede leer y editar también las carpetas de los demás proyectos del grupo.
         const hermanas = await carpetasHermanas(proyecto?.id)
         const extraGrupo = hermanas.length
@@ -502,9 +537,52 @@ export class Nucleo {
         })
         const probadas = new Set<string>()
         let cuenta = await this.cuentaParaEjecutar()
-        const previa = await this.sesionesCli.obtener(sesionId)
-        const viva: NonNullable<ReturnType<typeof this.vivas.get>> = {
+        let previa = await this.sesionesCli.obtener(sesionId)
+        let meta = await this.metaCli.obtener(sesionId)
+        // Un resumen pendiente significa que ya se decidió abrir una sesión nueva y esa ejecución no llegó a guardarla: no se reanuda la vieja.
+        let prefijoPrompt: string | undefined
+        if (meta?.pendiente) {
+          previa = undefined
+          this.procesos.cerrar(sesionId) // si quedó vivo, trae el contexto viejo
+          prefijoPrompt = bloqueContextoPrevio(meta.pendiente, 'contexto')
+        }
+        // Como hace Claude Code al compactar: si el contexto ya es enorme (o lleno de imágenes, o la caché caducó), se sigue en una
+        // sesión nueva con un resumen en vez de reenviar cientos de miles de tokens en cada llamada.
+        const motivoRotacion = previa ? decidirRotacion(meta, umbralesDeEntorno()) : undefined
+        if (previa && motivoRotacion) {
+          const rot = await prepararRotacion({
+            sesion: await this.sesiones.obtener(sesionId),
+            motivo: motivoRotacion,
+            ...(this.cuentas.carpetaDe(cuenta) ? { carpeta: this.cuentas.carpetaDe(cuenta)! } : {}),
+            cwd: proyecto?.ruta ?? process.cwd(),
+            senal: ctl.signal,
+            alUso: (u) => u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo }))
+          }).catch(() => undefined)
+          if (rot) {
+            emitir({ tipo: 'contexto_compactado', motivo: motivoRotacion, tokensAntes: meta?.contexto ?? 0, imagenes: meta?.imagenes ?? 0, conModelo: rot.conModelo })
+            prefijoPrompt = rot.bloque
+            this.procesos.cerrar(sesionId) // el proceso vivo trae el contexto viejo: la sesión nueva arranca limpia
+            await this.metaCli.actualizar(sesionId, (m) => {
+              const { hashDinamico: _h, ...resto } = m
+              return { ...resto, pendiente: rot.resumen, contexto: 0, imagenes: 0, acumulado: {}, rotaciones: m.rotaciones + 1 }
+            })
+            meta = await this.metaCli.obtener(sesionId)
+            previa = undefined
+          }
+        }
+        // Lo que cambia entre mensajes (memoria relevante, tareas, estado de git) va delante del mensaje y solo si cambió desde la última vez;
+        // los avisos pendientes (p. ej. archivos deshechos) también. Una sesión nueva (o recién resumida) lo necesita todo.
+        const hashDinamico = dinamico ? createHash('sha1').update(dinamico).digest('hex') : undefined
+        const delante = [
+          prefijoPrompt,
+          meta?.aviso,
+          dinamico && (!previa || meta?.hashDinamico !== hashDinamico) ? `<contexto_actual>\n${dinamico}\n</contexto_actual>` : undefined
+        ].filter(Boolean)
+        prefijoPrompt = delante.length ? delante.join('\n\n') : undefined
+        const eraNueva = !meta
+        const viva: { bitacora: Bitacora; cwd: string; proyecto?: Proyecto; carpetasExtra: string[]; carpetaCuenta?: string; control?: ControlProceso; contexto: number } = {
           bitacora,
+          contexto: meta?.contexto ?? 0,
           cwd: proyecto?.ruta ?? process.cwd(),
           ...(proyecto ? { proyecto } : {}),
           carpetasExtra: [...(carpeta ? [carpeta] : []), ...hermanas.map((h) => h.ruta)]
@@ -517,9 +595,23 @@ export class Nucleo {
           const carpetaCuenta = this.cuentas.carpetaDe(cuenta)
           if (carpetaCuenta) viva.carpetaCuenta = carpetaCuenta
           else delete viva.carpetaCuenta
-          const r = await ejecutarSuscripcion({
-            alUso: (u) => u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo })),
+          // En el proceso persistente el tope de gasto del CLI no tiene un alcance claro (¿proceso o mensaje?): allí corta el tope de pasos.
+          const presupuesto = this.persistente ? 0 : presupuestoTurnoUsd()
+          const esfuerzo = ESFUERZOS.find((x) => x === sol.esfuerzo)
+          const r = await this.correrCli(sesionId, {
+            alUso: (u) => {
+              u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo }))
+              const costo = u.reduce((t, x) => t + x.costo, 0)
+              if (costo >= AVISO_COSTO_TURNO) emitir({ tipo: 'aviso_consumo', motivo: 'costo', costo })
+            },
             prompt,
+            ...(prefijoPrompt ? { prefijoPrompt } : {}),
+            mensajeId,
+            conAgentes: Boolean(pluginProyecto),
+            ...(esfuerzo ? { esfuerzo } : {}),
+            alProceso: (c) => void (viva.control = c),
+            ...(presupuesto > 0 ? { presupuestoUsd: presupuesto } : {}),
+            ...(previa && meta?.acumulado ? { acumulado: meta.acumulado } : {}),
             cwd: proyecto?.ruta ?? process.cwd(),
             ...(sol.modelo ? { modelo: sol.modelo } : {}),
             ...(previa ? { reanudar: previa } : {}),
@@ -537,7 +629,25 @@ export class Nucleo {
             omitirInicio: probadas.size > 1
           })
           // Una ejecución rechazada por el límite no deja conversación válida: no pisa la anterior.
-          if (r.sesionCli && !r.limite) await this.sesionesCli.guardar(sesionId, r.sesionCli)
+          if (r.sesionCli && !r.limite) {
+            await this.sesionesCli.guardar(sesionId, r.sesionCli)
+            await this.metaCli.actualizar(sesionId, (m) => {
+              const { pendiente: _resumido, aviso: _aviso, ...resto } = m
+              return {
+                ...resto,
+                ...(hashDinamico ? { hashDinamico } : {}),
+                contexto: r.contexto,
+                ...(r.ventana ? { ventana: r.ventana } : {}),
+                imagenes: m.imagenes + r.imagenes,
+                ultimaActividad: Date.now(),
+                acumulado: r.acumulado ?? m.acumulado
+              }
+            }).catch(() => undefined)
+            if (r.contexto >= AVISO_CONTEXTO) emitir({ tipo: 'aviso_consumo', motivo: 'contexto', tokens: r.contexto })
+            if (eraNueva && r.resultado.estado === 'completado') void this.titular(sesionId, sol.prompt, r.resultado.texto, this.cuentas.carpetaDe(cuenta))
+          }
+          this.trazador.anotarUso(id, r.resultado.uso)
+          void this.sesiones.anotarUso(sesionId, r.resultado.uso).catch(() => undefined)
           if (r.limite) {
             await this.cuentas.marcarLimite(cuenta, r.limite.hasta ?? Date.now() + LIMITE_SIN_FECHA_MS)
             // Solo se reintenta si aún no hizo nada: repetir una ejecución a medias podría duplicar cambios en los archivos.
@@ -560,12 +670,98 @@ export class Nucleo {
         emitir({ tipo: 'fin', resultado: { estado: estado === 'cancelado' ? 'cancelado' : 'error', texto: '', mensajes: [], uso: { tokensEntrada: 0, tokensSalida: 0 }, pasos: 0, error: mensaje } })
       } finally {
         if (carpeta) await rm(carpeta, { recursive: true, force: true }).catch(() => undefined)
-        await (estado === 'completado' ? this.trazador.finalizar(id) : this.trazador.finalizar(id, estado)).catch(() => undefined)
+        // Sin spans de agente la traza no sabe cómo terminó: se le dice (antes todas las de suscripción quedaban «error»).
+        await this.trazador.finalizar(id, estado).catch(() => undefined)
         this.activas.delete(id)
         this.vivas.delete(id)
       }
     })()
     return { ejecucionId: id, sesionId }
+  }
+
+  /** Una ejecución del CLI: en el proceso persistente de la conversación o, con `ODESK_PROCESO_POR_TURNO=1`, en uno nuevo. */
+  private correrCli(sesionId: string, o: Parameters<typeof ejecutarSuscripcion>[0]): Promise<SalidaEjecucion> {
+    return this.persistente ? ejecutarEnProceso(this.procesos, sesionId, o) : ejecutarSuscripcion(o)
+  }
+
+  /** Título de la conversación con el modelo barato (como la extensión de VS Code); sin él queda el principio de la primera petición. */
+  private async titular(sesionId: string, prompt: string, respuesta: string, carpeta?: string): Promise<void> {
+    if (process.env.ODESK_SIN_TITULO === '1') return
+    try {
+      const r = await consultarCli(
+        'Escribe un título de 3 a 6 palabras, en el idioma de la conversación, que describa de qué trata. Responde SOLO con el título: sin comillas, sin punto final.',
+        `Petición: ${prompt.slice(0, 600)}\n\nRespuesta: ${respuesta.slice(0, 600)}`,
+        { ...(carpeta ? { carpeta } : {}), timeoutMs: 40_000 }
+      )
+      r.uso.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo }))
+      const titulo = r.texto.split('\n')[0]!.replace(/^["'«“]+|["'»”.]+$/g, '').trim().slice(0, 70)
+      if (!titulo) return
+      this.titulosPendientes.set(sesionId, titulo)
+      await this.aplicarTitulo(sesionId)
+      await this.metaCli.actualizar(sesionId, (m) => ({ ...m, titulado: true })).catch(() => undefined)
+    } catch {
+      /* sin título del modelo: se queda el del principio de la petición */
+    }
+  }
+
+  /** Aplica el título generado si la conversación ya está guardada y aún lleva el automático; si no, queda pendiente hasta que se guarde. */
+  async aplicarTitulo(sesionId: string): Promise<void> {
+    const titulo = this.titulosPendientes.get(sesionId)
+    if (!titulo) return
+    if (await this.sesiones.fijarTituloAuto(sesionId, titulo)) this.titulosPendientes.delete(sesionId)
+  }
+
+  /** Uso real del contexto de la conversación (lo informa el propio CLI: sistema, herramientas, mensajes, margen de autocompactación…). Solo con proceso vivo. */
+  async contextoUso(sesionId: string): Promise<ContextoUso | undefined> {
+    const proceso = this.procesos.get(sesionId)
+    if (!proceso || proceso.ocupado) return undefined
+    try {
+      const r = await proceso.control<{ categories?: { name: string; tokens: number; kind?: string }[]; totalTokens?: number; maxTokens?: number; percentage?: number }>({ subtype: 'get_context_usage' }, 4000)
+      return {
+        total: r.totalTokens ?? 0,
+        maximo: r.maxTokens ?? 0,
+        porcentaje: r.percentage ?? 0,
+        categorias: (r.categories ?? []).filter((c) => c.kind === 'used' || c.kind === 'buffer').map((c) => ({ nombre: c.name, tokens: c.tokens, reservado: c.kind === 'buffer' }))
+      }
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * Deshace los cambios de archivos que hizo la IA (con sus herramientas de edición) desde un mensaje del usuario. Con `soloVer` solo dice
+   * qué cambiaría. La conversación no se toca: al siguiente mensaje se le avisa al modelo de que los archivos volvieron atrás.
+   */
+  async rebobinar(sesionId: string, mensajeId: string, soloVer: boolean): Promise<ResultadoRebobinado> {
+    if (!/^[0-9a-f-]{36}$/i.test(mensajeId)) throw new Error('Mensaje no válido')
+    const claudeId = await this.sesionesCli.obtener(sesionId)
+    if (!claudeId) throw new Error('Esta conversación no tiene una sesión del CLI: no hay nada que deshacer.')
+    if (this.procesos.get(sesionId)?.ocupado) throw new Error('Espera a que termine la respuesta en curso (o cancélala) antes de deshacer cambios.')
+    const s = await this.sesiones.obtener(sesionId)
+    const proyecto = s?.proyectoId ? (await leerProyectos()).proyectos.find((p) => p.id === s.proyectoId) : undefined
+    const cuenta = await this.cuentaParaEjecutar()
+    const carpetaCuenta = this.cuentas.carpetaDe(cuenta)
+    const r = await rebobinarArchivos({
+      claudeId,
+      mensajeId,
+      cwd: proyecto?.ruta ?? process.cwd(),
+      soloVer,
+      ...(carpetaCuenta ? { carpetaCuenta } : {}),
+      ...(this.procesos.get(sesionId) ? { vivo: this.procesos.get(sesionId)! } : {})
+    })
+    if (!soloVer && r.puede) {
+      const nombres = r.archivos.slice(0, 15).map((a) => basename(a)).join(', ')
+      await this.metaCli.actualizar(sesionId, (m) => ({
+        ...m,
+        aviso: `<aviso>El usuario deshizo los cambios de archivos hechos desde un mensaje anterior${nombres ? ` (${nombres}${r.archivos.length > 15 ? '…' : ''})` : ''}: esos archivos volvieron a su estado de antes. Lo que recuerdes de ellos puede estar desactualizado; vuelve a leerlos antes de editarlos.</aviso>`
+      }))
+    }
+    return r
+  }
+
+  /** Cierra los procesos del CLI que siguen vivos (al salir de la app). */
+  cerrar(): void {
+    this.procesos.cerrarTodos()
   }
 
   /**
@@ -582,38 +778,69 @@ export class Nucleo {
     const ctl = new AbortController()
     this.activas.set(id, ctl)
     const emitir = (e: Record<string, unknown>): void => alEvento({ ejecucionId: id, agente: 'asistente', profundidad: 0, ...e } as EventoAgente)
+    // Con el proceso de la tarea a mano, la pregunta se hace con `side_question` del CLI: responde con el contexto REAL de la conversación (sin
+    // bitácora ni otro proceso) y sin tocar la tarea. Cada llamada relee todo el contexto, así que con una conversación grande sale más barato
+    // el camino de siempre (modelo rápido con un resumen de la bitácora).
+    const maxLateral = Number(process.env.ODESK_LATERAL_MAX_CONTEXTO) > 0 ? Number(process.env.ODESK_LATERAL_MAX_CONTEXTO) : 80_000
+    if (viva.control && viva.contexto <= maxLateral) {
+      void (async () => {
+        emitir({ tipo: 'inicio', prompt })
+        try {
+          const r = await viva.control!.control<{ response: string | null }>({ subtype: 'side_question', question: prompt }, 90_000)
+          if (typeof r.response === 'string' && r.response.trim()) {
+            emitir({ tipo: 'texto', texto: r.response })
+            emitir({ tipo: 'fin', resultado: { estado: 'completado', texto: r.response, mensajes: [], uso: { tokensEntrada: 0, tokensSalida: 0 }, pasos: 1 } })
+            return
+          }
+        } catch {
+          /* sin respuesta del CLI: se usa el camino de siempre */
+        }
+        await this.lateralPorBitacora(viva, id, ctl, prompt, emitir, true)
+      })().finally(() => this.activas.delete(id))
+      return { ejecucionId: id, sesionId: '' }
+    }
+    void this.lateralPorBitacora(viva, id, ctl, prompt, emitir, false).finally(() => this.activas.delete(id))
+    return { ejecucionId: id, sesionId: '' }
+  }
+
+  /** Pregunta lateral con otro `claude -p` de modelo rápido y la bitácora de la tarea como contexto. */
+  private async lateralPorBitacora(
+    viva: NonNullable<ReturnType<Nucleo['vivas']['get']>>,
+    id: string,
+    ctl: AbortController,
+    prompt: string,
+    emitir: (e: Record<string, unknown>) => void,
+    omitirInicio: boolean
+  ): Promise<void> {
     const sistemaExtra = [
       'PREGUNTA LATERAL. Otra ejecución (otro proceso) está trabajando AHORA en la petición del usuario y no debes interrumpirla ni repetir su trabajo.',
       'Responde la pregunta del usuario en pocas líneas, basándote en este registro de lo que lleva hecho. Si el registro no basta, dilo; no inventes.',
       'Solo lectura: puedes mirar archivos para comprobar algo, pero no modifiques nada ni ejecutes comandos que cambien algo.',
       `<registro_de_la_tarea>\n${viva.bitacora.texto()}\n</registro_de_la_tarea>`
     ].join('\n\n')
-    void (async () => {
-      try {
-        const pluginDirs = [await pluginCavemanLigero()].filter((d): d is string => Boolean(d))
-        const carpetaCuenta = this.cuentas.carpetaDe(await this.cuentas.activa())
-        await ejecutarSuscripcion({
-          alUso: (u) => u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo })),
-          prompt,
-          cwd: viva.cwd,
-          modelo: MODELO_LATERAL,
-          autonomia: 'preguntar',
-          verificaciones: [],
-          sistemaExtra,
-          ...(viva.carpetasExtra.length ? { carpetasExtra: viva.carpetasExtra } : {}),
-          ...(carpetaCuenta ? { carpetaCuenta } : {}),
-          ...(pluginDirs.length ? { pluginDirs } : {}),
-          senal: ctl.signal,
-          alEvento: emitir
-        })
-      } catch (err) {
-        const cancelado = ctl.signal.aborted
-        emitir({ tipo: 'fin', resultado: { estado: cancelado ? 'cancelado' : 'error', texto: '', mensajes: [], uso: { tokensEntrada: 0, tokensSalida: 0 }, pasos: 0, error: cancelado ? 'Cancelado' : (err as Error).message } })
-      } finally {
-        this.activas.delete(id)
-      }
-    })()
-    return { ejecucionId: id, sesionId: '' }
+    try {
+      const pluginDirs = [await pluginCavemanLigero(), await pluginGuardia()].filter((d): d is string => Boolean(d))
+      const carpetaCuenta = this.cuentas.carpetaDe(await this.cuentas.activa())
+      await ejecutarSuscripcion({
+        alUso: (u) => u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo })),
+        prompt,
+        presupuestoUsd: 1,
+        cwd: viva.cwd,
+        modelo: MODELO_LATERAL,
+        autonomia: 'preguntar',
+        verificaciones: [],
+        sistemaExtra,
+        ...(viva.carpetasExtra.length ? { carpetasExtra: viva.carpetasExtra } : {}),
+        ...(carpetaCuenta ? { carpetaCuenta } : {}),
+        ...(pluginDirs.length ? { pluginDirs } : {}),
+        ...(omitirInicio ? { omitirInicio: true } : {}),
+        senal: ctl.signal,
+        alEvento: emitir
+      })
+    } catch (err) {
+      const cancelado = ctl.signal.aborted
+      emitir({ tipo: 'fin', resultado: { estado: cancelado ? 'cancelado' : 'error', texto: '', mensajes: [], uso: { tokensEntrada: 0, tokensSalida: 0 }, pasos: 0, error: cancelado ? 'Cancelado' : (err as Error).message } })
+    }
   }
 
   /** Planificación -> aprobación -> generación -> verificaciones -> confirmación (grafo de estados), por defecto en un git worktree. */
@@ -841,6 +1068,8 @@ export class Nucleo {
   /** Borra una conversación aquí y en los demás equipos (la poda automática de las viejas es solo local). */
   async borrarSesion(id: string): Promise<void> {
     const s = await this.sesiones.obtener(validarId(id))
+    this.procesos.cerrar(id)
+    await this.metaCli.actualizar(id, () => undefined).catch(() => undefined)
     await this.sesiones.borrar(id)
     this.sync.borrar(s?.proyectoId, 'chat', id)
   }
@@ -975,6 +1204,7 @@ export class Nucleo {
   async detener(): Promise<void> {
     await this.sync.vaciar().catch(() => undefined)
     for (const c of this.activas.values()) c.abort()
+    this.cerrar()
     await this.mcp.detener()
   }
 }
@@ -1048,9 +1278,12 @@ export function registrarIpcCore(nucleo: Nucleo): void {
   ipcMain.handle(Canales.corePermisosEliminar, (_e, id: string, ambito?: string) => nucleo.permisos.eliminar(String(id), ambito || undefined))
   ipcMain.handle(Canales.coreSesionesListar, (_e, proyectoId?: string) => nucleo.sesiones.listar(proyectoId ? String(proyectoId) : undefined))
   ipcMain.handle(Canales.coreSesionObtener, (_e, id: string) => nucleo.sesiones.transcripcion(validarId(String(id))))
-  ipcMain.handle(Canales.coreSesionTranscripcion, (_e, id: string, turnos: TurnoGuardado[], proyectoId?: string) =>
-    nucleo.sesiones.guardarTranscripcion(validarId(String(id)), Array.isArray(turnos) ? turnos : [], proyectoId ? validarId(String(proyectoId)) : undefined)
-  )
+  ipcMain.handle(Canales.coreSesionTranscripcion, async (_e, id: string, turnos: TurnoGuardado[], proyectoId?: string) => {
+    await nucleo.sesiones.guardarTranscripcion(validarId(String(id)), Array.isArray(turnos) ? turnos : [], proyectoId ? validarId(String(proyectoId)) : undefined)
+    await nucleo.aplicarTitulo(validarId(String(id))).catch(() => undefined) // el título que generó el modelo mientras tanto
+  })
+  ipcMain.handle(Canales.coreContextoUso, (_e, sesionId: string) => nucleo.contextoUso(validarId(String(sesionId))))
+  ipcMain.handle(Canales.coreRebobinar, (_e, sesionId: string, mensajeId: string, soloVer: boolean) => nucleo.rebobinar(validarId(String(sesionId)), String(mensajeId), soloVer === true))
   ipcMain.handle(Canales.coreSesionBorrar, (_e, id: string) => nucleo.borrarSesion(String(id)))
   ipcMain.handle(Canales.coreMemoriaListar, (_e, proyectoId?: string) => nucleo.memoria.listar(proyectoId || undefined))
   ipcMain.handle(Canales.coreMemoriaGuardar, (_e, entrada: NuevaEntradaMemoria, proyectoId?: string) =>

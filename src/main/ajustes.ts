@@ -22,12 +22,12 @@ export async function leerAjustes(clave: string): Promise<AjustesAsistente> {
 let cola: Promise<unknown> = Promise.resolve()
 
 /** Cambia solo los campos dados (`null` = volver al valor por defecto). Las escrituras van en cola y son atómicas. */
-export function fijarAjustes(clave: string, cambios: { modelo?: string | null; autonomia?: string | null }): Promise<AjustesAsistente> {
+export function fijarAjustes(clave: string, cambios: { modelo?: string | null; autonomia?: string | null; esfuerzo?: string | null }): Promise<AjustesAsistente> {
   const p = cola.then(async () => {
     const id = validar(clave)
     const actual = await leerAjustes(id)
     const nuevo: Record<string, unknown> = { ...actual }
-    for (const campo of ['modelo', 'autonomia'] as const) {
+    for (const campo of ['modelo', 'autonomia', 'esfuerzo'] as const) {
       const valor = cambios[campo]
       if (valor === undefined) continue
       if (valor === null) delete nuevo[campo]

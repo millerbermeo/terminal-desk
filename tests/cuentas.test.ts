@@ -69,6 +69,8 @@ const lineasVolcado = async (): Promise<{ dir: string; reanuda: string | null; s
 beforeAll(async () => {
   home = await mkdtemp(join(tmpdir(), 'home-cuentas-'))
   vi.stubEnv('HOME', home)
+  vi.stubEnv('ODESK_PROCESO_POR_TURNO', '1') // el `claude` falso atiende un solo mensaje: aquí se prueba la lógica por turno
+  vi.stubEnv('ODESK_SIN_TITULO', '1')
   vi.stubEnv('CLAUDE_CONFIG_DIR', '')
   const bin = join(home, 'bin')
   await mkdir(bin)

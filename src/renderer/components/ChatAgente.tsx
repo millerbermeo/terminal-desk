@@ -6,7 +6,8 @@ import type { ModoAutonomia } from '@shared/core/permisos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { Agente, Turno } from '../agente/useAgente'
 import { useCuenta } from '../agente/cuenta'
-import type { AjustesAsistente } from '@shared/ajustes'
+import { ESFUERZOS_AJUSTE, type AjustesAsistente, type Esfuerzo } from '@shared/ajustes'
+import type { ContextoUso } from '@shared/core/uso'
 import { useModelos } from '../agente/uso'
 import { AdjuntosAgente } from './AdjuntosAgente'
 import { BarraRama } from './BarraRama'
@@ -120,6 +121,21 @@ function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
           Límite de uso alcanzado en «{e.de}»{e.hasta ? ` (se renueva ${new Date(e.hasta).toLocaleString()})` : ''}. Continúo con «{e.a}».
         </div>
       )
+    case 'contexto_compactado':
+      return (
+        <div className="ag-nota">
+          ♻ Conversación continuada en una sesión nueva con un resumen
+          {e.motivo === 'contexto' ? ` (el contexto llegó a ${Math.round(e.tokensAntes / 1000)} k tokens)` : e.motivo === 'imagenes' ? ` (había ${e.imagenes} imágenes en el contexto)` : ' (la caché del contexto caducó tras un rato sin usarla)'}
+          {e.conModelo ? '' : ' — resumen básico: el modelo no respondió'}. Así cada mensaje gasta muchos menos tokens.
+        </div>
+      )
+    case 'aviso_consumo':
+      return (
+        <div className="ag-nota">
+          ⚠ {e.motivo === 'contexto' ? `El contexto de esta conversación ya es grande (${Math.round((e.tokens ?? 0) / 1000)} k tokens) y se reenvía en cada mensaje.` : `Esta respuesta consumió ${(e.costo ?? 0).toFixed(2)} USD a precio de lista.`}{' '}
+          Si cambias de tema, abre una conversación nueva.
+        </div>
+      )
     case 'aprobacion_automatica':
       return <div className="ag-nota">✓ {e.clase === 'plan' ? 'Plan' : 'Acción'} aprobado automáticamente ({e.motivo})</div>
     case 'comando_salida':
@@ -147,7 +163,10 @@ function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
   }
 }
 
-function TurnoVista({ t, onCancelar }: { t: Turno; onCancelar: () => void }) {
+const HERRAMIENTAS_QUE_EDITAN = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+
+function TurnoVista({ t, onCancelar, onDeshacer }: { t: Turno; onCancelar: () => void; onDeshacer: () => void }) {
+  const editoArchivos = t.estado !== 'en_curso' && !t.lateral && Boolean(t.mensajeId) && t.eventos.some((e) => e.tipo === 'herramienta_inicio' && HERRAMIENTAS_QUE_EDITAN.has(e.llamada.nombre))
   return (
     <article className="ag-turno">
       <div className="ag-usuario">
@@ -173,6 +192,11 @@ function TurnoVista({ t, onCancelar }: { t: Turno; onCancelar: () => void }) {
         {t.estado === 'en_curso' && (
           <button onClick={onCancelar} disabled={!t.ejecucionId}>
             Cancelar
+          </button>
+        )}
+        {editoArchivos && (
+          <button onClick={onDeshacer} title="Devuelve los archivos a como estaban antes de este mensaje (y deshace lo de los siguientes)">
+            ↩ Deshacer cambios
           </button>
         )}
       </div>
@@ -209,6 +233,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const claveAjustes = proyectoFijo?.id ?? 'global'
   const [modeloSel, setModeloSel] = useState<string>('auto')
   const [autonomia, setAutonomiaEstado] = useState<ModoAutonomia>('preguntar')
+  const [esfuerzo, setEsfuerzoEstado] = useState<Esfuerzo | 'auto'>('auto')
   const versionAjustes = useRef(0) // sube con cada cambio hecho aquí: una lectura que empezó antes se descarta
   useEffect(() => {
     let vigente = true
@@ -219,6 +244,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
       if (!vigente || version !== versionAjustes.current) return
       setModeloSel(a.modelo ?? 'auto')
       setAutonomiaEstado(a.autonomia ?? 'preguntar')
+      setEsfuerzoEstado(a.esfuerzo ?? 'auto')
     }
     void leer(true)
     const alVolver = (): void => void leer(false)
@@ -245,6 +271,39 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     versionAjustes.current++
     setAutonomiaEstado(nuevo)
     void window.api.ajustes.fijar(claveAjustes, { autonomia: nuevo }).catch(() => undefined).finally(() => void versionAjustes.current++)
+  }
+  const cambiarEsfuerzo = (nuevo: Esfuerzo | 'auto'): void => {
+    versionAjustes.current++
+    setEsfuerzoEstado(nuevo)
+    void window.api.ajustes.fijar(claveAjustes, { esfuerzo: nuevo === 'auto' ? null : nuevo }).catch(() => undefined).finally(() => void versionAjustes.current++)
+  }
+  // Uso real del contexto (lo informa el CLI mientras su proceso sigue vivo): se pide al terminar cada respuesta.
+  const [detalleCtx, setDetalleCtx] = useState<ContextoUso | undefined>()
+  const sesionActual = agente.sesionId
+  const tokensCtx = agente.contexto?.tokens
+  useEffect(() => {
+    if (!sesionActual || agente.enCurso) return
+    let vigente = true
+    void window.api.core.contextoUso(sesionActual).then((d) => vigente && setDetalleCtx(d), () => undefined)
+    return () => {
+      vigente = false
+    }
+  }, [sesionActual, agente.enCurso, tokensCtx])
+  useEffect(() => setDetalleCtx(undefined), [sesionActual])
+  /** Deshace los cambios de archivos de la IA desde un turno: primero dice cuáles, y solo si el usuario acepta, los restaura. */
+  const deshacer = async (t: Turno): Promise<void> => {
+    if (!sesionActual || !t.mensajeId) return
+    try {
+      const previo = await window.api.core.rebobinar(sesionActual, t.mensajeId, true)
+      if (!previo.puede) return agente.avisar('Deshacer cambios', previo.error ?? 'No hay un punto de control para ese mensaje.', t.destino)
+      if (previo.archivos.length === 0) return agente.avisar('Deshacer cambios', 'Ese mensaje y los siguientes no cambiaron ningún archivo con las herramientas de edición.', t.destino)
+      const nombres = previo.archivos.slice(0, 12).map((a) => `• ${a.split(/[\\/]/).slice(-3).join('/')}`).join('\n')
+      if (!(await confirmar({ titulo: 'Deshacer cambios de archivos', tono: 'aviso', etiqueta: 'Deshacer', texto: `Estos archivos volverán a como estaban antes de este mensaje (también se deshace lo de los mensajes posteriores):\n\n${nombres}${previo.archivos.length > 12 ? `\n… y ${previo.archivos.length - 12} más` : ''}\n\nLos archivos creados después se borran. No cubre lo que se hizo con comandos de terminal.` }))) return
+      const r = await window.api.core.rebobinar(sesionActual, t.mensajeId, false)
+      if (!r.puede) agente.avisar('Deshacer cambios', r.error ?? 'No se pudo deshacer.', t.destino)
+    } catch (err) {
+      agente.avisar('Deshacer cambios', (err as Error).message, t.destino)
+    }
   }
   const fin = useRef<HTMLDivElement>(null)
 
@@ -361,6 +420,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         ...(grupoSeleccionado ? { grupoId: destino.slice(2) } : {}),
         ...(autonomia !== 'preguntar' ? { autonomia } : {}),
         ...(modeloSel !== 'auto' ? { modelo: modeloSel } : {}),
+        ...(esfuerzo !== 'auto' ? { esfuerzo } : {}),
         ...(modo === 'flujo' || forzarFlujo ? { modo: 'flujo' as const, aislado } : {})
       }
     })
@@ -415,7 +475,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
       // Va tal cual al CLI (sin plantillas ni adjuntos delante) y se muestra lo que responde.
       return void agente.enviar({
         destino: etiqueta,
-        solicitud: { prompt: linea, ...(proyecto ? { proyectoId: proyecto.id } : {}), ...(autonomia !== 'preguntar' ? { autonomia } : {}), ...(modeloSel !== 'auto' ? { modelo: modeloSel } : {}) }
+        solicitud: { prompt: linea, ...(proyecto ? { proyectoId: proyecto.id } : {}), ...(autonomia !== 'preguntar' ? { autonomia } : {}), ...(modeloSel !== 'auto' ? { modelo: modeloSel } : {}), ...(esfuerzo !== 'auto' ? { esfuerzo } : {}) }
       })
     }
     if (NOMBRES_CLAUDE_CODE.has(nombre)) return aviso(`«/${nombre}» es un comando de Claude Code que necesita su terminal interactiva y no está disponible en el Asistente. Puedes usarlo en una terminal con Claude Code.`)
@@ -529,7 +589,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           />
         )}
         {agente.turnos.map((t) => (
-          <TurnoVista key={t.clave} t={t} onCancelar={() => agente.cancelar(t)} />
+          <TurnoVista key={t.clave} t={t} onCancelar={() => agente.cancelar(t)} onDeshacer={() => void deshacer(t)} />
         ))}
         <div ref={fin} />
       </div>
@@ -584,6 +644,20 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             <option value="preguntar">Preguntar todo</option>
             <option value="ediciones">Aceptar ediciones</option>
             <option value="autonomo">Autónomo</option>
+          </select>
+          <select
+            className="ag-modelo"
+            value={esfuerzo}
+            onChange={(e) => cambiarEsfuerzo(e.target.value as Esfuerzo | 'auto')}
+            aria-label="Esfuerzo de razonamiento"
+            title="Cuánto piensa el modelo antes de responder (solo suscripción). Menos esfuerzo = respuestas más rápidas y menos tokens; más = mejor en problemas difíciles."
+          >
+            <option value="auto">Esfuerzo: automático</option>
+            {ESFUERZOS_AJUSTE.map((x) => (
+              <option key={x} value={x}>
+                Esfuerzo: {{ low: 'bajo', medium: 'medio', high: 'alto', xhigh: 'muy alto', max: 'máximo' }[x]}
+              </option>
+            ))}
           </select>
           {modo === 'flujo' && (
             <label className="ag-check" title="Trabaja en un git worktree propio; tu árbol de trabajo no se toca">
@@ -728,7 +802,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             {agente.enCurso ? 'Encolar' : !texto.trim() && pendientes.length > 0 ? 'Enviar archivos' : 'Enviar'}
           </button>
         </div>
-        <BarraUso {...(agente.contexto ? { contexto: agente.contexto } : {})} {...(modeloSel !== 'auto' ? { modelo: modeloSel } : {})} modelos={modelos} tokensSesion={agente.tokensSesion} />
+        <BarraUso {...(detalleCtx ? { detalle: detalleCtx } : {})} {...(agente.contexto ? { contexto: agente.contexto } : {})} {...(modeloSel !== 'auto' ? { modelo: modeloSel } : {})} modelos={modelos} tokensSesion={agente.tokensSesion} />
       </div>
     </div>
   )
