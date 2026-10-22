@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { DIR } from './proyectos'
 
 /**
@@ -87,6 +87,36 @@ export class GestorCaveman {
     if (!e) return undefined
     const carpeta = join(this.raiz, carpetaDe(e.sha))
     return (await esPlugin(carpeta)) ? carpeta : undefined
+  }
+
+  /**
+   * Caveman recortado para el Asistente: solo los ganchos que activan el modo y la skill `caveman`.
+   * El plugin entero trae 22 skills y 3 agentes que el CLI describe en cada turno (~3.800 tokens) y que invitan a delegar en subagentes.
+   * Se deriva de la copia vigente en `ligero-<sha>` (inmutable). Si no se puede generar, devuelve la copia completa.
+   */
+  async rutaPluginLigero(): Promise<string | undefined> {
+    const completa = await this.rutaPlugin()
+    if (!completa) return undefined
+    const destino = join(this.raiz, `ligero-${basename(completa).slice(2)}`)
+    if (await esPlugin(destino)) return destino
+    const tmp = `${destino}.tmp-${randomUUID().slice(0, 6)}`
+    try {
+      const manifiesto = JSON.parse(await readFile(join(completa, '.claude-plugin', 'plugin.json'), 'utf8')) as { hooks?: Record<string, unknown> }
+      const { SessionStart, UserPromptSubmit } = manifiesto.hooks ?? {}
+      if (!SessionStart) throw new Error('El plugin no declara el gancho SessionStart')
+      manifiesto.hooks = { SessionStart, ...(UserPromptSubmit ? { UserPromptSubmit } : {}) }
+      await mkdir(join(tmp, '.claude-plugin'), { recursive: true })
+      await writeFile(join(tmp, '.claude-plugin', 'plugin.json'), JSON.stringify(manifiesto, null, 2) + '\n', 'utf8')
+      await cp(join(completa, 'src', 'hooks'), join(tmp, 'src', 'hooks'), { recursive: true })
+      await cp(join(completa, 'skills', 'caveman'), join(tmp, 'skills', 'caveman'), { recursive: true })
+      await rename(tmp, destino)
+      return destino
+    } catch (err) {
+      console.error('Caveman ligero no se pudo generar, se usa el completo:', err)
+      return completa
+    } finally {
+      await rm(tmp, { recursive: true, force: true }).catch(() => undefined)
+    }
   }
 
   /** Consulta GitHub y, si hay un commit nuevo, lo descarga. Nunca lanza; las llamadas simultáneas comparten la misma ejecución. */
@@ -192,6 +222,7 @@ export class GestorCaveman {
         .sort((a, b) => b.t - a.t)
         .slice(VERSIONES_A_CONSERVAR - 1)
       for (const v of sobran) await rm(join(this.raiz, v.n), { recursive: true, force: true })
+      for (const n of await readdir(this.raiz)) if (n.startsWith('ligero-') && !n.includes('.tmp-') && n !== `ligero-${carpetaDe(vigente).slice(2)}`) await rm(join(this.raiz, n), { recursive: true, force: true })
       for (const n of await readdir(this.raiz)) if (n.includes('.tmp-')) await rm(join(this.raiz, n), { recursive: true, force: true })
     } catch {
       // limpieza de cortesía
@@ -204,6 +235,21 @@ export const caveman = new GestorCaveman({ dir: DIR, desactivado: process.env.OD
 
 /** Carpeta de Caveman para `--plugin-dir` (undefined mientras no se haya descargado la primera vez). */
 export const pluginCaveman = (): Promise<string | undefined> => caveman.rutaPlugin().catch(() => undefined)
+
+/** Caveman recortado (ganchos + skill `caveman`) para `--plugin-dir` del Asistente. */
+export const pluginCavemanLigero = (): Promise<string | undefined> => caveman.rutaPluginLigero().catch(() => undefined)
+
+/** ¿Los ajustes de usuario de Claude Code (`settings.json` de la cuenta activa) ya activan Caveman con ganchos o con el plugin completo? */
+export async function cavemanEnAjustes(carpeta: string = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')): Promise<boolean> {
+  try {
+    const a = JSON.parse(await readFile(join(carpeta, 'settings.json'), 'utf8')) as { hooks?: unknown; enabledPlugins?: Record<string, boolean> }
+    const enGanchos = JSON.stringify(a.hooks ?? {}).includes('caveman-activate')
+    const plugin = Object.entries(a.enabledPlugins ?? {}).some(([n, on]) => on && n.startsWith('caveman@'))
+    return enGanchos || plugin
+  } catch {
+    return false
+  }
+}
 
 /** Descarga Caveman al arrancar y lo vuelve a comprobar cada `CADA_MS`, sin bloquear nada. */
 export function mantenerCavemanActualizado(): void {

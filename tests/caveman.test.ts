@@ -99,3 +99,37 @@ describe('GestorCaveman', () => {
     expect(llamadas).toHaveLength(0)
   })
 })
+
+describe('Caveman ligero y ajustes del usuario', () => {
+  it('el ligero lleva solo los ganchos de arranque y prompt, la skill caveman y los scripts', async () => {
+    const g = new GestorCaveman({ dir: tmp, git: gitFalso(() => SHA1), inicioClaude: join(tmp, 'x.json') })
+    await g.actualizar()
+    const completa = (await g.rutaPlugin())!
+    await writeFile(
+      join(completa, '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'caveman', hooks: { SessionStart: [1], SubagentStart: [2], UserPromptSubmit: [3], SessionEnd: [4] } })
+    )
+    await mkdir(join(completa, 'src', 'hooks'), { recursive: true })
+    await mkdir(join(completa, 'skills', 'caveman'), { recursive: true })
+    await mkdir(join(completa, 'skills', 'otra'), { recursive: true })
+    await mkdir(join(completa, 'agents'), { recursive: true })
+    const ligera = (await g.rutaPluginLigero())!
+    expect(ligera).toBe(join(tmp, 'caveman', `ligero-${SHA1.slice(0, 12)}`))
+    const hooks = JSON.parse(await (await import('node:fs/promises')).readFile(join(ligera, '.claude-plugin', 'plugin.json'), 'utf8')).hooks
+    expect(Object.keys(hooks).sort()).toEqual(['SessionStart', 'UserPromptSubmit'])
+    expect((await readdir(join(ligera, 'skills'))).sort()).toEqual(['caveman'])
+    expect(await readdir(ligera)).not.toContain('agents')
+  })
+
+  it('detecta si los ajustes ya activan Caveman', async () => {
+    const { cavemanEnAjustes } = await import('../src/main/caveman')
+    const w = (o: unknown) => writeFile(join(tmp, 'settings.json'), JSON.stringify(o))
+    expect(await cavemanEnAjustes(tmp)).toBe(false) // sin archivo
+    await w({ hooks: { SessionStart: [{ hooks: [{ command: 'node ~/.claude/hooks/caveman-activate.js' }] }] } })
+    expect(await cavemanEnAjustes(tmp)).toBe(true)
+    await w({ enabledPlugins: { 'caveman@caveman': false } })
+    expect(await cavemanEnAjustes(tmp)).toBe(false)
+    await w({ enabledPlugins: { 'caveman@caveman': true } })
+    expect(await cavemanEnAjustes(tmp)).toBe(true)
+  })
+})

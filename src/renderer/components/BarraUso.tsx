@@ -12,6 +12,7 @@ interface Props {
 }
 
 const total = (u: UsoModelo): number => u.entrada + u.salida
+const usd = (n?: number): string => (n ? ` · $${n < 0.01 ? n.toFixed(4) : n.toFixed(2)}` : '')
 
 function Limite({ nombre, l }: { nombre: string; l: LimiteApi }) {
   const libre = l.limite > 0 ? l.restante / l.limite : 1
@@ -40,8 +41,8 @@ function Detalle({ uso, tokensSesion }: { uso: ResumenUso; tokensSesion: number 
       <table>
         <tbody>
           <tr><td>Esta conversación</td><td>{fmt(tokensSesion)} tokens</td></tr>
-          <tr><td>Hoy</td><td>{fmt(total(uso.total))} tokens · {uso.total.llamadas} llamadas</td></tr>
-          <tr><td>Últimos 7 días</td><td>{fmt(total(uso.ultimos7Dias))} tokens · {uso.ultimos7Dias.llamadas} llamadas</td></tr>
+          <tr><td>Hoy</td><td>{fmt(total(uso.total))} tokens · {uso.total.llamadas} llamadas{usd(uso.total.costo)}</td></tr>
+          <tr><td>Últimos 7 días</td><td>{fmt(total(uso.ultimos7Dias))} tokens · {uso.ultimos7Dias.llamadas} llamadas{usd(uso.ultimos7Dias.costo)}</td></tr>
         </tbody>
       </table>
       {Object.keys(uso.hoy).length > 0 && (
@@ -50,7 +51,7 @@ function Detalle({ uso, tokensSesion }: { uso: ResumenUso; tokensSesion: number 
           <table>
             <tbody>
               {Object.entries(uso.hoy).map(([m, u]) => (
-                <tr key={m}><td>{m}</td><td>{fmt(u.entrada)}↓ {fmt(u.salida)}↑ · {u.llamadas}</td></tr>
+                <tr key={m}><td>{m}</td><td>{fmt(u.entrada)}↓ {u.cache ? `(${fmt(u.cache)} caché) ` : ''}{fmt(u.salida)}↑ · {u.llamadas}{usd(u.costo)}</td></tr>
               ))}
             </tbody>
           </table>
