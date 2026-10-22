@@ -58,13 +58,15 @@ export class Medidor {
   }
 
   /** Suma una llamada al modelo a las cuentas de hoy. */
-  async registrar(modelo: string, uso: Uso): Promise<void> {
+  async registrar(modelo: string, uso: Uso, extra: { cache?: number; costo?: number } = {}): Promise<void> {
     await this.cargado
     const dia = diaLocal(this.ahora())
     const m = ((this.datos.dias[dia] ??= {})[modelo] ??= vacio())
     m.entrada += uso.tokensEntrada
     m.salida += uso.tokensSalida
     m.llamadas++
+    if (extra.cache) m.cache = (m.cache ?? 0) + extra.cache
+    if (extra.costo) m.costo = (m.costo ?? 0) + extra.costo
     const limite = diaLocal(this.ahora() - DIAS_RETENIDOS * 86_400_000)
     for (const d of Object.keys(this.datos.dias)) if (d < limite) delete this.datos.dias[d]
     const copia = structuredClone(this.datos)
@@ -84,7 +86,16 @@ export class Medidor {
     await this.cargado
     const dia = diaLocal(this.ahora())
     const sumar = (dias: Record<string, UsoModelo>[]): UsoModelo =>
-      dias.flatMap((d) => Object.values(d)).reduce((t, u) => ({ entrada: t.entrada + u.entrada, salida: t.salida + u.salida, llamadas: t.llamadas + u.llamadas }), vacio())
+      dias.flatMap((d) => Object.values(d)).reduce(
+        (t, u) => ({
+          entrada: t.entrada + u.entrada,
+          salida: t.salida + u.salida,
+          llamadas: t.llamadas + u.llamadas,
+          ...(t.cache || u.cache ? { cache: (t.cache ?? 0) + (u.cache ?? 0) } : {}),
+          ...(t.costo || u.costo ? { costo: (t.costo ?? 0) + (u.costo ?? 0) } : {})
+        }),
+        vacio()
+      )
     const hoy = this.datos.dias[dia] ?? {}
     const desde = diaLocal(this.ahora() - 6 * 86_400_000)
     return {

@@ -198,6 +198,12 @@ export interface McpExterno {
   riesgo: 'lectura' | 'escritura' | 'ejecucion'
 }
 
+/** Subagentes que trae el CLI de serie: el Asistente solo delega en los del proyecto (los de su plugin), no en estos. */
+export const SUBAGENTES_INTEGRADOS = ['Explore', 'general-purpose', 'Plan', 'claude-code-guide', 'statusline-setup', 'claude'].map((n) => `Agent(${n})`)
+
+/** Añade el bloqueo de los subagentes integrados a la lista `--disallowedTools` (que en modo autónomo ya existe y va al final). */
+export const sinSubagentesIntegrados = (permisos: string[]): string[] => [...permisos, ...(permisos.includes('--disallowedTools') ? [] : ['--disallowedTools']), ...SUBAGENTES_INTEGRADOS]
+
 export function permisosCli(autonomia: ModoAutonomia, verificaciones: string[], conHerramientas = false, externos: McpExterno[] = []): string[] {
   const permitidas = [...LECTURA]
   // Herramientas de la app (servidor MCP: tareas, git y GitHub). Consultar siempre; cambiar, como las ediciones de archivos, desde
@@ -249,6 +255,8 @@ export interface OpcionesEjecucion {
    * Con él el CLI habla por stdio (`--input-format stream-json --permission-prompt-tool stdio`); sin él, lo no permitido se deniega.
    */
   alPermiso?: (p: PeticionPermiso) => Promise<RespuestaPermiso>
+  /** Recibe el consumo real por modelo al terminar (también si falla o se cancela, si el CLI llegó a informarlo). */
+  alUso?: (u: UsoPorModelo[]) => void
   /** Recibe los eventos sin `ejecucionId`, `agente` ni `profundidad` (los pone quien llama). */
   alEvento: (e: Record<string, unknown> & { tipo: EventoAgente['tipo'] }) => void
 }
@@ -279,6 +287,24 @@ interface UsoCli {
   cache_creation_input_tokens?: number
 }
 
+/** Consumo de un modelo en una ejecución (`modelUsage` del resultado): incluye los subagentes, que pueden usar otro modelo. */
+interface UsoModeloCli {
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
+  costUSD?: number
+  contextWindow?: number
+}
+
+/** Consumo real de una ejecución por modelo, tal como lo informa el CLI. */
+export interface UsoPorModelo {
+  modelo: string
+  uso: { tokensEntrada: number; tokensSalida: number }
+  cache: number
+  costo: number
+}
+
 interface MensajeCli {
   type?: string
   request_id?: string
@@ -294,7 +320,7 @@ interface MensajeCli {
   usage?: UsoCli
   api_error_status?: number | null
   rate_limit_info?: { status?: string; resetsAt?: number; rateLimitType?: string }
-  modelUsage?: Record<string, { contextWindow?: number }>
+  modelUsage?: Record<string, UsoModeloCli>
 }
 
 const textoDe = (c: unknown): string =>
@@ -377,7 +403,10 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
     '--verbose',
     '--include-partial-messages',
     ...(o.alPermiso ? ['--input-format', 'stream-json', '--permission-prompt-tool', 'stdio'] : []),
-    ...permisosCli(o.autonomia, o.verificaciones, Boolean(o.mcpTareas), o.mcpExternos),
+    ...sinSubagentesIntegrados(permisosCli(o.autonomia, o.verificaciones, Boolean(o.mcpTareas), o.mcpExternos)),
+    // Aislado del `~/.claude` del usuario: sin sus skills, agentes, plugins ni conectores; solo lo del proyecto y lo que pasa la app.
+    '--setting-sources', 'project,local',
+    '--strict-mcp-config',
     ...(o.mcpTareas ? ['--mcp-config', o.mcpTareas] : []),
     ...(o.pluginDirs ?? []).flatMap((d) => ['--plugin-dir', d]),
     ...(o.modelo ? ['--model', o.modelo] : []),
@@ -397,6 +426,7 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
   let modelo: string | undefined
   let ventana: number | undefined
   let limite: LimiteUso | undefined
+  let usoModelos: UsoPorModelo[] = []
   let herramientas = 0
   let final: { error?: string; texto?: string; uso?: UsoCli; esError: boolean } | undefined
   let errores = ''
@@ -472,6 +502,15 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
         const propia = ventanas.find(([id]) => modelo && (id === modelo || id.startsWith(modelo) || modelo.startsWith(id))) ?? ventanas[0]
         if (!limite && (m.api_error_status === 429 || (m.is_error === true && typeof m.result === 'string' && esErrorDeLimite(m.result)))) limite = {}
         for (const [id, u] of ventanas) ventanasObservadas.set(id, u.contextWindow!)
+        usoModelos = Object.entries(m.modelUsage ?? {}).map(([id, u]) => ({
+          modelo: id,
+          uso: {
+            tokensEntrada: (u.inputTokens ?? 0) + (u.cacheReadInputTokens ?? 0) + (u.cacheCreationInputTokens ?? 0),
+            tokensSalida: u.outputTokens ?? 0
+          },
+          cache: u.cacheReadInputTokens ?? 0,
+          costo: u.costUSD ?? 0
+        }))
         if (propia) ventana = propia[1].contextWindow
         if (o.alPermiso) hijo.stdin.end() // con entrada por stream el CLI espera más mensajes: no hay más
         final = { esError: m.is_error === true || (typeof m.subtype === 'string' && m.subtype.startsWith('error')), texto: typeof m.result === 'string' ? m.result : '', ...(m.usage ? { uso: m.usage } : {}), ...(typeof m.result === 'string' && m.is_error ? { error: m.result } : {}) }
@@ -507,6 +546,7 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<{ sesio
   }).finally(() => o.senal.removeEventListener('abort', abortar))
 
   const cancelado = o.senal.aborted
+  if (usoModelos.length) o.alUso?.(usoModelos)
   const contexto = (ultimoUso.input_tokens ?? 0) + (ultimoUso.cache_read_input_tokens ?? 0) + (ultimoUso.cache_creation_input_tokens ?? 0)
   if (contexto > 0) o.alEvento({ tipo: 'uso_contexto', tokens: contexto, ...(modelo ? { modelo } : {}), ...(ventana ? { ventana } : {}) })
 

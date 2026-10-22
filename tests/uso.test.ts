@@ -58,6 +58,18 @@ describe('Medidor', () => {
     expect((await otra.resumen()).total.entrada).toBe(1)
   })
 
+  it('suma caché y coste por modelo (consumo real de suscripción, subagentes incluidos)', async () => {
+    const m = new Medidor(await tmp())
+    await m.registrar('claude-sonnet-5-5', uso(30_000, 200), { cache: 24_000, costo: 0.05 })
+    await m.registrar('claude-haiku-5-5', uso(5_000, 50), { cache: 4_000, costo: 0.001 })
+    await m.registrar('claude-sonnet-5-5', uso(1_000, 10), { cache: 0, costo: 0.01 })
+    const r = await m.resumen()
+    expect(r.hoy['claude-sonnet-5-5']).toMatchObject({ entrada: 31_000, salida: 210, llamadas: 2, cache: 24_000 })
+    expect(r.hoy['claude-sonnet-5-5']!.costo).toBeCloseTo(0.06)
+    expect(r.total.cache).toBe(28_000)
+    expect(r.total.costo).toBeCloseTo(0.061)
+  })
+
   it('avisa a los suscriptores (agrupando ráfagas) e incluye los límites', async () => {
     const m = new Medidor(await tmp())
     const avisos: number[] = []

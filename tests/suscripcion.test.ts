@@ -93,3 +93,15 @@ describe('suscripción (CLI claude)', () => {
     expect(await s.obtener('b')).toBeUndefined()
   })
 })
+
+describe('subagentes integrados', () => {
+  it('se bloquean sin tocar los permisos propios (añadiéndose a --disallowedTools si ya existe)', async () => {
+    const { sinSubagentesIntegrados, SUBAGENTES_INTEGRADOS } = await import('../src/main/core/suscripcion')
+    const pre = sinSubagentesIntegrados(permisosCli('preguntar', []))
+    expect(pre.slice(-SUBAGENTES_INTEGRADOS.length - 1)).toEqual(['--disallowedTools', ...SUBAGENTES_INTEGRADOS])
+    const auto = sinSubagentesIntegrados(permisosCli('autonomo', []))
+    expect(auto.filter((a) => a === '--disallowedTools')).toHaveLength(1)
+    expect(auto).toContain('Agent(Explore)')
+    expect(auto).toContain('Bash(sudo:*)')
+  })
+})

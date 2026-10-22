@@ -20,9 +20,13 @@ export interface LimitesApi {
 }
 
 export interface UsoModelo {
-  entrada: number
+  entrada: number // incluye la caché
   salida: number
   llamadas: number
+  /** De `entrada`, lo leído de la caché (barato). Solo en suscripción. */
+  cache?: number
+  /** Coste en USD a precio de lista que informa el CLI (en suscripción no se factura, pero mide el consumo real). */
+  costo?: number
 }
 
 /** Consumo registrado por esta aplicación (todas las llamadas al modelo, incluidos resúmenes y jueces). */
