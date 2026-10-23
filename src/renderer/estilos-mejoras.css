@@ -582,3 +582,52 @@ body {
 .zoom-indicador { position: fixed; top: 12px; right: 16px; z-index: 1000; display: inline-flex; align-items: baseline; gap: 8px; padding: 7px 14px; border-radius: 10px; background: var(--bg-popover); border: 1px solid var(--borde-fuerte); box-shadow: var(--sombra-2); font-size: 14px; color: var(--texto); pointer-events: none; animation: menu-entrar 140ms var(--ease) both; }
 .zoom-indicador small { color: var(--texto-suave); font-size: 12px; }
 .zoom-lupa { font-size: 13px; }
+
+/* Comandos de arranque */
+.modal.arranque { width: min(900px, 100%); }
+.arr-intro { margin: -4px 0 0; max-width: none; font-size: 12.5px; }
+.arr-barra { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.arr-fila { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--borde); }
+.arr-fila:last-child { border-bottom: none; }
+.arr-num { flex: none; width: 22px; height: 22px; border-radius: 999px; background: var(--bg-hover); color: var(--texto-suave); font-size: 11px; font-weight: 650; display: grid; place-items: center; margin-top: 2px; }
+.arr-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.arr-titulo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.arr-info code { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.arr-cwd, .arr-msg { color: var(--texto-suave); font-size: 11.5px; }
+.arr-msg.error { color: var(--error); }
+.arr-estado { flex: none; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--borde); color: var(--texto-suave); margin-top: 2px; }
+.arr-estado.est-listo { color: var(--ok); background: rgba(52, 211, 153, 0.08); border-color: rgba(52, 211, 153, 0.28); }
+.arr-estado.est-arrancando, .arr-estado.est-pendiente { color: var(--aviso); background: rgba(251, 191, 36, 0.08); border-color: rgba(251, 191, 36, 0.28); }
+.arr-estado.est-error { color: var(--error); background: rgba(248, 113, 113, 0.08); border-color: rgba(248, 113, 113, 0.3); }
+.arr-acciones { flex: none; display: flex; align-items: center; gap: 2px; }
+.arr-revision { border-color: rgba(251, 191, 36, 0.4); }
+.arr-revision-cuerpo { padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+.arr-conflicto { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.arr-opciones { display: flex; gap: 16px; flex-wrap: wrap; }
+.arr-aviso { color: var(--aviso); }
+.arr-form { padding: 12px 16px; }
+.arr-form .ag-opciones > input:not([style]) { flex: 1; min-width: 160px; }
+
+.abrir-arranque { opacity: 0; color: var(--texto-suave); }
+.fila-proyecto:hover .abrir-arranque, .abrir-arranque:focus-visible, .abrir-arranque.en-marcha { opacity: 1; }
+.abrir-arranque:hover:not(:disabled) { color: var(--aviso); background: rgba(251, 191, 36, 0.14); }
+.abrir-arranque.en-marcha { color: var(--ok); }
+.sidebar.compacta .abrir-arranque { display: none; }
+@media (hover: none) { .abrir-arranque { opacity: 1; } }
+.modal.arranque .cfg-grupo { flex: none; margin-bottom: 0; }
+.modal.arranque label.ag-check { max-width: none; }
+.modal.arranque label.ag-check input[type="checkbox"], .modal.arranque label.ag-check input[type="radio"] { flex: none; width: auto; }
+.modal.arranque label.ag-check input[type="checkbox"], .modal.arranque label.ag-check input[type="radio"] { padding: 0; min-width: 0; }
+
+/* Sección «Servicios» */
+.servicios-barra { gap: 12px; }
+.servicios-chips { flex: 1; min-width: 0; display: flex; gap: 6px; overflow-x: auto; padding: 2px 0; scrollbar-width: thin; }
+.serv-chip { flex: none; display: inline-flex; align-items: center; border: 1px solid var(--borde); border-radius: 999px; background: var(--bg-sutil); font-size: 12px; }
+.serv-chip.activo { border-color: var(--acento); }
+.serv-chip button { background: transparent; border: 0; color: var(--texto); padding: 3px 8px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; }
+.serv-chip .serv-chip-parar { padding: 3px 6px; color: var(--texto-suave); }
+.serv-chip .serv-chip-parar:hover { color: var(--error); }
+.serv-punto { width: 8px; height: 8px; border-radius: 999px; background: var(--texto-suave); }
+.serv-chip.est-listo .serv-punto { background: var(--ok); }
+.serv-chip.est-arrancando .serv-punto, .serv-chip.est-pendiente .serv-punto { background: var(--aviso); }
+.serv-chip.est-error .serv-punto { background: var(--error); }

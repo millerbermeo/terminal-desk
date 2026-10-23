@@ -77,6 +77,11 @@ export class GestorTerminales {
     }
   }
 
+  /** Pid del shell de la terminal (para saber si un proceso cuelga de ella). */
+  pid(id: string): number | undefined {
+    return this.terminales.get(id)?.pid
+  }
+
   escribir(id: string, datos: string): void {
     this.terminales.get(id)?.write(datos)
   }

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { AvisoEquipo, PendienteClonar } from '@shared/equipos'
+import { enCurso, type EstadoArranque } from '@shared/arranque'
 import type { PestanaExtra } from '@shared/ipc'
 import type { BibliotecaAgentes, DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
 import { EstadoVacio } from './components/EstadoVacio'
@@ -11,6 +12,8 @@ import { Versiones } from './components/Versiones'
 import { Api } from './components/Api'
 import { Navegador } from './components/Navegador'
 import { escucharSolicitudes, useSolicitudes } from './agente/solicitudes'
+import { ArranqueProyecto } from './components/ArranqueProyecto'
+import { Servicios } from './components/Servicios'
 import { ConfigAgentes } from './components/ConfigAgentes'
 import { GitHubCuenta } from './components/GitHubCuenta'
 import { ConfigProveedores } from './components/ConfigProveedores'
@@ -30,6 +33,7 @@ export interface TerminalInfo {
   cwd?: string
   proveedorId?: string
   proyectoId?: string // proyecto de origen (para no duplicar al hacer clic de nuevo)
+  arranque?: { proyectoId: string; comandoId: string } // la abrió main para un comando de arranque: vive en la sección «Servicios», no en la rejilla del proyecto
   ptyId?: string // proceso real (lo informa el panel al crearlo; también viene así de otra ventana)
   vista?: 'terminal' | 'asistente' | 'archivos' // qué se muestra en la celda; la terminal sigue viva debajo
   extras?: PestanaExtra[] // pestañas duplicadas (hasta 3 por tipo) además de la original de cada tipo
@@ -89,6 +93,10 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   const [clonarPend, setClonarPend] = useState<{ inicial?: string } | null>(null)
   const [avisosEquipos, setAvisosEquipos] = useState<AvisoEquipo[]>([])
   const [modalAgregar, setModalAgregar] = useState<{ rutas: string[] } | null>(null)
+  const [arranqueDe, setArranqueDe] = useState<Proyecto | null>(null)
+  const [estadosArranque, setEstadosArranque] = useState<Record<string, EstadoArranque>>({})
+  // Terminales de los comandos de arranque: sección aparte («Servicios»), no la rejilla de cada proyecto.
+  const [servicios, setServicios] = useState<{ terminales: TerminalInfo[]; activa: string | null; modo: Modo; reiniciarLayout: number; personalizado: boolean }>({ terminales: [], activa: null, modo: 'rejilla', reiniciarLayout: 0, personalizado: false })
 
   /** «Abrir carpeta»: explorador nativo y, con lo elegido, el formulario ya relleno (grupo y nombre editables). */
   const abrirCarpeta = async (): Promise<void> => {
@@ -229,6 +237,44 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     setVista('terminales')
   }, [cambiar])
 
+  // Comandos de arranque marcados «siempre»: se lanzan al abrir el proyecto (main no repite los que ya corren ni pisa puertos ajenos).
+  const autoarrancar = useCallback((proyectoId: string): void => {
+    void window.api.arranque.operar('autoarrancar', { proyectoId }).catch(() => undefined)
+  }, [])
+
+  // main abre una terminal por cada comando de arranque; aquí solo se muestra en «Servicios» (sin mover el foco de donde esté el usuario).
+  const datosRef = useRef(datos)
+  datosRef.current = datos
+  useEffect(
+    () =>
+      window.api.arranque.onTerminal((t) => {
+        void (async () => {
+          let d = datosRef.current
+          // el proyecto puede ser nuevo y la lista de la interfaz aún no lo traía: se vuelve a leer para ponerle nombre
+          if (!d.proyectos.some((x) => x.id === t.proyectoId)) d = await window.api.proyectos.listar().catch(() => d)
+          const p = d.proyectos.find((x) => x.id === t.proyectoId)
+          const info: TerminalInfo = { ...nuevaTerminal(p ? `${p.nombre} · ${t.nombre}` : t.nombre, t.cwd), ptyId: t.ptyId, arranque: { proyectoId: t.proyectoId, comandoId: t.comandoId } }
+          setServicios((s) => ({ ...s, terminales: [...s.terminales, info], activa: s.activa ?? info.id }))
+        })()
+      }),
+    []
+  )
+  // Un servicio detenido: su celda desaparece (el proceso ya terminó). Además se lleva la cuenta de lo que está en marcha para la barra lateral.
+  useEffect(() => {
+    void window.api.arranque.operar('estados', {}).then((l) => setEstadosArranque(Object.fromEntries(l.map((e) => [`${e.proyectoId}|${e.comandoId}`, e])))).catch(() => undefined)
+    return window.api.arranque.onEstado((e) => {
+      setEstadosArranque((x) => ({ ...x, [`${e.proyectoId}|${e.comandoId}`]: e }))
+      if (e.estado === 'detenido' && e.ptyId) {
+        setServicios((s) => {
+          const resto = s.terminales.filter((t) => t.ptyId !== e.ptyId)
+          return resto.length === s.terminales.length ? s : { ...s, terminales: resto, activa: resto.some((t) => t.id === s.activa) ? s.activa : (resto[resto.length - 1]?.id ?? null) }
+        })
+      }
+    })
+  }, [])
+  const detenerServicio = useCallback((proyectoId: string, comandoId: string): void => void window.api.arranque.operar('detener', { proyectoId, ids: [comandoId] }).catch(() => undefined), [])
+  const arranqueEnMarcha = new Set(Object.values(estadosArranque).filter((e) => enCurso(e.estado)).map((e) => e.proyectoId))
+
   // Clic en un proyecto: si ya tiene terminal en la pestaña de su grupo, se va a ella (no se abre otra).
   // Con proveedor de IA (✦) sí se abre una terminal nueva, porque es una acción explícita.
   const abrirProyecto = useCallback(
@@ -241,8 +287,9 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
       }
       const titulo = tituloUnico(prov ? `${p.nombre} · ${prov.nombre}` : p.nombre, ventana?.terminales ?? [])
       agregar(id, nombre, [nuevaTerminal(titulo, p.ruta, prov?.id, p.id)])
+      if (!prov) autoarrancar(p.id)
     },
-    [agregar, claveDe, enfocar, ventanas]
+    [agregar, autoarrancar, claveDe, enfocar, ventanas]
   )
 
   // «Asistente integrado»: una celda del proyecto que arranca en la vista del asistente (su terminal queda viva debajo).
@@ -262,14 +309,19 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     (clave: string, nombre: string, proyectos: Proyecto[]) => {
       const ventana = ventanas.find((v) => v.id === clave)
       if (!ventana) {
-        if (proyectos.length > 0) agregar(clave, nombre, proyectos.map((p) => nuevaTerminal(p.nombre, p.ruta, undefined, p.id)))
+        if (proyectos.length > 0) {
+          agregar(clave, nombre, proyectos.map((p) => nuevaTerminal(p.nombre, p.ruta, undefined, p.id)))
+          proyectos.forEach((p) => autoarrancar(p.id))
+        }
         return
       }
       const faltan = proyectos.filter((p) => !ventana.terminales.some((t) => t.proyectoId === p.id && !t.proveedorId))
-      if (faltan.length > 0) agregar(clave, nombre, faltan.map((p) => nuevaTerminal(tituloUnico(p.nombre, ventana.terminales), p.ruta, undefined, p.id)))
-      else enfocar(clave, ventana.activa ?? ventana.terminales[0]?.id ?? '')
+      if (faltan.length > 0) {
+        agregar(clave, nombre, faltan.map((p) => nuevaTerminal(tituloUnico(p.nombre, ventana.terminales), p.ruta, undefined, p.id)))
+        faltan.forEach((p) => autoarrancar(p.id))
+      } else enfocar(clave, ventana.activa ?? ventana.terminales[0]?.id ?? '')
     },
-    [agregar, enfocar, ventanas]
+    [agregar, autoarrancar, enfocar, ventanas]
   )
 
   // Terminal extra dentro de una pestaña (botón «+ Terminal»): de un proyecto del grupo o vacía.
@@ -434,6 +486,9 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
         onVista={setVista}
         pendientesAsistente={solicitudes.length}
         onAbrirAsistente={abrirAsistente}
+        onArranque={setArranqueDe}
+        enMarcha={arranqueEnMarcha}
+        serviciosActivos={servicios.terminales.length}
         email={email}
         onCuenta={onCuenta}
         pendientes={pendientes}
@@ -462,6 +517,16 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
           }}
         />
       )}
+      {arranqueDe && (
+        <ArranqueProyecto
+          proyecto={arranqueDe}
+          onCerrar={() => setArranqueDe(null)}
+          onVer={() => {
+            setArranqueDe(null)
+            setVista('servicios')
+          }}
+        />
+      )}
       {vista === 'config' && <ConfigProyectos datos={datos} onDatos={setDatos} />}
       {vista === 'agentes' && <ConfigAgentes datos={datos} biblioteca={biblioteca} onBiblioteca={setBiblioteca} />}
       {vista === 'github' && <GitHubCuenta datos={datos} onDatos={setDatos} />}
@@ -471,6 +536,23 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
       <Versiones datos={datos} visible={vista === 'versiones'} onDatos={setDatos} avisos={avisosEquipos} />
       <Api visible={vista === 'api'} />
       <Navegador visible={vista === 'navegador'} />
+      <Servicios
+        visible={vista === 'servicios'}
+        terminales={servicios.terminales}
+        activa={servicios.activa}
+        modo={servicios.modo}
+        reiniciarLayout={servicios.reiniciarLayout}
+        personalizado={servicios.personalizado}
+        estados={estadosArranque}
+        onModo={(modo) => setServicios((x) => ({ ...x, modo }))}
+        onActivar={(id) => setServicios((x) => (x.activa === id ? x : { ...x, activa: id }))}
+        onCerrar={(id) => setServicios((x) => ({ ...x, terminales: x.terminales.filter((t) => t.id !== id), activa: x.activa === id ? (x.terminales.filter((t) => t.id !== id).at(-1)?.id ?? null) : x.activa }))}
+        onPty={(id, ptyId) => setServicios((x) => ({ ...x, terminales: x.terminales.map((t) => (t.id === id ? { ...t, ptyId } : t)) }))}
+        onPersonalizado={(personalizado) => setServicios((x) => (x.personalizado === personalizado ? x : { ...x, personalizado }))}
+        onReorganizar={() => setServicios((x) => ({ ...x, reiniciarLayout: x.reiniciarLayout + 1 }))}
+        onDetener={detenerServicio}
+        onDetenerTodo={() => [...new Set(servicios.terminales.flatMap((t) => (t.arranque ? [t.arranque.proyectoId] : [])))].forEach((proyectoId) => void window.api.arranque.operar('detener', { proyectoId }).catch(() => undefined))}
+      />
       {guiaAbierta && (
         <Suspense fallback={null}>
           <Documentacion visible={vista === 'guia'} />

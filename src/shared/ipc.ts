@@ -11,6 +11,7 @@ import type { NombreOperacionTareas, OperacionesTareas } from './tareas'
 import type { NombreOperacionGit, OperacionesGit } from './versiones'
 import type { EstadoZoom } from './zoom'
 import type { NombreOperacionApi, OperacionesApi } from './api'
+import type { EstadoArranque, NombreOperacionArranque, OperacionesArranque, TerminalArranque } from './arranque'
 import type { NombreOperacionCredenciales, OperacionesCredenciales } from './credenciales'
 import type { NombreOperacionEquipos, OperacionesEquipos } from './equipos'
 import type { NombreOperacionGitHub, OperacionesGitHub } from './github'
@@ -91,6 +92,9 @@ export const Canales = {
   githubOperar: 'github:operar',
   equiposOperar: 'equipos:operar',
   credencialesOperar: 'credenciales:operar',
+  arranqueOperar: 'arranque:operar',
+  arranqueEstado: 'arranque:estado',
+  arranqueTerminal: 'arranque:terminal',
   historialOperar: 'historial:operar',
   navegadorAbrir: 'navegador:abrir',
   navegadorAccion: 'navegador:accion',
@@ -352,6 +356,14 @@ export interface ApiCentro {
   /** Historial local de versiones de los archivos de cada proyecto (independiente de git): consultar, comparar y restaurar. */
   historial: {
     operar<K extends NombreOperacionHistorial>(op: K, entrada: OperacionesHistorial[K]['entrada']): Promise<OperacionesHistorial[K]['salida']>
+  }
+  /** Comandos de arranque de cada proyecto: se lanzan en orden, esperando a que cada uno esté listo, y vigilando los puertos. */
+  arranque: {
+    operar<K extends NombreOperacionArranque>(op: K, entrada: OperacionesArranque[K]['entrada']): Promise<OperacionesArranque[K]['salida']>
+    /** Cambio de estado de un comando (pendiente, arrancando, listo, error, detenido, omitido). */
+    onEstado(cb: (e: EstadoArranque) => void): () => void
+    /** main abrió la terminal de un comando: hay que mostrarla en la pestaña del proyecto. */
+    onTerminal(cb: (t: TerminalArranque) => void): () => void
   }
   /** Credenciales de prueba de este equipo (por proyecto o grupo): no se sincronizan. */
   credenciales: {

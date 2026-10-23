@@ -41,7 +41,10 @@ import { ServicioApi } from './api/servicio'
 import { ejecutarOperacionApi } from './api/operaciones'
 import { abrirEnNavegadorDelSistema, GestorNavegador, rutaPreload } from './navegador'
 import { esPaginaDeLaApp } from './navegacion'
-import { servidoresLocales } from './puertos'
+import { cerrarProceso, duenoDePuerto, puertoAbierto, servidoresLocales } from './puertos'
+import { ArranqueNube } from './arranque/nube'
+import { ejecutarOperacionArranque } from './arranque/operaciones'
+import { ServicioArranque } from './arranque/servicio'
 import { HistorialComandos } from './historial-comandos'
 import { Registro } from './registro'
 import { cierreAnteriorInesperado, LimitadorRecargas, marcarCierreLimpio, marcarInicio, motivoRecuperable } from './estabilidad'
@@ -168,11 +171,43 @@ app.on('web-contents-created', (_e, wc) => {
   })
 })
 const terminales = new GestorTerminales({
-  onDatos: (id, datos, fin) => enviarA(id, Canales.terminalDatos, { id, datos, fin }),
+  onDatos: (id, datos, fin) => {
+    enviarA(id, Canales.terminalDatos, { id, datos, fin })
+    arranque.alDatos(id, datos)
+  },
   onSalida: (id, codigo) => {
     enviarA(id, Canales.terminalSalida, { id, codigo })
     duenos.delete(id)
+    arranque.alSalir(id)
   }
+})
+
+/** Comandos de arranque de cada proyecto: las terminales las abre main y la interfaz las adjunta a la pestaña del proyecto (`arranque:terminal`). */
+const avisarPrincipal = (canal: string, carga: unknown): void => {
+  if (principal && !principal.isDestroyed()) principal.webContents.send(canal, carga)
+}
+const arranque = new ServicioArranque({
+  almacen: new ArranqueNube(join(DIR, 'arranque')),
+  proyectos: async () => (await leerProyectos()).proyectos.map((p) => ({ id: p.id, nombre: p.nombre, ruta: p.ruta })),
+  terminales: {
+    crear: ({ cwd, cols, rows }) => {
+      const id = terminales.crear({ cwd, cols, rows })
+      if (principal && !principal.isDestroyed()) duenos.set(id, principal.webContents.id)
+      return id
+    },
+    escribir: (id, datos) => terminales.escribir(id, datos),
+    cerrar: (id) => {
+      terminales.cerrar(id)
+      duenos.delete(id)
+    },
+    enShell: (id) => terminales.enShell(id),
+    pid: (id) => terminales.pid(id)
+  },
+  puertoAbierto: (p) => puertoAbierto(p),
+  duenoDePuerto: (p) => duenoDePuerto(p),
+  cerrarProceso: (pid) => cerrarProceso(pid),
+  alEstado: (e) => avisarPrincipal(Canales.arranqueEstado, e),
+  alTerminal: (t) => avisarPrincipal(Canales.arranqueTerminal, t)
 })
 
 // Núcleo de agentes (Fase 1): sin aprobador, solo herramientas de lectura. La Fase 4 añade confirmación humana.
@@ -184,6 +219,7 @@ function cerrarDe(webContentsId: number): void {
     if (dueno !== webContentsId) continue
     terminales.cerrar(pty)
     duenos.delete(pty)
+    arranque.alSalir(pty)
   }
 }
 
@@ -440,6 +476,7 @@ function registrarIpc(): void {
   ipcMain.handle(Canales.gitOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGit(carpetaDeProyecto, op, entrada, nucleo.github.credencialesPara))
   ipcMain.handle(Canales.githubOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGitHub(nucleo.github, op, entrada))
   ipcMain.handle(Canales.historialOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionHistorial(historial, op, entrada))
+  ipcMain.handle(Canales.arranqueOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionArranque(arranque, op as never, entrada as never))
   ipcMain.handle(Canales.credencialesOperar, (_e, op: 'listar' | 'guardar' | 'eliminar', entrada: unknown) => ejecutarOperacionCredenciales(op, entrada as never))
   ipcMain.handle(Canales.equiposOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionEquipos(equipos, depsEquipos, op, entrada))
   ipcMain.handle(Canales.apiOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionApi(servicioApi, op, entrada))
@@ -554,7 +591,10 @@ function registrarIpc(): void {
   ipcMain.on(Canales.terminalRedimensionar, (_e, id: string, cols: number, rows: number) =>
     terminales.redimensionar(id, cols, rows)
   )
-  ipcMain.on(Canales.terminalCerrar, (_e, id: string) => terminales.cerrar(id))
+  ipcMain.on(Canales.terminalCerrar, (_e, id: string) => {
+    terminales.cerrar(id)
+    arranque.alSalir(id)
+  })
   ipcMain.on(Canales.registroEnviar, (_e, e: { level?: unknown; kind?: unknown; message?: unknown; stack?: unknown; context?: unknown }) => {
     if (!e || typeof e !== 'object') return
     const nivel = e.level === 'warn' || e.level === 'info' ? e.level : 'error'
@@ -649,6 +689,7 @@ app.on('before-quit', (e) => {
   registro.detener()
 })
 app.on('will-quit', () => {
+  arranque.cerrar()
   terminales.cerrarTodas()
   historial.detener()
 })
