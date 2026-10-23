@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { EstadoArranque, TerminalArranque } from '@shared/arranque'
 import type { CambioArchivo } from '@shared/archivos'
 import type { EventoAgente } from '@shared/core/agente'
 import type { ResumenUso } from '@shared/core/uso'
@@ -89,6 +90,11 @@ const api: ApiCentro = {
   },
   historial: {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.historialOperar, op, entrada)
+  },
+  arranque: {
+    operar: (op, entrada) => ipcRenderer.invoke(Canales.arranqueOperar, op, entrada),
+    onEstado: (cb) => suscribir<EstadoArranque>(Canales.arranqueEstado, cb),
+    onTerminal: (cb) => suscribir<TerminalArranque>(Canales.arranqueTerminal, cb)
   },
   credenciales: {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.credencialesOperar, op, entrada)

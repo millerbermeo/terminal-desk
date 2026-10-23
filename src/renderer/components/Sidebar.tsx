@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { trabajandoAhora, type AvisoEquipo, type PendienteClonar } from '@shared/equipos'
 import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
 import logo from '../assets/logo.png'
-import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoBuscar, IconoGitHub, IconoGlobo, IconoLibro, IconoMas, IconoNube, IconoPanelLateral, IconoRama, IconoTareas, IconoUsuario } from './Iconos'
+import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoBuscar, IconoGitHub, IconoGlobo, IconoLibro, IconoMas, IconoNube, IconoPanelLateral, IconoRama, IconoRayo, IconoTareas, IconoUsuario } from './Iconos'
 
 interface Props {
   datos: DatosProyectos
@@ -24,6 +24,12 @@ interface Props {
   pendientesAsistente: number
   /** Abre una celda del proyecto con el asistente integrado. */
   onAbrirAsistente: (p: Proyecto) => void
+  /** Abre los comandos de arranque del proyecto. */
+  onArranque: (p: Proyecto) => void
+  /** Proyectos con algún comando de arranque en marcha (para el indicador). */
+  enMarcha: ReadonlySet<string>
+  /** Servicios abiertos en la sección «Servicios» (insignia del acceso). */
+  serviciosActivos: number
   /** Cuenta con la que se entró al servidor; abre su panel (contraseña, cerrar sesión). */
   email?: string
   onCuenta: () => void
@@ -45,6 +51,7 @@ const NAV: { grupo: string; items: ItemNav[] }[] = [
   {
     grupo: 'Herramientas',
     items: [
+      { vista: 'servicios', icono: <IconoRayo />, texto: 'Servicios', titulo: 'Los comandos de arranque de tus proyectos en marcha (API, frontend, base de datos…), cada uno en su terminal' },
       { vista: 'asistente', icono: <IconoChispa />, texto: 'Asistente' },
       { vista: 'tareas', icono: <IconoTareas />, texto: 'Tareas' },
       { vista: 'versiones', icono: <IconoRama />, texto: 'Versiones' },
@@ -95,7 +102,7 @@ function useBarraCompacta(): [boolean, boolean, () => void] {
   return [manual || estrecho, estrecho, alternar]
 }
 
-export type Vista = 'terminales' | 'config' | 'github' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones' | 'api' | 'navegador' | 'guia'
+export type Vista = 'terminales' | 'servicios' | 'config' | 'github' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones' | 'api' | 'navegador' | 'guia'
 
 interface MenuIA {
   proyecto: Proyecto
@@ -103,7 +110,7 @@ interface MenuIA {
   left: number
 }
 
-export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, onAbrirCarpeta, onAgregarRuta, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente, onAbrirAsistente, email, onCuenta, pendientes, avisosPorProyecto, onClonarPendientes }: Props) {
+export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, onAbrirCarpeta, onAgregarRuta, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente, onAbrirAsistente, onArranque, enMarcha, serviciosActivos, email, onCuenta, pendientes, avisosPorProyecto, onClonarPendientes }: Props) {
   const [cerrados, setCerrados] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<MenuIA | null>(null)
   const [compacta, forzada, alternarCompacta] = useBarraCompacta()
@@ -185,6 +192,14 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
                       {terminalesPorProyecto[p.id]}
                     </span>
                   )}
+                </button>
+                <button
+                  className={`icono abrir-arranque${enMarcha.has(p.id) ? ' en-marcha' : ''}`}
+                  title={enMarcha.has(p.id) ? 'Comandos de arranque (hay servicios en marcha)' : 'Comandos de arranque'}
+                  aria-label={`Comandos de arranque de ${p.nombre}`}
+                  onClick={() => onArranque(p)}
+                >
+                  <IconoRayo />
                 </button>
                 <button
                   className="icono abrir-ia"
@@ -294,6 +309,7 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
               >
                 <span className="item-icono">{i.icono}</span>
                 <span className="txt">{i.texto}</span>
+                {i.vista === 'servicios' && serviciosActivos > 0 && <span className="insignia" title="Servicios abiertos">{serviciosActivos}</span>}
                 {i.vista === 'asistente' && pendientesAsistente > 0 && <span className="insignia" title="El asistente espera tu confirmación">{pendientesAsistente}</span>}
               </button>
             ))}

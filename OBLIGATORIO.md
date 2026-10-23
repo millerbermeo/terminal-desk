@@ -82,6 +82,7 @@ Biblioteca de recursos (compartidos o individuales de un proyecto) con activaci�
 ## 9. Historial local de versiones
 
 - **Migraciones 0008 y 0009** del API (`project_devices`: archivos cambiados, actividad e historial) y reiniciar el API.
+- **Migración 0011** del API (`project_start_commands`: comandos de arranque de cada proyecto, ver `docs/arranque.md`): `pnpm migration:ejecutar` y reiniciar el API **antes** de usar el escritorio nuevo; sin ella el ⚡ de los proyectos da error.
 - El historial vive en `~/.odesk-agent/historial/` (por proyecto, comprimido, con límite de 500 MB y recorte automático). **No sale del equipo**: a «Mis equipos» solo viajan nombres de archivo, número de versiones y fecha. Se puede apagar por proyecto o borrar desde Versiones → Historial local.
 - Los ganchos de `claude` en terminales ✦ funcionan con Linux/macOS; en Windows usan `cmd /c` (sin probar).
 

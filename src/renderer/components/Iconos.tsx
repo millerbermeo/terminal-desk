@@ -47,6 +47,9 @@ export const IconoBasura = () => (
 export const IconoAbrirTodas = () => (
   <Icono width={14} height={14}><path d="m5 4 14 8-14 8z" /></Icono>
 )
+export const IconoDetener = () => (
+  <Icono width={14} height={14}><rect x="6" y="6" width="12" height="12" rx="1.5" /></Icono>
+)
 export const IconoChispa = () => (
   <Icono width={14} height={14}><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.7 1.8L21.5 18.5l-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z" /></Icono>
 )
