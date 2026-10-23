@@ -125,7 +125,7 @@ function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
       return (
         <div className="ag-nota">
           ♻ Conversación continuada en una sesión nueva con un resumen
-          {e.motivo === 'contexto' ? ` (el contexto llegó a ${Math.round(e.tokensAntes / 1000)} k tokens)` : e.motivo === 'imagenes' ? ` (había ${e.imagenes} imágenes en el contexto)` : ' (la caché del contexto caducó tras un rato sin usarla)'}
+          {e.motivo === 'contexto' ? ` (el contexto llegó a ${Math.round(e.tokensAntes / 1000)} k tokens)` : e.motivo === 'imagenes' ? ` (había ${e.imagenes} imágenes en el contexto)` : e.motivo === 'modelo' ? ' (cambiaste de modelo: la caché del contexto es por modelo)' : e.motivo === 'cuenta' ? ' (cambiaste de cuenta: la caché del contexto es por cuenta)' : ' (la caché del contexto caducó tras un rato sin usarla)'}
           {e.conModelo ? '' : ' — resumen básico: el modelo no respondió'}. Así cada mensaje gasta muchos menos tokens.
         </div>
       )
@@ -138,6 +138,12 @@ function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
       )
     case 'aprobacion_automatica':
       return <div className="ag-nota">✓ {e.clase === 'plan' ? 'Plan' : 'Acción'} aprobado automáticamente ({e.motivo})</div>
+    case 'continuacion_automatica':
+      return (
+        <div className="ag-nota">
+          ↻ Topó el límite de pasos de una sola respuesta; sigue sola (ronda {e.ronda} de {e.max}).
+        </div>
+      )
     case 'comando_salida':
       return (
         <details className={`ag-herramienta${e.ok ? '' : ' error'}`} open>
@@ -186,7 +192,7 @@ function TurnoVista({ t, onCancelar, onDeshacer }: { t: Turno; onCancelar: () =>
           <div className="ag-texto">{t.parcial}</div>
         </div>
       )}
-      {t.error && <div className="ag-final mal">{t.error}</div>}
+      {t.error && <div className={`ag-final ${t.estado === 'limite_pasos' || t.estado === 'cancelado' ? 'aviso' : 'mal'}`}>{t.error}</div>}
       <div className="ag-pie">
         <span className={`chip estado-${t.estado}`}>{ESTADO[t.estado]}</span>
         {t.estado === 'en_curso' && (

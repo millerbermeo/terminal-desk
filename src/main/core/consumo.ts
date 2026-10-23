@@ -59,6 +59,9 @@ export interface MetaSesionCli {
   ultimaActividad: number
   /** Acumulado que informó el CLI por modelo, para restar lo anterior (`diferenciaUso`). */
   acumulado: Record<string, AcumuladoModelo>
+  /** Modelo y cuenta de suscripción con los que corrió la última ejecución: si cambian, la caché del prompt (por cuenta+modelo) queda fría. */
+  modelo?: string
+  cuenta?: string
   /** Resumen de la sesión anterior que aún no llegó a una sesión nueva (la ejecución que lo llevaba falló antes de guardarla). */
   pendiente?: string
   rotaciones: number
@@ -94,13 +97,30 @@ export const umbralesDeEntorno = (env: NodeJS.ProcessEnv = process.env): Umbrale
   contextoMinimoInactivo: entero(env.ODESK_ROTAR_INACTIVO_CONTEXTO, 90_000)
 })
 
-export type MotivoRotacion = 'contexto' | 'imagenes' | 'inactividad'
+/**
+ * En modo autónomo, cuántas veces seguidas se puede continuar solo tras topar el límite de pasos de una sola respuesta
+ * (`MAX_PASOS_EJECUCION`) antes de parar y esperar a que el usuario lo pida a mano. Una tarea larga legítima (un
+ * refactor grande) topa ese límite varias veces seguidas sin que sea un bucle; 0 vuelve al comportamiento de siempre
+ * (parar en la primera vez).
+ */
+export const maxContinuarAutomatico = (env: NodeJS.ProcessEnv = process.env): number => entero(env.ODESK_MAX_CONTINUAR_AUTO, 6)
 
-/** ¿Conviene abrir una sesión nueva con un resumen en vez de reanudar? (Un umbral en 0 lo desactiva.) */
-export function decidirRotacion(meta: MetaSesionCli | undefined, u: UmbralesRotacion, ahora: number = Date.now()): MotivoRotacion | undefined {
+export type MotivoRotacion = 'contexto' | 'imagenes' | 'inactividad' | 'modelo' | 'cuenta'
+
+/**
+ * ¿Conviene abrir una sesión nueva con un resumen en vez de reanudar? (Un umbral en 0 lo desactiva.)
+ * `actual.modelo`/`actual.cuenta` son con los que va a correr ESTA ejecución: la caché de prompt de la API es por cuenta+modelo,
+ * así que reanudar con otro cualquiera de los dos cae en caché fría y cuesta el contexto entero, igual que la inactividad larga
+ * (por eso comparte el mismo umbral mínimo: con poco contexto no compensa resumir).
+ */
+export function decidirRotacion(meta: MetaSesionCli | undefined, u: UmbralesRotacion, ahora: number = Date.now(), actual?: { modelo?: string; cuenta?: string }): MotivoRotacion | undefined {
   if (!meta) return undefined
   if (u.contexto > 0 && meta.contexto >= u.contexto) return 'contexto'
   if (u.imagenes > 0 && meta.imagenes >= u.imagenes) return 'imagenes'
+  if (meta.contexto >= u.contextoMinimoInactivo) {
+    if (actual?.modelo && meta.modelo && actual.modelo !== meta.modelo) return 'modelo'
+    if (actual?.cuenta && meta.cuenta && actual.cuenta !== meta.cuenta) return 'cuenta'
+  }
   if (u.inactividadMs > 0 && meta.ultimaActividad > 0 && ahora - meta.ultimaActividad >= u.inactividadMs && meta.contexto >= u.contextoMinimoInactivo) return 'inactividad'
   return undefined
 }

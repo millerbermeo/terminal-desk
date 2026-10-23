@@ -54,9 +54,11 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
   /** La cuenta de suscripción activa llegó a su límite y la ejecución continúa con otra. */
   | { tipo: 'cuenta_cambiada'; de: string; a: string; hasta?: number }
   /** El Asistente abrió una sesión nueva con un resumen en vez de seguir arrastrando un contexto enorme (cada llamada lo reenvía entero). */
-  | { tipo: 'contexto_compactado'; motivo: 'contexto' | 'imagenes' | 'inactividad'; tokensAntes: number; imagenes: number; conModelo: boolean }
+  | { tipo: 'contexto_compactado'; motivo: 'contexto' | 'imagenes' | 'inactividad' | 'modelo' | 'cuenta'; tokensAntes: number; imagenes: number; conModelo: boolean }
   /** Aviso de consumo: el contexto de la conversación o el gasto de una ejecución son altos. */
   | { tipo: 'aviso_consumo'; motivo: 'contexto' | 'costo'; tokens?: number; costo?: number }
+  /** En modo autónomo, la respuesta topó el límite de pasos y se le pidió continuar sola (sin que el usuario lo escriba). */
+  | { tipo: 'continuacion_automatica'; ronda: number; max: number }
 )
 
 export type Complejidad = 'simple' | 'media' | 'compleja'

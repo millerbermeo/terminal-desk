@@ -531,6 +531,11 @@ export function argumentosCli(o: OpcionesProceso, entradaPorStream: boolean): st
 export function entornoEjecucion(carpeta?: string): NodeJS.ProcessEnv {
   const env = entornoSuscripcion(carpeta)
   env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING ??= 'true'
+  // El propio plugin Caveman trata toda sesión headless/SDK (como este `claude -p`) como «manual» (opt-in) por
+  // defecto, aunque esté cargado con --plugin-dir: así un tool probe que parsea la respuesta no la recibe comprimida
+  // sin pedirlo. CAVEMAN_DEFAULT_MODE es la salida documentada por el plugin para volver a activarlo solo; sin esto
+  // el Asistente nunca lo activa por su cuenta y hay que pedírselo cada conversación.
+  env.CAVEMAN_DEFAULT_MODE ??= 'full'
   return env
 }
 
@@ -723,10 +728,11 @@ export class LectorTurno {
     if (contexto > 0) o.alEvento({ tipo: 'uso_contexto', tokens: contexto, ...(this.modelo ? { modelo: this.modelo } : {}), ...(this.ventana ? { ventana: this.ventana } : {}) })
 
     const uso = this.final?.uso ?? this.ultimoUso
-    const fallo = this.cortado ? true : this.final ? this.final.esError : codigo !== 0
+    // Topar MAX_PASOS no es un fallo del CLI (la ejecución iba bien): se corta por seguridad, no porque algo se rompió.
+    const fallo = this.cortado ? false : this.final ? this.final.esError : codigo !== 0
     const mensaje = cancelado ? undefined : this.cortado ? this.cortado : fallo ? (this.final?.error || errores.trim() || `El CLI terminó con código ${codigo}`) : undefined
     const resultado: ResultadoAgente = {
-      estado: cancelado ? 'cancelado' : fallo ? 'error' : 'completado',
+      estado: cancelado ? 'cancelado' : this.cortado ? 'limite_pasos' : fallo ? 'error' : 'completado',
       texto: this.final?.texto || this.ultimoTexto,
       mensajes: [],
       // El total de la ejecución es la suma de lo consumido por todos los modelos (subagentes incluidos); sin eso, la última llamada.

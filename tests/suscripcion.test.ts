@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { EventoAgente } from '@shared/core/agente'
-import { ejecutarSuscripcion, estadoSesion, permisosCli, Preferencias, SesionesCli } from '../src/main/core/suscripcion'
+import { ejecutarSuscripcion, entornoEjecucion, estadoSesion, permisosCli, Preferencias, SesionesCli } from '../src/main/core/suscripcion'
 
 // `claude` falso: responde a `auth status` y, en modo `-p`, emite un stream-json fijo y vuelca sus argumentos y stdin.
 const FALSO = `#!/usr/bin/env node
@@ -127,6 +127,22 @@ describe('suscripción (CLI claude)', () => {
     await s.guardar('a', 'x')
     expect(await s.obtener('a')).toBe('x')
     expect(await s.obtener('b')).toBeUndefined()
+  })
+})
+
+describe('entornoEjecucion (Asistente)', () => {
+  it('activa Caveman por defecto (el plugin headless/SDK lo trata como manual sin esto)', () => {
+    delete process.env.CAVEMAN_DEFAULT_MODE
+    expect(entornoEjecucion().CAVEMAN_DEFAULT_MODE).toBe('full')
+  })
+
+  it('respeta un CAVEMAN_DEFAULT_MODE que el usuario ya haya fijado', () => {
+    process.env.CAVEMAN_DEFAULT_MODE = 'off'
+    try {
+      expect(entornoEjecucion().CAVEMAN_DEFAULT_MODE).toBe('off')
+    } finally {
+      delete process.env.CAVEMAN_DEFAULT_MODE
+    }
   })
 })
 
