@@ -204,11 +204,11 @@ describe('proceso persistente del CLI', () => {
     pool.cerrarTodos()
   })
 
-  it('corta un turno que pasa del tope de pasos', async () => {
+  it('corta un turno que pasa del tope de pasos sin tratarlo como un fallo del CLI', async () => {
     await writeFile(volcado, '')
     const pool = new ProcesosCli(4, 60_000)
     const r = await ejecutarEnProceso(pool, 'c5', opciones({ prompt: 'BUCLE' }).o)
-    expect(r.resultado.estado).toBe('error')
+    expect(r.resultado.estado).toBe('limite_pasos')
     expect(r.resultado.error).toMatch(/pasó de 4 pasos/)
     pool.cerrarTodos()
   })
@@ -343,5 +343,33 @@ describe('Nucleo con proceso persistente', () => {
     await n.sesiones.anotarUso('no-existe', { tokensEntrada: 1, tokensSalida: 1 })
     expect(await n.sesiones.fijarTituloAuto('no-existe', 'x')).toBe(false)
     expect(await n.sesiones.obtener('no-existe')).toBeUndefined()
+  })
+
+  it('en modo autónomo, si topa el límite de pasos sigue sola hasta terminar: no hace falta que el usuario escriba «continúa»', async () => {
+    await writeFile(volcado, '')
+    vi.stubEnv('ODESK_SIN_TITULO', '1')
+    const n = await nuevo()
+    const eventos = await new Promise<EventoAgente[]>((resolver) => {
+      const ev: EventoAgente[] = []
+      void n.ejecutar({ prompt: 'BUCLE', proyectoId: 'p1', sesionId: 's-auto', autonomia: 'autonomo' }, (e) => {
+        ev.push(e)
+        if (e.tipo === 'fin') resolver(ev)
+      })
+    })
+    expect(eventos.filter((e) => e.tipo === 'continuacion_automatica')).toMatchObject([{ tipo: 'continuacion_automatica', ronda: 1 }])
+    expect(eventos.find((e) => e.tipo === 'fin')).toMatchObject({ resultado: { estado: 'completado' } })
+    const usuario = (await lineas()).filter((x) => x.usuario)
+    expect(usuario).toHaveLength(2) // el mensaje original (tope a los 10 pasos) + la continuación automática (termina en uno)
+    expect(usuario[1]!.usuario).toMatch(/Continúa/)
+  })
+
+  it('fuera de autónomo, topar el límite de pasos para la tarea y espera a que el usuario la retome', async () => {
+    await writeFile(volcado, '')
+    vi.stubEnv('ODESK_SIN_TITULO', '1')
+    const n = await nuevo()
+    const eventos = await ejecutar(n, 's-manual', 'BUCLE')
+    expect(eventos.filter((e) => e.tipo === 'continuacion_automatica')).toHaveLength(0)
+    expect(eventos.find((e) => e.tipo === 'fin')).toMatchObject({ resultado: { estado: 'limite_pasos' } })
+    expect((await lineas()).filter((x) => x.usuario)).toHaveLength(1)
   })
 })

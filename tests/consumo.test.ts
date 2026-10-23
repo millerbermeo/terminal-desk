@@ -74,6 +74,22 @@ describe('decidirRotacion', () => {
     expect(decidirRotacion(meta({ contexto: 60_000 }), e, ahora)).toBe('contexto')
     expect(decidirRotacion(meta({ contexto: 1, imagenes: 99 }), e, ahora)).toBeUndefined()
   })
+
+  it('rota al cambiar de modelo o de cuenta: la caché de la API es por esos dos', () => {
+    const base = meta({ contexto: 100_000, modelo: 'claude-sonnet-5-5', cuenta: 'cuenta-a' })
+    expect(decidirRotacion(base, u, ahora, { modelo: 'claude-opus-5-5', cuenta: 'cuenta-a' })).toBe('modelo')
+    expect(decidirRotacion(base, u, ahora, { modelo: 'claude-sonnet-5-5', cuenta: 'cuenta-b' })).toBe('cuenta')
+    expect(decidirRotacion(base, u, ahora, { modelo: 'claude-sonnet-5-5', cuenta: 'cuenta-a' })).toBeUndefined()
+  })
+
+  it('con poco contexto, cambiar de modelo o cuenta tampoco compensa resumir', () => {
+    const base = meta({ contexto: 40_000, modelo: 'claude-sonnet-5-5', cuenta: 'cuenta-a' })
+    expect(decidirRotacion(base, u, ahora, { modelo: 'claude-opus-5-5', cuenta: 'cuenta-a' })).toBeUndefined()
+  })
+
+  it('sin modelo/cuenta previos registrados (sesión vieja) no rota por eso', () => {
+    expect(decidirRotacion(meta({ contexto: 100_000 }), u, ahora, { modelo: 'claude-opus-5-5', cuenta: 'cuenta-a' })).toBeUndefined()
+  })
 })
 
 describe('presupuestoTurnoUsd', () => {

@@ -17,7 +17,7 @@ import { Canales } from '@shared/ipc'
 import { carpetasHermanas, pluginAgentesAsistente } from '../agentes'
 import { pluginCavemanLigero } from '../caveman'
 import { pluginGuardia } from '../guardia'
-import { AVISO_CONTEXTO, AVISO_COSTO_TURNO, bloqueContextoPrevio, decidirRotacion, MetaSesionesCli, presupuestoTurnoUsd, umbralesDeEntorno } from './consumo'
+import { AVISO_CONTEXTO, AVISO_COSTO_TURNO, bloqueContextoPrevio, decidirRotacion, maxContinuarAutomatico, MetaSesionesCli, type MotivoRotacion, presupuestoTurnoUsd, umbralesDeEntorno } from './consumo'
 import { prepararRotacion } from './rotacion'
 import { Bitacora } from './bitacora'
 import { leerProveedores } from '../proveedores'
@@ -512,7 +512,7 @@ export class Nucleo {
     const prompt = partes.length ? `${partes.join('\n\n')}\n\n${sol.prompt}` : sol.prompt
 
     void (async () => {
-      let estado: 'completado' | 'cancelado' | 'error' = 'completado'
+      let estado: 'completado' | 'cancelado' | 'error' | 'limite_pasos' = 'completado'
       try {
         // Playwright de serie y los servidores de mcp.json también llegan al CLI (antes solo existían en modo API).
         const externos = servidoresExternos((await leerConfigMcp().catch(() => ({ servidores: {} }))).servidores)
@@ -546,30 +546,32 @@ export class Nucleo {
           this.procesos.cerrar(sesionId) // si quedó vivo, trae el contexto viejo
           prefijoPrompt = bloqueContextoPrevio(meta.pendiente, 'contexto')
         }
-        // Como hace Claude Code al compactar: si el contexto ya es enorme (o lleno de imágenes, o la caché caducó), se sigue en una
-        // sesión nueva con un resumen en vez de reenviar cientos de miles de tokens en cada llamada.
-        const motivoRotacion = previa ? decidirRotacion(meta, umbralesDeEntorno()) : undefined
-        if (previa && motivoRotacion) {
+        // Como hace Claude Code al compactar: si el contexto ya es enorme (o lleno de imágenes, la caché caducó, o se cambió
+        // de modelo/cuenta —la caché de la API es por esos dos—), se sigue en una sesión nueva con un resumen en vez de
+        // reenviar cientos de miles de tokens a precio de caché fría en cada llamada.
+        const rotar = async (motivo: MotivoRotacion): Promise<boolean> => {
           const rot = await prepararRotacion({
             sesion: await this.sesiones.obtener(sesionId),
-            motivo: motivoRotacion,
+            motivo,
             ...(this.cuentas.carpetaDe(cuenta) ? { carpeta: this.cuentas.carpetaDe(cuenta)! } : {}),
             cwd: proyecto?.ruta ?? process.cwd(),
             senal: ctl.signal,
             alUso: (u) => u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo }))
           }).catch(() => undefined)
-          if (rot) {
-            emitir({ tipo: 'contexto_compactado', motivo: motivoRotacion, tokensAntes: meta?.contexto ?? 0, imagenes: meta?.imagenes ?? 0, conModelo: rot.conModelo })
-            prefijoPrompt = rot.bloque
-            this.procesos.cerrar(sesionId) // el proceso vivo trae el contexto viejo: la sesión nueva arranca limpia
-            await this.metaCli.actualizar(sesionId, (m) => {
-              const { hashDinamico: _h, ...resto } = m
-              return { ...resto, pendiente: rot.resumen, contexto: 0, imagenes: 0, acumulado: {}, rotaciones: m.rotaciones + 1 }
-            })
-            meta = await this.metaCli.obtener(sesionId)
-            previa = undefined
-          }
+          if (!rot) return false
+          emitir({ tipo: 'contexto_compactado', motivo, tokensAntes: meta?.contexto ?? 0, imagenes: meta?.imagenes ?? 0, conModelo: rot.conModelo })
+          prefijoPrompt = rot.bloque
+          this.procesos.cerrar(sesionId) // el proceso vivo trae el contexto viejo: la sesión nueva arranca limpia
+          await this.metaCli.actualizar(sesionId, (m) => {
+            const { hashDinamico: _h, ...resto } = m
+            return { ...resto, pendiente: rot.resumen, contexto: 0, imagenes: 0, acumulado: {}, rotaciones: m.rotaciones + 1 }
+          })
+          meta = await this.metaCli.obtener(sesionId)
+          previa = undefined
+          return true
         }
+        const motivoRotacion = previa ? decidirRotacion(meta, umbralesDeEntorno(), Date.now(), { modelo: sol.modelo, cuenta }) : undefined
+        if (previa && motivoRotacion) await rotar(motivoRotacion)
         // Lo que cambia entre mensajes (memoria relevante, tareas, estado de git) va delante del mensaje y solo si cambió desde la última vez;
         // los avisos pendientes (p. ej. archivos deshechos) también. Una sesión nueva (o recién resumida) lo necesita todo.
         const hashDinamico = dinamico ? createHash('sha1').update(dinamico).digest('hex') : undefined
@@ -588,6 +590,9 @@ export class Nucleo {
           carpetasExtra: [...(carpeta ? [carpeta] : []), ...hermanas.map((h) => h.ruta)]
         }
         this.vivas.set(id, viva)
+        let promptActual = prompt
+        let auto = 0
+        const maxAuto = maxContinuarAutomatico()
         for (;;) {
           probadas.add(cuenta)
           // Con otra cuenta la conversación sigue: se copia su archivo a la carpeta de esa cuenta (sin reenviar el historial).
@@ -604,7 +609,7 @@ export class Nucleo {
               const costo = u.reduce((t, x) => t + x.costo, 0)
               if (costo >= AVISO_COSTO_TURNO) emitir({ tipo: 'aviso_consumo', motivo: 'costo', costo })
             },
-            prompt,
+            prompt: promptActual,
             ...(prefijoPrompt ? { prefijoPrompt } : {}),
             mensajeId,
             conAgentes: Boolean(pluginProyecto),
@@ -626,10 +631,11 @@ export class Nucleo {
             senal: ctl.signal,
             alEvento: emitir,
             retenerFin: true,
-            omitirInicio: probadas.size > 1
+            omitirInicio: probadas.size > 1 || auto > 0
           })
           // Una ejecución rechazada por el límite no deja conversación válida: no pisa la anterior.
           if (r.sesionCli && !r.limite) {
+            previa = r.sesionCli // si se sigue en el mismo turno (continuación automática, otra cuenta), que reanude desde aquí
             await this.sesionesCli.guardar(sesionId, r.sesionCli)
             await this.metaCli.actualizar(sesionId, (m) => {
               const { pendiente: _resumido, aviso: _aviso, ...resto } = m
@@ -640,7 +646,9 @@ export class Nucleo {
                 ...(r.ventana ? { ventana: r.ventana } : {}),
                 imagenes: m.imagenes + r.imagenes,
                 ultimaActividad: Date.now(),
-                acumulado: r.acumulado ?? m.acumulado
+                acumulado: r.acumulado ?? m.acumulado,
+                ...(sol.modelo ? { modelo: sol.modelo } : {}),
+                cuenta
               }
             }).catch(() => undefined)
             if (r.contexto >= AVISO_CONTEXTO) emitir({ tipo: 'aviso_consumo', motivo: 'contexto', tokens: r.contexto })
@@ -657,11 +665,23 @@ export class Nucleo {
               emitir({ tipo: 'cuenta_cambiada', de: nombres.get(cuenta) ?? cuenta, a: nombres.get(siguiente) ?? siguiente, ...(r.limite.hasta ? { hasta: r.limite.hasta } : {}) })
               await this.cuentas.activar(siguiente)
               cuenta = siguiente
+              // Esta cuenta nueva no comparte la caché de prompt de la que se agotó: sin resumen, reanudar le cuesta el contexto entero.
+              const motivoFallo = previa ? decidirRotacion(meta, umbralesDeEntorno(), Date.now(), { cuenta }) : undefined
+              if (motivoFallo) await rotar(motivoFallo)
               continue
             }
           }
+          // La respuesta topó el límite de pasos de una sola llamada (posible bucle) pero iba bien: en autónomo se le
+          // pide seguir sola, como ya hace el usuario a mano («continúa»), en vez de cortar la tarea cada vez.
+          if (r.resultado.estado === 'limite_pasos' && autonomia === 'autonomo' && !ctl.signal.aborted && auto < maxAuto) {
+            auto++
+            promptActual = 'Continúa exactamente donde quedaste (se cortó por el límite de pasos de una sola respuesta, no porque terminaste). No repitas pasos ya hechos.'
+            prefijoPrompt = undefined // ya se le mandó una vez en este turno; seguir mandándolo sería redundante
+            emitir({ tipo: 'continuacion_automatica', ronda: auto, max: maxAuto })
+            continue
+          }
           emitir({ tipo: 'fin', resultado: r.resultado })
-          if (r.resultado.estado !== 'completado') estado = r.resultado.estado === 'cancelado' ? 'cancelado' : 'error'
+          if (r.resultado.estado !== 'completado') estado = r.resultado.estado === 'cancelado' ? 'cancelado' : r.resultado.estado === 'limite_pasos' ? 'limite_pasos' : 'error'
           break
         }
       } catch (err) {
