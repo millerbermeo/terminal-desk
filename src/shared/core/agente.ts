@@ -52,7 +52,7 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
   | { tipo: 'comando_salida'; nombre: string; linea: string; ok: boolean; salida: string; duracionMs: number }
   | { tipo: 'a2a'; de: string; a: string; fase: 'envio' | 'respuesta'; texto: string }
   /** La cuenta de suscripción activa llegó a su límite y la ejecución continúa con otra. */
-  | { tipo: 'cuenta_cambiada'; de: string; a: string; hasta?: number }
+  | { tipo: 'cuenta_cambiada'; de: string; a: string; hasta?: number; /** Se cortó a mitad de la tarea y la otra cuenta sigue desde ahí. */ continua?: boolean }
   /** El Asistente abrió una sesión nueva con un resumen en vez de seguir arrastrando un contexto enorme (cada llamada lo reenvía entero). */
   | { tipo: 'contexto_compactado'; motivo: 'contexto' | 'imagenes' | 'inactividad' | 'modelo' | 'cuenta'; tokensAntes: number; imagenes: number; conModelo: boolean }
   /** Aviso de consumo: el contexto de la conversación o el gasto de una ejecución son altos. */

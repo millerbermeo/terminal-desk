@@ -63,7 +63,7 @@ export async function llamarTareas(dir: string, herramienta: string, entrada: un
       if (i < 0) return
       try {
         const r = JSON.parse(buffer.slice(0, i)) as RespuestaTareas
-        if (r.id === id) terminar({ texto: String(r.texto ?? ''), ...(r.error ? { error: true } : {}) })
+        if (r.id === id) terminar({ texto: String(r.texto ?? ''), ...(r.error ? { error: true } : {}), ...(r.imagen ? { imagen: r.imagen } : {}) })
       } catch {
         terminar({ texto: 'Respuesta inválida de Odesk Agent.', error: true })
       }

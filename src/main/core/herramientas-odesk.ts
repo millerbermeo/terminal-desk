@@ -1,3 +1,4 @@
+import { isAbsolute, resolve } from 'node:path'
 import type { CredencialEfectiva } from '@shared/credenciales'
 import type { ResultadoHerramienta } from '@shared/core/herramientas'
 import { esArchivoSensible } from '@shared/github'
@@ -5,6 +6,8 @@ import { HERRAMIENTAS_CREDENCIALES } from '@shared/credenciales-herramientas'
 import { HERRAMIENTAS_GIT } from '@shared/git-herramientas'
 import { HERRAMIENTAS_GITHUB } from '@shared/github-herramientas'
 import { HERRAMIENTAS_ODESK } from '@shared/herramientas-odesk'
+import { HERRAMIENTAS_MOVIL } from '@shared/movil-herramientas'
+import { HERRAMIENTAS_NAVEGADOR } from '@shared/navegador-herramientas'
 import { HERRAMIENTAS_TAREAS } from '@shared/tareas-herramientas'
 import type { ServicioGitHub } from '../github/servicio'
 import { ejecutarHerramientaTareas } from './tareas/herramientas'
@@ -26,6 +29,15 @@ export interface ServiciosOdesk {
   credenciales?: ProveedorCredenciales
   /** Credenciales de prueba locales del proyecto (y su grupo). */
   credencialesPrueba?: (proyectoId: string) => Promise<CredencialEfectiva[]>
+  /** Navegador integrado (solo con la app abierta; en tests o sin ventanas no existe). */
+  navegador?: () => ControlNavegador | undefined
+  /** Dispositivos Android por USB (adb), herramientas `movil_*`. */
+  movil?: () => ControlNavegador | undefined
+}
+
+/** Lo que el núcleo necesita del navegador integrado (o de los móviles): ejecutar una herramienta `navegador_*`/`movil_*` ya validada. */
+export interface ControlNavegador {
+  ejecutar(nombre: string, entrada: Record<string, unknown>): Promise<ResultadoHerramienta>
 }
 
 const MAX_SALIDA = 30_000
@@ -137,7 +149,7 @@ async function ejecutarGitHub(s: ServiciosOdesk, nombre: string, e: Entrada, pro
 }
 
 /**
- * Un único punto de entrada para todas las herramientas de la aplicación (tareas, git y GitHub): lo usan el registro del núcleo (modo
+ * Un único punto de entrada para todas las herramientas de la aplicación (tareas, git, GitHub y navegador): lo usan el registro del núcleo (modo
  * API) y el servidor MCP (suscripción y terminales ✦). Valida la entrada y nunca lanza: los fallos vuelven como resultado con `error`.
  */
 async function ejecutarCredenciales(s: ServiciosOdesk, nombre: string, entrada: unknown, ctx: ContextoOdesk): Promise<ResultadoHerramienta> {
@@ -158,8 +170,52 @@ async function ejecutarCredenciales(s: ServiciosOdesk, nombre: string, entrada: 
   return { texto: aTexto({ nombre: c.nombre, ...(c.notas ? { notas: c.notas } : {}), campos: Object.fromEntries(c.campos.map((f) => [f.clave, f.valor])) }) }
 }
 
+/** Los modelos a veces mandan los números como texto («2»): se aceptan antes de validar. */
+function conNumeros(entrada: unknown, esquema: (typeof HERRAMIENTAS_ODESK)[number]['esquema']): unknown {
+  if (!entrada || typeof entrada !== 'object' || Array.isArray(entrada)) return entrada
+  const e = { ...(entrada as Entrada) }
+  for (const [k, def] of Object.entries(esquema.properties ?? {})) {
+    if (def.type === 'number' && typeof e[k] === 'string' && (e[k] as string).trim() !== '' && Number.isFinite(Number(e[k]))) e[k] = Number(e[k])
+    if (def.type === 'boolean' && (e[k] === 'true' || e[k] === 'false')) e[k] = e[k] === 'true'
+  }
+  return e
+}
+
+/** Herramientas que ejecuta un servicio de la app abierta (navegador integrado, móviles): se validan aquí y se delegan. */
+async function ejecutarControlado(
+  defs: readonly (typeof HERRAMIENTAS_ODESK)[number][],
+  control: ControlNavegador | undefined,
+  sinControl: string,
+  nombre: string,
+  entrada: unknown,
+  preparar?: (e: Entrada) => Promise<Entrada>
+): Promise<ResultadoHerramienta> {
+  const def = defs.find((h) => h.nombre === nombre)!
+  const e = conNumeros(entrada ?? {}, def.esquema)
+  const motivo = validarEntrada(def.esquema, e)
+  if (motivo) return { texto: `Entrada inválida para ${nombre}: ${motivo}`, error: true }
+  if (!control) return { texto: sinControl, error: true }
+  try {
+    return await control.ejecutar(nombre, preparar ? await preparar(e as Entrada) : (e as Entrada))
+  } catch (err) {
+    return { texto: (err as Error).message, error: true }
+  }
+}
+
+/** Un APK con ruta relativa se busca en la carpeta del proyecto (el servicio de móviles solo recibe rutas absolutas). */
+const conRutaApk = (s: ServiciosOdesk, ctx: ContextoOdesk) => async (e: Entrada): Promise<Entrada> => {
+  if (typeof e.apk !== 'string' || isAbsolute(e.apk)) return e
+  const proyectoId = (typeof e.proyecto_id === 'string' && e.proyecto_id ? e.proyecto_id : ctx.proyectoId) ?? ''
+  if (!proyectoId) throw new Error('La ruta del APK es relativa y esta conversación no está ligada a un proyecto: pasa la ruta completa o proyecto_id.')
+  return { ...e, apk: resolve(await s.carpetaDe(proyectoId), e.apk) }
+}
+
 export function crearEjecutorOdesk(s: ServiciosOdesk): EjecutorOdesk {
   return async (nombre, entrada, ctx = {}) => {
+    if (HERRAMIENTAS_NAVEGADOR.some((h) => h.nombre === nombre))
+      return ejecutarControlado(HERRAMIENTAS_NAVEGADOR, s.navegador?.(), 'El navegador integrado solo está disponible con Odesk Agent abierto.', nombre, entrada)
+    if (HERRAMIENTAS_MOVIL.some((h) => h.nombre === nombre))
+      return ejecutarControlado(HERRAMIENTAS_MOVIL, s.movil?.(), 'Los dispositivos móviles solo están disponibles con Odesk Agent abierto.', nombre, entrada, conRutaApk(s, ctx))
     if (HERRAMIENTAS_TAREAS.some((h) => h.nombre === nombre)) return ejecutarHerramientaTareas(s.tareas, nombre, entrada, ctx)
     if (HERRAMIENTAS_CREDENCIALES.some((h) => h.nombre === nombre)) return ejecutarCredenciales(s, nombre, entrada, ctx)
     const def = [...HERRAMIENTAS_GIT, ...HERRAMIENTAS_GITHUB].find((h) => h.nombre === nombre)

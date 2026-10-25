@@ -31,9 +31,11 @@ export function analizarConfigMcp(crudo: unknown): ConfigMcp {
  * manda (para cambiar los args o apagarlo: `"playwright": { "comando": "npx", "deshabilitado": true }`).
  */
 const SERVIDORES_DE_SERIE: Record<string, ServidorMcpConfig> = {
-  // Navegador controlado por la IA (pruebas de UI, capturas, scraping). Headless para no abrir ventanas en medio del trabajo.
+  // Navegador controlado por la IA (pruebas de UI, capturas, scraping), con ventana visible: se ve en directo lo que hace. `--isolated`:
+  // cada sesión lanza su propio Chromium con perfil temporal, así varias conversaciones pueden usarlo a la vez sin chocar por el perfil.
+  // (El navegador integrado de Odesk tiene además sus propias herramientas `navegador_*` en el servidor «odesk».)
   // «escritura»: en suscripción se permite desde «Aceptar ediciones» (en «Preguntar» no hay quien confirme); en modo API sigue pidiendo confirmación.
-  playwright: { comando: 'npx', args: ['-y', '@playwright/mcp@latest', '--headless'], env: {}, deshabilitado: false, riesgo: 'escritura' }
+  playwright: { comando: 'npx', args: ['-y', '@playwright/mcp@latest', '--isolated'], env: {}, deshabilitado: false, riesgo: 'escritura' }
 }
 
 export function conServidoresDeSerie(config: ConfigMcp): ConfigMcp {

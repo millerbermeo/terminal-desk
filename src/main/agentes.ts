@@ -137,19 +137,20 @@ const HERRAMIENTAS_QUE_ESCRIBEN = 'Write|Edit|MultiEdit|NotebookEdit'
  */
 export function comandoGancho(
   mcp: NonNullable<ReturnType<typeof configMcpTareas>>,
-  momento: 'pre' | 'post',
+  momento: 'pre' | 'post' | 'bash',
   plataforma: NodeJS.Platform = process.platform
 ): string | undefined {
   const m = Object.values(mcp.mcpServers)[0]
   if (!m) return undefined
   const env = Object.entries(m.env)
+  const modo = momento === 'bash' ? ['hook-bash'] : ['hook-historial', momento]
   if (plataforma === 'win32') {
     // Con una ruta que `cmd` interpretaría (p. ej. una carpeta con `&` o `%`) no hay gancho: el vigilante de archivos sigue registrando.
     if ([m.command, ...m.args, ...env.flat()].some((t) => PELIGROSO_EN_CMD.test(t))) return undefined
-    const base = [m.command, ...m.args, 'hook-historial', momento].map((t) => citar(t, plataforma)).join(' ')
+    const base = [m.command, ...m.args, ...modo].map((t) => citar(t, plataforma)).join(' ')
     return `cmd /c "${env.map(([k, v]) => `set "${k}=${v}"&& `).join('')}${base}"`
   }
-  const base = [m.command, ...m.args, 'hook-historial', momento].map((t) => citar(t, plataforma)).join(' ')
+  const base = [m.command, ...m.args, ...modo].map((t) => citar(t, plataforma)).join(' ')
   return `${env.map(([k, v]) => `${k}=${citar(v, plataforma)}`).join(' ')} ${base}`
 }
 
@@ -158,8 +159,11 @@ export function configGanchosHistorial(mcp: NonNullable<ReturnType<typeof config
   const pre = comandoGancho(mcp, 'pre')
   const post = comandoGancho(mcp, 'post')
   if (!pre || !post) return undefined
+  const bash = comandoGancho(mcp, 'bash')
   const grupo = (command: string) => [{ matcher: HERRAMIENTAS_QUE_ESCRIBEN, hooks: [{ type: 'command', command, timeout: 10 }] }]
-  return JSON.stringify({ description: 'Historial local de versiones de Odesk Agent', hooks: { PreToolUse: grupo(pre), PostToolUse: grupo(post) } }, null, 2) + '\n'
+  // La guardia de comandos solo actúa en las terminales sin confirmación (la app les pone ODESK_GUARDIA_AUTONOMA=1).
+  const antes = [...grupo(pre), ...(bash ? [{ matcher: 'Bash', hooks: [{ type: 'command', command: bash, timeout: 10 }] }] : [])]
+  return JSON.stringify({ description: 'Historial local de versiones de Odesk Agent y guardia de comandos', hooks: { PreToolUse: antes, PostToolUse: grupo(post) } }, null, 2) + '\n'
 }
 
 /** Los valores van como cadenas JSON (YAML válido): sin problemas con comillas, dos puntos ni saltos de línea. */
@@ -179,19 +183,10 @@ function nombresUnicos(recursos: Recurso[]): Map<string, string> {
 }
 
 /**
- * Genera (o reutiliza) un plugin de Claude Code con los agentes y skills activos del proyecto.
- * La carpeta lleva el hash del contenido: es inmutable, así que varias terminales o cambios de
- * configuración nunca pisan archivos que una sesión en marcha pueda estar leyendo.
+ * Archivos del plugin de Claude Code (nombre `centro`) con esos agentes y skills y, si se pasa, el servidor MCP de tareas con los
+ * ganchos del historial. Puro: lo usan `construirPlugin` y los evals con el CLI real.
  */
-async function construirPlugin(proyectoId: string, conMcp = true): Promise<string | null> {
-  const datos = await leerProyectos()
-  const proyecto = datos.proyectos.find((p) => p.id === proyectoId)
-  if (!proyecto) return null
-  const activos = activosDe(await leerBiblioteca(), proyecto).map((a) => a.recurso)
-  // Además de los agentes y skills, el plugin lleva el servidor MCP de tareas: Claude Code ve las tareas del proyecto.
-  const mcp = conMcp ? configMcpTareas(proyectoId) : undefined
-  if (activos.length === 0 && !mcp) return null
-
+export function archivosPlugin(nombreProyecto: string, activos: Recurso[], mcp?: ReturnType<typeof configMcpTareas>): Record<string, string> {
   const agentes = activos.filter((r) => r.tipo === 'agente')
   const skills = activos.filter((r) => r.tipo === 'skill')
   const nombres = new Map([...nombresUnicos(agentes), ...nombresUnicos(skills)])
@@ -199,7 +194,7 @@ async function construirPlugin(proyectoId: string, conMcp = true): Promise<strin
   const archivos: Record<string, string> = {
     '.claude-plugin/plugin.json':
       JSON.stringify(
-        { name: 'centro', version: '1.0.0', description: `Agentes y skills de Odesk Agent para ${proyecto.nombre}`, author: { name: 'Odesk Agent' } },
+        { name: 'centro', version: '1.0.0', description: `Agentes y skills de Odesk Agent para ${nombreProyecto}`, author: { name: 'Odesk Agent' } },
         null,
         2
       ) + '\n'
@@ -219,12 +214,30 @@ async function construirPlugin(proyectoId: string, conMcp = true): Promise<strin
     const cabecera = [campo('name', nombres.get(s.id)!), campo('description', s.descripcion)]
     archivos[`skills/${nombres.get(s.id)}/SKILL.md`] = `---\n${cabecera.join('\n')}\n---\n\n${s.contenido}\n`
   }
+  return archivos
+}
+
+/**
+ * Genera (o reutiliza) un plugin de Claude Code con los agentes y skills activos del proyecto.
+ * La carpeta lleva el hash del contenido: es inmutable, así que varias terminales o cambios de
+ * configuración nunca pisan archivos que una sesión en marcha pueda estar leyendo.
+ */
+async function construirPlugin(proyectoId: string, conMcp = true): Promise<{ dir: string; recursos: RecursosAsistente } | null> {
+  const datos = await leerProyectos()
+  const proyecto = datos.proyectos.find((p) => p.id === proyectoId)
+  if (!proyecto) return null
+  const activos = activosDe(await leerBiblioteca(), proyecto).map((a) => a.recurso)
+  // Además de los agentes y skills, el plugin lleva el servidor MCP de tareas: Claude Code ve las tareas del proyecto.
+  const mcp = conMcp ? configMcpTareas(proyectoId) : undefined
+  if (activos.length === 0 && !mcp) return null
+  const archivos = archivosPlugin(proyecto.nombre, activos, mcp)
+  const recursos = { agentes: activos.some((r) => r.tipo === 'agente'), skills: activos.some((r) => r.tipo === 'skill') }
 
   const hash = createHash('sha1').update(JSON.stringify(archivos)).digest('hex').slice(0, 10)
   const dir = join(SESIONES, `${slug(proyecto.id) || 'proyecto'}-${hash}`)
   try {
     await stat(join(dir, '.claude-plugin', 'plugin.json'))
-    return dir // ya generado con este mismo contenido
+    return { dir, recursos } // ya generado con este mismo contenido
   } catch {
     // hay que generarlo
   }
@@ -239,7 +252,7 @@ async function construirPlugin(proyectoId: string, conMcp = true): Promise<strin
   } catch {
     await rm(tmp, { recursive: true, force: true }) // otra terminal lo creó a la vez: vale el suyo
   }
-  return dir
+  return { dir, recursos }
 }
 
 /** Carpetas de los demás proyectos del mismo grupo (vacío si el proyecto no tiene grupo): dentro de un grupo la IA ve y edita todos. */
@@ -273,11 +286,11 @@ export async function comandoConAgentes(comando: string, proyectoId?: string): P
   const conCaveman = (c: string): string => `${entorno}${c}${caveman ? ` --plugin-dir ${citar(caveman)}` : ''}${guardia ? ` --plugin-dir ${citar(guardia)}` : ''}`
   if (!proyectoId) return conCaveman(comando)
   try {
-    const dir = await construirPlugin(proyectoId)
+    const dir = (await construirPlugin(proyectoId))?.dir
     const hermanas = await carpetasHermanas(proyectoId)
     // En un grupo la terminal trabaja con libertad: edita y ejecuta sin pedir permiso en el proyecto y en los de su grupo.
     const conGrupo = hermanas.length
-      ? `${comando} --add-dir ${hermanas.map((h) => citar(h.ruta)).join(' ')} --permission-mode acceptEdits --allowedTools ${['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'].join(' ')} --disallowedTools ${COMANDOS_BLOQUEADOS.map((c) => citar(c)).join(' ')}`
+      ? `${process.platform === 'win32' ? '' : 'ODESK_GUARDIA_AUTONOMA=1 '}${comando} --add-dir ${hermanas.map((h) => citar(h.ruta)).join(' ')} --permission-mode acceptEdits --allowedTools ${['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'].join(' ')} --disallowedTools ${COMANDOS_BLOQUEADOS.map((c) => citar(c)).join(' ')}`
       : comando
     return conCaveman(dir ? `${conGrupo} --plugin-dir ${citar(dir)}` : conGrupo)
   } catch (err) {
@@ -286,17 +299,39 @@ export async function comandoConAgentes(comando: string, proyectoId?: string): P
   }
 }
 
+/** Qué recursos propios tiene el proyecto: decide si al Asistente se le ofrecen las herramientas `Agent` y `Skill`. */
+export interface RecursosAsistente {
+  agentes: boolean
+  skills: boolean
+}
+
+/** Agentes y skills que el propio repo trae en `.claude/` (el CLI los carga con `--setting-sources project`). */
+export async function recursosDeCarpeta(ruta: string): Promise<RecursosAsistente> {
+  const entradas = (d: string) => readdir(d, { withFileTypes: true }).catch(() => [])
+  const agentes = (await entradas(join(ruta, '.claude', 'agents'))).some((e) => e.isFile() && e.name.endsWith('.md'))
+  let skills = false
+  for (const e of await entradas(join(ruta, '.claude', 'skills'))) {
+    if (e.isDirectory() && (await stat(join(ruta, '.claude', 'skills', e.name, 'SKILL.md')).catch(() => undefined))) skills = true
+    if (skills) break
+  }
+  return { agentes, skills }
+}
+
 /**
- * Plugin solo con los agentes y skills activos (sin MCP ni ganchos: el Asistente ya pasa su propio `--mcp-config`).
- * Para `claude -p` del Asistente; devuelve undefined si no hay nada activo o falla.
+ * Plugin solo con los agentes y skills activos (sin MCP ni ganchos: el Asistente ya pasa su propio `--mcp-config`), para `claude -p`
+ * del Asistente, y qué recursos hay en total (los del plugin más los del `.claude/` del repo). Cada herramienta (`Agent`, `Skill`)
+ * pesa en el contexto de todas las llamadas: solo se ofrece la que tiene algo que usar.
  */
-export async function pluginAgentesAsistente(proyectoId?: string): Promise<string | undefined> {
-  if (!proyectoId) return undefined
+export async function pluginAgentesAsistente(proyectoId?: string, ruta?: string): Promise<{ dir?: string; recursos: RecursosAsistente }> {
+  const repo = ruta ? await recursosDeCarpeta(ruta) : { agentes: false, skills: false }
+  if (!proyectoId) return { recursos: repo }
   try {
-    return (await construirPlugin(proyectoId, false)) ?? undefined
+    const p = await construirPlugin(proyectoId, false)
+    if (!p) return { recursos: repo }
+    return { dir: p.dir, recursos: { agentes: repo.agentes || p.recursos.agentes, skills: repo.skills || p.recursos.skills } }
   } catch (err) {
     console.error('No se pudieron preparar los agentes del Asistente:', err)
-    return undefined
+    return { recursos: repo }
   }
 }
 

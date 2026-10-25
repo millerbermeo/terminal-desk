@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   argumentosCli,
   CanalControl,
@@ -30,6 +30,12 @@ const entero = (v: string | undefined, porDefecto: number): number => {
   return v?.trim() && Number.isFinite(n) && n > 0 ? n : porDefecto
 }
 
+/**
+ * Si el CLI no repite el mensaje y además no saca nada en este tiempo, es que no lo va a atender: se mata y el turno termina con error en
+ * vez de esperar para siempre. Mientras saque algo (p. ej. compactando el contexto antes de tomarlo) se le sigue esperando.
+ */
+const ESPERA_ECO_MS = entero(process.env.ODESK_ESPERA_ECO_S, 120) * 1000
+
 /** El proceso ya había terminado: quien llama puede lanzar otro y repetir (el mensaje no llegó a enviarse). */
 export class ProcesoCerrado extends Error {}
 
@@ -52,6 +58,8 @@ export class ProcesoCli implements ControlProceso {
   private cola: Promise<unknown> = Promise.resolve()
   private temporizador: NodeJS.Timeout | undefined
   private errores = ''
+  /** Última vez que el CLI escribió algo en su salida. */
+  private ultimaSalida = Date.now()
   vivo = true
   /** Última vez que se usó (turno, consulta o creación): decide a cuál cerrar si hay demasiados. */
   ultimoUso = Date.now()
@@ -70,7 +78,10 @@ export class ProcesoCli implements ControlProceso {
     for (const s of [hijo.stdin, hijo.stdout, hijo.stderr]) (s as unknown as { unref?: () => void } | null)?.unref?.()
     this.canal = new CanalControl((linea) => this.escribir(linea))
     hijo.stdin!.on('error', () => undefined)
-    hijo.stdout!.on('data', lectorDeLineas((m) => void (this.canal.recibir(m) || this.turno?.lector.procesar(m))))
+    hijo.stdout!.on('data', lectorDeLineas((m) => {
+      this.ultimaSalida = Date.now()
+      void (this.canal.recibir(m) || this.turno?.lector.procesar(m))
+    }))
     hijo.stderr!.on('data', (d: Buffer) => (this.errores = (this.errores + d.toString('utf8')).slice(-2000)))
     hijo.on('error', (err) => {
       this.errores += err.message
@@ -83,7 +94,8 @@ export class ProcesoCli implements ControlProceso {
   static async crear(o: OpcionesProceso, firma: string, inactividadMs: number, alCerrar: () => void): Promise<ProcesoCli> {
     const bin = await rutaClaude()
     if (!bin) throw new Error('No encuentro el CLI «claude».')
-    const hijo = spawn(bin, argumentosCli(o, true), { cwd: o.cwd, env: entornoEjecucion(o.carpetaCuenta), stdio: ['pipe', 'pipe', 'pipe'], ...(WINDOWS ? { shell: true } : {}) })
+    // Con el eco de cada mensaje del usuario se sabe cuándo empieza de verdad su turno (`LectorTurno` descarta lo anterior).
+    const hijo = spawn(bin, [...argumentosCli(o, true), '--replay-user-messages'], { cwd: o.cwd, env: entornoEjecucion(o.carpetaCuenta), stdio: ['pipe', 'pipe', 'pipe'], ...(WINDOWS ? { shell: true } : {}) })
     return new ProcesoCli(hijo, firma, inactividadMs, alCerrar)
   }
 
@@ -123,30 +135,45 @@ export class ProcesoCli implements ControlProceso {
       return new Promise<SalidaEjecucion>((res) => {
         let matar: NodeJS.Timeout | undefined
         let hecho = false
-        const alAbortar = (): void => {
+        const enviadoEn = Date.now()
+        const sinEco = setInterval(() => {
+          if (lector.conEco) return clearInterval(sinEco)
+          if (Date.now() - Math.max(enviadoEn, this.ultimaSalida) < ESPERA_ECO_MS) return
+          clearInterval(sinEco)
+          this.errores += '\nEl CLI no tomó el mensaje (no lo repitió a tiempo); vuelve a enviarlo.'
+          this.matar()
+        }, Math.min(5000, ESPERA_ECO_MS))
+        sinEco.unref()
+        // Si no hace caso en unos segundos, se mata (el siguiente mensaje lanzará otro y reanudará la conversación).
+        const interrumpirOMatar = (esperaMs: number): void => {
           this.interrumpir()
-          // Si no hace caso en unos segundos, se mata (el siguiente mensaje lanzará otro y reanudará la conversación).
-          matar = setTimeout(() => this.matar(), 4000)
+          clearTimeout(matar)
+          matar = setTimeout(() => this.matar(), esperaMs)
           matar.unref()
         }
+        const alAbortar = (): void => interrumpirOMatar(4000)
         const terminar = (codigo: number | null): void => {
           if (hecho) return
           hecho = true
           this.turno = undefined
           clearTimeout(matar)
+          clearInterval(sinEco)
           o.senal.removeEventListener('abort', alAbortar)
           this.ultimoUso = Date.now()
           this.armarInactividad()
           res(lector.finalizar(codigo, this.errores))
         }
-        const lector = new LectorTurno(o, (l) => void this.escribir(l), () => terminar(0), () => this.interrumpir())
+        // Todo mensaje lleva un uuid propio: con él se reconoce su eco (y el CLI ignora los repetidos).
+        const mensajeId = o.mensajeId ?? randomUUID()
+        const lector = new LectorTurno({ ...o, mensajeId, esperarEco: true }, (l) => void this.escribir(l), () => terminar(0), () => interrumpirOMatar(10_000))
         this.turno = { lector, terminar }
         o.senal.addEventListener('abort', alAbortar, { once: true })
         lector.iniciar()
         const entrada = o.prefijoPrompt ? `${o.prefijoPrompt}\n\n${o.prompt}` : o.prompt
-        const enviado = this.escribir(JSON.stringify({ type: 'user', ...(o.mensajeId ? { uuid: o.mensajeId } : {}), message: { role: 'user', content: entrada } }) + '\n')
+        const enviado = this.escribir(JSON.stringify({ type: 'user', uuid: mensajeId, message: { role: 'user', content: entrada } }) + '\n')
         if (!enviado) {
           this.turno = undefined
+          clearInterval(sinEco)
           o.senal.removeEventListener('abort', alAbortar)
           hecho = true
           throw new ProcesoCerrado()

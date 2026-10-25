@@ -110,11 +110,12 @@ describe('suscripción (CLI claude)', () => {
   })
 
   it('traduce la autonomía a permisos del CLI', () => {
-    expect(permisosCli('preguntar', [])).toEqual(['--permission-mode', 'default', '--allowedTools', 'Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch'])
+    expect(permisosCli('preguntar', [])).toEqual(['--permission-mode', 'default', '--allowedTools', 'Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'ToolSearch'])
     expect(permisosCli('ediciones', [])[1]).toBe('acceptEdits')
     const autonomo = permisosCli('autonomo', [])
-    expect(autonomo).toEqual(expect.arrayContaining(['Bash', 'Edit', 'Write', '--disallowedTools', 'Bash(sudo:*)']))
-    expect(autonomo.indexOf('--disallowedTools')).toBeGreaterThan(autonomo.indexOf('Bash'))
+    expect(autonomo).toEqual(expect.arrayContaining(['Edit', 'Write', '--disallowedTools', 'Bash(sudo:*)']))
+    // Bash no se permite de golpe: cada comando pasa por el permiso de la app, que en autónomo lo aprueba salvo lo catastrófico.
+    expect(autonomo.slice(0, autonomo.indexOf('--disallowedTools'))).not.toContain('Bash')
     for (const modo of ['preguntar', 'ediciones'] as const) expect(permisosCli(modo, [])).not.toContain('Bash')
   })
 

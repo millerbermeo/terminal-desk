@@ -39,7 +39,8 @@ export function servirMcpTareas(entrada: Readable, salida: Writable, llamar: (he
         const nombre = String(p.params?.name ?? '')
         if (!HERRAMIENTAS_ODESK.some((h) => h.nombre === nombre)) return fallo(p.id, -32602, `Herramienta desconocida: ${nombre}`)
         const r = await llamar(nombre, p.params?.arguments ?? {})
-        return ok(p.id, { content: [{ type: 'text', text: r.texto }], ...(r.error ? { isError: true } : {}) })
+        const imagen = r.imagen ? [{ type: 'image', data: r.imagen.datos, mimeType: r.imagen.tipo }] : []
+        return ok(p.id, { content: [{ type: 'text', text: r.texto }, ...imagen], ...(r.error ? { isError: true } : {}) })
       }
       default:
         return fallo(p.id, -32601, `Método no soportado: ${String(p.method)}`)

@@ -8,6 +8,8 @@ export interface EstadoNavegador {
   puedeAdelante: boolean
   /** Por qué falló la última carga (servidor apagado, certificado…). */
   error?: string
+  /** La ventana la maneja la IA: última acción que hizo (se ve en la barra). */
+  ia?: string
 }
 
 export type AccionNavegador =
@@ -74,4 +76,75 @@ export function normalizarUrl(entrada: string): { url: string } | { error: strin
   const puerto = u.port ? Number(u.port) : 80
   if (puerto < 1 || puerto > 65535) return { error: 'Puerto fuera de rango.' }
   return { url: u.href }
+}
+
+/** Tecla para el protocolo de DevTools (Input.dispatchKeyEvent): la IA la pide por nombre («Enter», «Control+a», «Shift+Tab»). */
+export interface TeclaCdp {
+  key: string
+  code: string
+  vk: number
+  /** Texto que inserta (solo sin Control/Alt/Meta). */
+  texto?: string
+  /** Máscara de modificadores de CDP: Alt=1, Control=2, Meta=4, Shift=8. */
+  modificadores: number
+}
+
+const TECLAS_ESPECIALES: Record<string, [code: string, vk: number, texto?: string]> = {
+  Enter: ['Enter', 13, '\r'],
+  Tab: ['Tab', 9],
+  Escape: ['Escape', 27],
+  Backspace: ['Backspace', 8],
+  Delete: ['Delete', 46],
+  Insert: ['Insert', 45],
+  ArrowUp: ['ArrowUp', 38],
+  ArrowDown: ['ArrowDown', 40],
+  ArrowLeft: ['ArrowLeft', 37],
+  ArrowRight: ['ArrowRight', 39],
+  Home: ['Home', 36],
+  End: ['End', 35],
+  PageUp: ['PageUp', 33],
+  PageDown: ['PageDown', 34],
+  ' ': ['Space', 32, ' ']
+}
+const ALIAS_TECLAS: Record<string, string> = {
+  intro: 'Enter', return: 'Enter', enter: 'Enter', esc: 'Escape', escape: 'Escape', tab: 'Tab', backspace: 'Backspace', retroceso: 'Backspace',
+  delete: 'Delete', del: 'Delete', supr: 'Delete', insert: 'Insert', up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight',
+  arrowup: 'ArrowUp', arrowdown: 'ArrowDown', arrowleft: 'ArrowLeft', arrowright: 'ArrowRight', home: 'Home', inicio: 'Home', end: 'End', fin: 'End',
+  pageup: 'PageUp', pagedown: 'PageDown', space: ' ', espacio: ' ', spacebar: ' '
+}
+const MODIFICADORES: Record<string, number> = { alt: 1, option: 1, control: 2, ctrl: 2, meta: 4, cmd: 4, command: 4, super: 4, shift: 8, mayus: 8 }
+
+export function analizarTecla(spec: string): TeclaCdp {
+  const partes = (spec ?? '').split('+')
+  // «Control++» o «+»: la última parte vacía es la tecla «+».
+  if (partes.length > 1 && partes[partes.length - 1] === '' && partes[partes.length - 2] === '') partes.splice(-2, 2, '+')
+  const base = partes.pop() ?? ''
+  if (!base) throw new Error('Indica una tecla, p. ej. Enter, Escape o Control+a.')
+  let modificadores = 0
+  for (const m of partes) {
+    const bit = MODIFICADORES[m.trim().toLowerCase()]
+    if (!bit) throw new Error(`Modificador desconocido: «${m}» (usa Control, Alt, Shift o Meta).`)
+    modificadores |= bit
+  }
+  const nombre = base.length === 1 ? base : (ALIAS_TECLAS[base.toLowerCase()] ?? base)
+  const especial = TECLAS_ESPECIALES[nombre]
+  const conTexto = (modificadores & 7) === 0
+  if (especial) {
+    const [code, vk, texto] = especial
+    return { key: nombre === ' ' ? ' ' : nombre, code, vk, ...(texto && conTexto ? { texto } : {}), modificadores }
+  }
+  const f = /^f([1-9]|1[0-2])$/i.exec(nombre)
+  if (f) return { key: `F${f[1]}`, code: `F${f[1]}`, vk: 111 + Number(f[1]), modificadores }
+  if ([...nombre].length !== 1) throw new Error(`Tecla desconocida: «${base}». Ejemplos: Enter, Tab, Escape, ArrowDown, F5, a, Control+a.`)
+  const c = nombre
+  const letra = /^[a-z]$/i.test(c)
+  const digito = /^\d$/.test(c)
+  const key = letra && modificadores & 8 ? c.toUpperCase() : c
+  return {
+    key,
+    code: letra ? `Key${c.toUpperCase()}` : digito ? `Digit${c}` : '',
+    vk: letra || digito ? c.toUpperCase().charCodeAt(0) : 0,
+    ...(conTexto ? { texto: key } : {}),
+    modificadores
+  }
 }
