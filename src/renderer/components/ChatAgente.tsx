@@ -118,7 +118,7 @@ function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
     case 'cuenta_cambiada':
       return (
         <div className="ag-nota">
-          Límite de uso alcanzado en «{e.de}»{e.hasta ? ` (se renueva ${new Date(e.hasta).toLocaleString()})` : ''}. Continúo con «{e.a}».
+          Límite de uso alcanzado en «{e.de}»{e.hasta ? ` (se renueva ${new Date(e.hasta).toLocaleString()})` : ''}. {e.continua ? `Sigo la tarea con «${e.a}» desde donde quedó, sin repetir lo ya hecho.` : `Continúo con «${e.a}».`}
         </div>
       )
     case 'contexto_compactado':

@@ -40,6 +40,8 @@ import { AlmacenJson } from './core/memory/almacen'
 import { ServicioApi } from './api/servicio'
 import { ejecutarOperacionApi } from './api/operaciones'
 import { abrirEnNavegadorDelSistema, GestorNavegador, rutaPreload } from './navegador'
+import { NavegadorIA } from './navegador-ia'
+import { MovilIA } from './movil'
 import { esPaginaDeLaApp } from './navegacion'
 import { cerrarProceso, duenoDePuerto, puertoAbierto, servidoresLocales } from './puertos'
 import { ArranqueNube } from './arranque/nube'
@@ -212,6 +214,10 @@ const arranque = new ServicioArranque({
 
 // Núcleo de agentes (Fase 1): sin aprobador, solo herramientas de lectura. La Fase 4 añade confirmación humana.
 const nucleo = new Nucleo()
+// La IA (herramientas navegador_* del servidor MCP «odesk») maneja las mismas ventanas del navegador integrado, a la vista del usuario.
+nucleo.conectarNavegador(new NavegadorIA(navegador))
+// Igual con los teléfonos Android conectados por USB (herramientas movil_*, con adb); capturas y registros quedan como evidencia.
+nucleo.conectarMovil(new MovilIA(join(DIR, 'evidencias', 'movil')))
 
 /** Cierra las terminales de una ventana (se recargó o se cerró). */
 function cerrarDe(webContentsId: number): void {

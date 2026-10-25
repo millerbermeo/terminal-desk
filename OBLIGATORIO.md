@@ -86,3 +86,9 @@ Biblioteca de recursos (compartidos o individuales de un proyecto) con activaci�
 - El historial vive en `~/.odesk-agent/historial/` (por proyecto, comprimido, con límite de 500 MB y recorte automático). **No sale del equipo**: a «Mis equipos» solo viajan nombres de archivo, número de versiones y fecha. Se puede apagar por proyecto o borrar desde Versiones → Historial local.
 - Los ganchos de `claude` en terminales ✦ funcionan con Linux/macOS; en Windows usan `cmd /c` (sin probar).
 
+## 10. Pruebas en móviles Android (adb)
+
+- Instalar **Android SDK Platform-Tools** (adb) y dejarlo en el PATH o en `ANDROID_HOME` (o `ODESK_ADB=/ruta/adb`).
+- En cada teléfono: activar **Depuración USB** y **aceptar en el teléfono** el aviso de depuración la primera vez (Odesk no puede hacerlo por ti). En Xiaomi: también «Depuración USB (ajustes de seguridad)» e «Instalar vía USB».
+- Linux con `no permissions`: reglas udev (`sudo apt install android-sdk-platform-tools-common`) y `sudo usermod -aG plugdev $USER`, cerrar sesión y reconectar.
+- Ver `docs/movil.md`.

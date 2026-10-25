@@ -60,6 +60,10 @@ const REAL = process.env.API_REAL === '1'
 const EMAIL = 'e2e-arranque@desk.local'
 const PASS = 'clave-e2e-123'
 const proyectos = []
+// Tienda y Blog en grupos distintos: la sección «Servicios» enseña una pestaña (con su rejilla) por grupo
+const GRUPOS = [{ id: randomUUID(), name: 'Grupo Tienda' }, { id: randomUUID(), name: 'Grupo Blog' }]
+const moverA = {} // nombre de proyecto -> nombre de grupo (para cambiar de grupo un proyecto con servicios en marcha)
+const grupoDe = (nombre) => GRUPOS.find((g) => g.name === (moverA[nombre] ?? `Grupo ${nombre}`))?.id ?? null
 const arranque = []
 let api, procApi, URL_API, tokenCuenta
 const DB = { host: process.env.DB_HOST ?? 'localhost', user: process.env.DB_USER ?? 'postgres', pass: process.env.DB_PASS ?? 'admin123', nombre: 'desk_e2e_arranque' }
@@ -94,10 +98,10 @@ if (REAL) {
     }
     const cuerpo = () => new Promise((r) => { const t = []; req.on('data', (x) => t.push(x)); req.on('end', () => r(JSON.parse(Buffer.concat(t).toString() || '{}'))) })
     if (req.url === '/auth/login') return responder(200, { token: 'token-falso', usuario: { id: 'u1', email: EMAIL } })
-    if (req.url === '/projects' && req.method === 'GET') return responder(200, { groups: [], projects: proyectos.map((p) => ({ id: p.id, name: p.name, repo: null, groupId: null })) })
-    if (req.url === '/projects' && req.method === 'POST') return void cuerpo().then((c) => { const p = { id: randomUUID(), name: c.name }; proyectos.push(p); responder(201, { id: p.id, name: p.name, repo: null, groupId: null }) })
+    if (req.url === '/projects' && req.method === 'GET') return responder(200, { groups: GRUPOS, projects: proyectos.map((p) => ({ id: p.id, name: p.name, repo: null, groupId: grupoDe(p.name) })) })
+    if (req.url === '/projects' && req.method === 'POST') return void cuerpo().then((c) => { const p = { id: randomUUID(), name: c.name }; proyectos.push(p); responder(201, { id: p.id, name: p.name, repo: null, groupId: grupoDe(p.name) }) })
     const uno = /^\/projects\/([^/?]+)$/.exec(req.url ?? '')
-    if (uno && req.method === 'GET') { const p = proyectos.find((x) => x.id === uno[1]); return p ? responder(200, { id: p.id, name: p.name, repo: null, groupId: null }) : responder(404, { message: 'no existe' }) }
+    if (uno && req.method === 'GET') { const p = proyectos.find((x) => x.id === uno[1]); return p ? responder(200, { id: p.id, name: p.name, repo: null, groupId: grupoDe(p.name) }) : responder(404, { message: 'no existe' }) }
     if (req.url === '/arranque' && req.method === 'GET') return responder(200, { commands: arranque })
     if (req.url === '/arranque' && req.method === 'PUT') return void cuerpo().then((c) => { const previo = arranque.find((x) => x.id === c.id); const fila = { id: randomUUID(), position: arranque.filter((x) => x.projectId === c.projectId).length, ...(previo ?? {}), ...c }; if (previo) Object.assign(previo, fila); else arranque.push(fila); responder(200, fila) })
     if (req.url === '/arranque/orden' && req.method === 'PUT') return void cuerpo().then((c) => { c.ids.forEach((id, i) => { const f = arranque.find((x) => x.id === id); if (f) f.position = i }); responder(200, { commands: arranque }) })
@@ -110,9 +114,12 @@ if (REAL) {
 }
 
 // ───────── Electron real, manejado por CDP
+// Sin Caveman: su `git clone` al arrancar hereda el socket del puerto de depuración y lo retiene tras cerrar la app (la siguiente ejecución no arrancaba).
 mkdirSync(join(RAIZ, 'home', '.odesk-agent'), { recursive: true })
 const entorno = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE'))
-const proc = spawn(join(APP, 'node_modules/.bin/electron'), ['.', `--remote-debugging-port=${CDP}`], { cwd: APP, stdio: process.env.DEPURAR ? 'inherit' : 'ignore', env: { ...entorno, HOME: join(RAIZ, 'home'), ODESK_API_URL: URL_API, ODESK_PERMITIR_HTTP: '1' } })
+// Los hijos de la app (p. ej. el MCP de Playwright) heredan el socket del puerto de depuración y lo sueltan unos segundos después de cerrarla.
+await hasta(async () => !(await abierto(CDP)), 15000)
+const proc = spawn(join(APP, 'node_modules/.bin/electron'), ['.', `--remote-debugging-port=${CDP}`], { cwd: APP, stdio: process.env.DEPURAR ? 'inherit' : 'ignore', env: { ...entorno, HOME: join(RAIZ, 'home'), ODESK_API_URL: URL_API, ODESK_PERMITIR_HTTP: '1', ODESK_SIN_CAVEMAN: '1' } })
 const extraños = []
 async function limpiar() {
   proc.kill('SIGTERM')
@@ -245,6 +252,31 @@ try {
   await op('arrancar', { proyectoId: idBlog, resoluciones: { [blogCmd.id]: 'liberar' } })
   const liberado = await hasta(async () => Object.values(await estados(idBlog))[0]?.estado === 'listo', 15000)
   paso('eligiendo «liberar» cierra el proceso y arranca el del otro proyecto', liberado && !vivo(pidBase), Object.values(await estados(idBlog))[0]?.mensaje)
+  if (!REAL) {
+    await dormir(500)
+    const pestanas = await ev(`[...document.querySelectorAll('main.servicios .ventana-tab .ventana-nombre')].map((e) => e.textContent)`)
+    paso('«Servicios» agrupa por grupo de proyectos: una pestaña por grupo', JSON.stringify(pestanas) === JSON.stringify(['Grupo Tienda', 'Grupo Blog']), JSON.stringify(pestanas))
+    const visible = () => ev(`[...document.querySelectorAll('main.servicios section.ventana')].find((s) => s.style.display !== 'none')?.innerText ?? ''`)
+    const enTienda = await visible()
+    await ev(`[...document.querySelectorAll('main.servicios .ventana-tab')].find((t) => t.textContent.includes('Grupo Blog')).click()`)
+    await dormir(400)
+    const enBlog = await visible()
+    paso('cada pestaña solo enseña los servicios de su grupo', /Tienda · API/.test(enTienda) && !/Blog ·/.test(enTienda) && /Blog ·/.test(enBlog) && !/Tienda · API/.test(enBlog))
+    paso('y cambiar de pestaña no corta los procesos de la otra', vivo(conf[0].pid) === false && Object.values(await estados(idTienda)).filter((e) => e.estado === 'listo').length >= 2)
+    // El proyecto cambia de grupo con su servicio en marcha: su terminal pasa a la otra pestaña sin matar el proceso.
+    moverA.Blog = 'Grupo Tienda'
+    await dormir(2500) // caché de proyectos de main (2 s)
+    const irA = (v) => ev(`[...document.querySelectorAll('aside button')].find((b) => b.textContent.trim().startsWith('${v}')).click()`)
+    await irA('Tareas')
+    await dormir(800)
+    await irA('Servicios')
+    await dormir(1200)
+    const tras = await ev(`[...document.querySelectorAll('main.servicios .ventana-tab .ventana-nombre')].map((e) => e.textContent)`)
+    paso('al cambiar el proyecto de grupo, su servicio pasa a la pestaña del nuevo grupo', JSON.stringify(tras) === JSON.stringify(['Grupo Tienda']), JSON.stringify(tras))
+    paso('sin matar su proceso (el puerto sigue abierto y el comando, en marcha)', (await abierto(P1)) && Object.values(await estados(idBlog))[0]?.estado === 'listo', Object.values(await estados(idBlog))[0]?.estado)
+    paso('y su terminal sigue en la interfaz', /Blog ·/.test(await visible()))
+    delete moverA.Blog
+  }
 
   // ───────── programa ajeno
   const ajeno = spawn(process.execPath, ['-e', `require('net').createServer().listen(${P4},'127.0.0.1');setInterval(()=>{},1000)`], { cwd: tmpdir(), stdio: 'ignore' })

@@ -7,11 +7,24 @@ import { join } from 'node:path'
 import { llamarTareas } from './core/tareas/cliente'
 import { servirMcpTareas } from './core/tareas/mcp-servidor'
 import { ejecutarHookHistorial } from './historial/hook'
+import { respuestaGanchoBash } from './core/guardrails/autonomo'
 
 const dir = process.env.ODESK_DIR || join(homedir(), '.odesk-agent')
 const proyectoId = process.env.ODESK_PROYECTO_ID || undefined
 
-if (process.argv[2] === 'hook-historial') {
+if (process.argv[2] === 'hook-bash') {
+  // Gancho de Claude Code antes de cada comando: en terminales sin confirmación, deniega lo catastrófico. Un fallo nunca bloquea.
+  let texto = ''
+  process.stdin.on('data', (d) => (texto = (texto + d.toString()).slice(0, 2_000_000)))
+  process.stdin.on('end', () => {
+    try {
+      const r = respuestaGanchoBash(texto)
+      if (r) process.stdout.write(r)
+    } finally {
+      process.exit(0)
+    }
+  })
+} else if (process.argv[2] === 'hook-historial') {
   // Gancho de Claude Code: el mismo programa, con otro modo (no es el servidor MCP).
   void ejecutarHookHistorial(process.argv[3] === 'pre' ? 'antes' : 'despues', process.stdin, dir, proyectoId)
     .catch(() => undefined)

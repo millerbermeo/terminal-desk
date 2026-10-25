@@ -1,6 +1,8 @@
 import type { EventoAgente, PreguntaUsuario } from '@shared/core/agente'
 import type { LlamadaHerramienta } from '@shared/core/herramientas'
 import type { NuevaRegla, ReglaPermiso } from '@shared/core/permisos'
+import type { ModoAutonomia } from '@shared/core/permisos'
+import { motivoBloqueoAutonomo } from '../guardrails/autonomo'
 import { esDestructiva } from '../guardrails/destructivo'
 import type { PuertaHumana, SolicitudHumana } from '../orchestrator/puerta'
 import { decidir, reglaDe } from '../permisos/reglas'
@@ -15,6 +17,8 @@ export interface DepsPermisoCli {
   validar: (l: LlamadaHerramienta) => Promise<string | null>
   reglas: () => Promise<readonly ReglaPermiso[]>
   guardarRegla: (r: NuevaRegla) => Promise<void>
+  /** En «autónomo» nadie confirma: los comandos se aprueban solos salvo los catastróficos (`motivoBloqueoAutonomo`), que se deniegan. */
+  autonomia?: ModoAutonomia
 }
 
 const MAX_DETALLE = 1500
@@ -89,6 +93,15 @@ export function crearPermisoCli(d: DepsPermisoCli): (p: PeticionPermiso) => Prom
       if (bloqueo) return { permitir: false, mensaje: `Bloqueado: ${bloqueo}` }
       const regla = simple ? decidir(await d.reglas(), llamada) : null
       if (regla === 'denegar') return { permitir: false, mensaje: 'Una regla de permisos de este proyecto lo deniega.' }
+      if (d.autonomia === 'autonomo' && p.herramienta === 'Bash') {
+        const motivo = motivoBloqueoAutonomo(texto(p.entrada.command))
+        if (!motivo) return { permitir: true }
+        d.alEvento({ ejecucionId: d.ejecucionId, agente: 'asistente', profundidad: 0, tipo: 'guardrail', herramienta: 'Bash', motivo } as EventoAgente)
+        return {
+          permitir: false,
+          mensaje: `Bloqueado en modo autónomo: ${motivo}. No lo intentes de otra forma; si de verdad hace falta, explícale al usuario qué comando debe ejecutar él y por qué.`
+        }
+      }
       // En un comando compuesto, cualquier tramo destructivo cuenta.
       const razon =
         esDestructiva(llamada.nombre, llamada.entrada) ??

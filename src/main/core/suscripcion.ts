@@ -238,7 +238,7 @@ export class SesionesCli {
   }
 }
 
-const LECTURA = ['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch']
+const LECTURA = ['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'ToolSearch']
 
 /** Autonomía -> permisos del CLI. En modo `-p` no hay forma de preguntar: lo que no está permitido se deniega. */
 /** Comandos que ni el modo autónomo puede ejecutar. */
@@ -273,7 +273,9 @@ export function permisosCli(autonomia: ModoAutonomia, verificaciones: string[], 
   if (autonomia === 'autonomo') {
     // Autónomo = sin nadie que apruebe: terminal y ediciones libres. Los archivos quedan limitados a la carpeta del proyecto y a las
     // de su grupo (`--add-dir`); lo irreversible o que sale de la máquina sin control se bloquea aunque todo lo demás esté permitido.
-    permitidas.push('Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit')
+    // `Bash` NO va aquí: así cada comando pasa por el permiso de la app (`crearPermisoCli` con autonomía «autonomo»), que lo aprueba
+    // al instante salvo lo catastrófico. Las reglas de prefijo de abajo quedan como segunda barrera.
+    permitidas.push('Edit', 'Write', 'MultiEdit', 'NotebookEdit')
     return ['--permission-mode', 'acceptEdits', '--allowedTools', ...permitidas, '--disallowedTools', ...COMANDOS_BLOQUEADOS]
   }
   return ['--permission-mode', autonomia === 'preguntar' ? 'default' : 'acceptEdits', '--allowedTools', ...permitidas]
@@ -304,8 +306,8 @@ export interface OpcionesEjecucion {
   prefijoPrompt?: string
   /** Id del mensaje del usuario (se manda al CLI como `uuid`): con él se pueden deshacer los cambios de archivos hasta ese mensaje. */
   mensajeId?: string
-  /** El proyecto tiene agentes o skills activos: se ofrecen las herramientas `Agent` y `Skill`. */
-  conAgentes?: boolean
+  /** Agentes o skills que tiene el proyecto: solo con ellos se ofrecen las herramientas `Agent` y `Skill` (cada una pesa en el contexto). */
+  recursos?: { agentes: boolean; skills: boolean }
   /** Esfuerzo de razonamiento (`--effort`). */
   esfuerzo?: Esfuerzo
   /** Recibe el mando sobre el proceso del CLI en cuanto se lanza (preguntas laterales, interrupciones). */
@@ -377,6 +379,7 @@ interface MensajeCli {
   request?: { subtype?: string; tool_name?: string; input?: Record<string, unknown> }
   subtype?: string
   session_id?: string
+  uuid?: string
   model?: string
   parent_tool_use_id?: string | null
   event?: { type?: string; delta?: { type?: string; text?: string } }
@@ -478,16 +481,18 @@ export interface SalidaEjecucion {
 /**
  * Herramientas propias del CLI que se ofrecen al Asistente. Cada herramienta que el CLI describe pesa en el contexto de TODAS las
  * llamadas: el conjunto por defecto (con Agent, Skill, Task, notebooks, cron, worktrees… y 22 k tokens más «diferidos») deja 24,7 k
- * tokens antes de escribir nada; esta lista, 11,4 k (medido con `get_context_usage`). `Agent` y `Skill` solo si el proyecto tiene
- * agentes o skills activos. `ODESK_HERRAMIENTAS=todas` vuelve al conjunto completo; con una lista separada por comas, usa esa.
+ * tokens antes de escribir nada; esta lista, 11,4 k (medido con `get_context_usage`). `Agent` (+1,2 k) solo si el proyecto tiene
+ * agentes y `Skill` (+0,8 k sin las skills del CLI) solo si tiene skills. `ODESK_HERRAMIENTAS=todas` vuelve al conjunto completo;
+ * con una lista separada por comas, usa esa. `ToolSearch` hace que el CLI cargue las herramientas MCP bajo demanda (solo sus nombres en
+ * cada llamada): sin ella en la lista, las 67 del servidor «odesk» (+ Playwright) iban enteras en cada llamada, +17 k tokens.
  */
-export const HERRAMIENTAS_BASE = ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch', 'AskUserQuestion', 'TodoWrite']
+export const HERRAMIENTAS_BASE = ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch', 'AskUserQuestion', 'TodoWrite', 'ToolSearch']
 
-export function herramientasCli(conAgentes: boolean, env: NodeJS.ProcessEnv = process.env): string[] | undefined {
+export function herramientasCli(recursos: { agentes: boolean; skills: boolean } = { agentes: false, skills: false }, env: NodeJS.ProcessEnv = process.env): string[] | undefined {
   const v = env.ODESK_HERRAMIENTAS?.trim()
   if (v === 'todas') return undefined
   if (v) return v.split(',').map((s) => s.trim()).filter(Boolean)
-  return conAgentes ? [...HERRAMIENTAS_BASE, 'Agent', 'Skill'] : [...HERRAMIENTAS_BASE]
+  return [...HERRAMIENTAS_BASE, ...(recursos.agentes ? ['Agent'] : []), ...(recursos.skills ? ['Skill'] : [])]
 }
 
 /** Esfuerzo de razonamiento del CLI (`--effort`): menos esfuerzo = menos tokens de pensamiento. */
@@ -497,12 +502,12 @@ export type Esfuerzo = (typeof ESFUERZOS)[number]
 /** Lo que fija los argumentos del proceso del CLI (si cambia, hay que lanzar otro). */
 export type OpcionesProceso = Pick<
   OpcionesEjecucion,
-  'autonomia' | 'verificaciones' | 'cwd' | 'modelo' | 'reanudar' | 'sistemaExtra' | 'carpetasExtra' | 'mcpTareas' | 'mcpExternos' | 'pluginDirs' | 'carpetaCuenta' | 'presupuestoUsd' | 'esfuerzo' | 'conAgentes'
+  'autonomia' | 'verificaciones' | 'cwd' | 'modelo' | 'reanudar' | 'sistemaExtra' | 'carpetasExtra' | 'mcpTareas' | 'mcpExternos' | 'pluginDirs' | 'carpetaCuenta' | 'presupuestoUsd' | 'esfuerzo' | 'recursos'
 >
 
 /** Argumentos de `claude -p`. Con `entradaPorStream` el CLI habla por stdio (permisos, preguntas y peticiones de control). */
 export function argumentosCli(o: OpcionesProceso, entradaPorStream: boolean): string[] {
-  const herramientas = herramientasCli(Boolean(o.conAgentes))
+  const herramientas = herramientasCli(o.recursos)
   return [
     '-p',
     '--output-format', 'stream-json',
@@ -536,6 +541,13 @@ export function entornoEjecucion(carpeta?: string): NodeJS.ProcessEnv {
   // sin pedirlo. CAVEMAN_DEFAULT_MODE es la salida documentada por el plugin para volver a activarlo solo; sin esto
   // el Asistente nunca lo activa por su cuenta y hay que pedírselo cada conversación.
   env.CAVEMAN_DEFAULT_MODE ??= 'full'
+  // Con tareas en segundo plano (`run_in_background`), al terminar una el CLI abre él solo un turno nuevo sin mensaje del usuario:
+  // su salida y su resultado no son de ningún turno de la app y desordenaban los siguientes. Sin ellas, el modelo usa `nohup … &`.
+  // `ODESK_TAREAS_FONDO=1` las vuelve a permitir.
+  if (process.env.ODESK_TAREAS_FONDO !== '1') env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS ??= '1'
+  // Las skills que trae el propio CLI (simplify, loop, claude-api…) se describen en la herramienta Skill en cada llamada (+2,5 k tokens)
+  // y el Asistente está aislado de lo ajeno al proyecto: solo se ofrecen las del proyecto.
+  env.CLAUDE_CODE_DISABLE_BUNDLED_SKILLS ??= '1'
   return env
 }
 
@@ -596,7 +608,10 @@ export interface ControlProceso {
 export type EntradaTurno = Pick<
   OpcionesEjecucion,
   'prompt' | 'prefijoPrompt' | 'mensajeId' | 'alPermiso' | 'alEvento' | 'alUso' | 'omitirInicio' | 'retenerFin' | 'acumulado' | 'senal'
->
+> & {
+  /** El CLI repite los mensajes del usuario (`--replay-user-messages`): hasta ver el eco de `mensajeId`, lo que llega es de otro turno. */
+  esperarEco?: boolean
+}
 
 /** Lee los mensajes stream-json de UN turno (petición → resultado) y los traduce a eventos del Asistente. */
 export class LectorTurno {
@@ -614,6 +629,7 @@ export class LectorTurno {
   private acumulado: Record<string, AcumuladoModelo> | undefined
   private final: { error?: string; texto?: string; uso?: UsoCli; esError: boolean } | undefined
   private cortado: string | undefined
+  private eco: boolean
 
   /**
    * @param responder escribe una línea en el stdin del CLI (respuestas a permisos)
@@ -625,10 +641,17 @@ export class LectorTurno {
     private readonly responder: (linea: string) => void,
     private readonly alResultado: () => void,
     private readonly alExceso: () => void = () => undefined
-  ) {}
+  ) {
+    this.eco = !o.esperarEco
+  }
 
   get listo(): boolean {
     return this.final !== undefined
+  }
+
+  /** El CLI ya tomó el mensaje de este turno (o no hace falta esperarlo). */
+  get conEco(): boolean {
+    return this.eco
   }
 
   iniciar(): void {
@@ -637,6 +660,11 @@ export class LectorTurno {
 
   procesar(m: MensajeCli): void {
     if (typeof m.session_id === 'string') this.sesionCli = m.session_id
+    if (!this.eco) {
+      // Resto de un turno anterior (resultado tardío de una interrupción…): no es de este turno. Los permisos sí se responden, o el CLI se queda esperando.
+      if (m.type === 'user' && m.uuid === this.o.mensajeId) this.eco = true
+      if (m.type !== 'control_request') return
+    }
     const o = this.o
     const propio = m.parent_tool_use_id == null
     switch (m.type) {

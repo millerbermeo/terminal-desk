@@ -23,4 +23,6 @@ export interface LlamadaHerramienta {
 export interface ResultadoHerramienta {
   texto: string
   error?: boolean
+  /** Imagen adjunta (captura del navegador), en base64. Solo llega a la IA por MCP; en modo API se queda en el texto. */
+  imagen?: { datos: string; tipo: 'image/png' | 'image/jpeg' }
 }

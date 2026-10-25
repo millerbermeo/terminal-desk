@@ -31,7 +31,7 @@ describe('comandos de arranque: interfaz', () => {
     vi.doMock('../src/renderer/components/TerminalGrid', () => ({ TerminalGrid: () => <div className="rejilla-falsa" /> })) // la rejilla real arrastra el chat, el editor y media app
     const { Servicios } = await import('../src/renderer/components/Servicios')
     const html = renderToString(
-      <Servicios visible terminales={[]} activa={null} modo="rejilla" reiniciarLayout={0} personalizado={false} estados={{}} onModo={() => undefined} onActivar={() => undefined} onCerrar={() => undefined} onPty={() => undefined} onPersonalizado={() => undefined} onReorganizar={() => undefined} onDetener={() => undefined} onDetenerTodo={() => undefined} />
+      <Servicios visible terminales={[]} grupoDe={() => ({ id: 'g', nombre: 'G' })} estados={{}} onCerrar={() => undefined} onPty={() => undefined} onDetener={() => undefined} onDetenerProyectos={() => undefined} />
     )
     expect(html).toContain('Ningún servicio en marcha')
     expect(html.replace(/<!-- -->/g, '')).toContain('0 servicios')

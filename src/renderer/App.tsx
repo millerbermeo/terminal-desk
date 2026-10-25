@@ -96,7 +96,8 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   const [arranqueDe, setArranqueDe] = useState<Proyecto | null>(null)
   const [estadosArranque, setEstadosArranque] = useState<Record<string, EstadoArranque>>({})
   // Terminales de los comandos de arranque: sección aparte («Servicios»), no la rejilla de cada proyecto.
-  const [servicios, setServicios] = useState<{ terminales: TerminalInfo[]; activa: string | null; modo: Modo; reiniciarLayout: number; personalizado: boolean }>({ terminales: [], activa: null, modo: 'rejilla', reiniciarLayout: 0, personalizado: false })
+  // Cada grupo de proyectos tiene su pestaña dentro de «Servicios» (con su propia rejilla): ver `Servicios.tsx`.
+  const [servicios, setServicios] = useState<TerminalInfo[]>([])
 
   /** «Abrir carpeta»: explorador nativo y, con lo elegido, el formulario ya relleno (grupo y nombre editables). */
   const abrirCarpeta = async (): Promise<void> => {
@@ -251,10 +252,13 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
         void (async () => {
           let d = datosRef.current
           // el proyecto puede ser nuevo y la lista de la interfaz aún no lo traía: se vuelve a leer para ponerle nombre
-          if (!d.proyectos.some((x) => x.id === t.proyectoId)) d = await window.api.proyectos.listar().catch(() => d)
+          if (!d.proyectos.some((x) => x.id === t.proyectoId)) {
+            d = await window.api.proyectos.listar().catch(() => d)
+            setDatos(d) // así su servicio cae desde el principio en la pestaña de su grupo (cambiar de pestaña después lo movería de rejilla)
+          }
           const p = d.proyectos.find((x) => x.id === t.proyectoId)
           const info: TerminalInfo = { ...nuevaTerminal(p ? `${p.nombre} · ${t.nombre}` : t.nombre, t.cwd), ptyId: t.ptyId, arranque: { proyectoId: t.proyectoId, comandoId: t.comandoId } }
-          setServicios((s) => ({ ...s, terminales: [...s.terminales, info], activa: s.activa ?? info.id }))
+          setServicios((s) => [...s, info])
         })()
       }),
     []
@@ -266,13 +270,20 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
       setEstadosArranque((x) => ({ ...x, [`${e.proyectoId}|${e.comandoId}`]: e }))
       if (e.estado === 'detenido' && e.ptyId) {
         setServicios((s) => {
-          const resto = s.terminales.filter((t) => t.ptyId !== e.ptyId)
-          return resto.length === s.terminales.length ? s : { ...s, terminales: resto, activa: resto.some((t) => t.id === s.activa) ? s.activa : (resto[resto.length - 1]?.id ?? null) }
+          const resto = s.filter((t) => t.ptyId !== e.ptyId)
+          return resto.length === s.length ? s : resto
         })
       }
     })
   }, [])
   const detenerServicio = useCallback((proyectoId: string, comandoId: string): void => void window.api.arranque.operar('detener', { proyectoId, ids: [comandoId] }).catch(() => undefined), [])
+  const grupoDeServicio = useCallback(
+    (t: TerminalInfo): { id: string; nombre: string } => {
+      const p = t.arranque && datos.proyectos.find((x) => x.id === t.arranque!.proyectoId)
+      return p ? claveDe(p) : { id: SIN_GRUPO, nombre: 'Sin grupo' }
+    },
+    [datos.proyectos, claveDe]
+  )
   const arranqueEnMarcha = new Set(Object.values(estadosArranque).filter((e) => enCurso(e.estado)).map((e) => e.proyectoId))
 
   // Clic en un proyecto: si ya tiene terminal en la pestaña de su grupo, se va a ella (no se abre otra).
@@ -488,7 +499,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
         onAbrirAsistente={abrirAsistente}
         onArranque={setArranqueDe}
         enMarcha={arranqueEnMarcha}
-        serviciosActivos={servicios.terminales.length}
+        serviciosActivos={servicios.length}
         email={email}
         onCuenta={onCuenta}
         pendientes={pendientes}
@@ -538,20 +549,13 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
       <Navegador visible={vista === 'navegador'} />
       <Servicios
         visible={vista === 'servicios'}
-        terminales={servicios.terminales}
-        activa={servicios.activa}
-        modo={servicios.modo}
-        reiniciarLayout={servicios.reiniciarLayout}
-        personalizado={servicios.personalizado}
+        terminales={servicios}
+        grupoDe={grupoDeServicio}
         estados={estadosArranque}
-        onModo={(modo) => setServicios((x) => ({ ...x, modo }))}
-        onActivar={(id) => setServicios((x) => (x.activa === id ? x : { ...x, activa: id }))}
-        onCerrar={(id) => setServicios((x) => ({ ...x, terminales: x.terminales.filter((t) => t.id !== id), activa: x.activa === id ? (x.terminales.filter((t) => t.id !== id).at(-1)?.id ?? null) : x.activa }))}
-        onPty={(id, ptyId) => setServicios((x) => ({ ...x, terminales: x.terminales.map((t) => (t.id === id ? { ...t, ptyId } : t)) }))}
-        onPersonalizado={(personalizado) => setServicios((x) => (x.personalizado === personalizado ? x : { ...x, personalizado }))}
-        onReorganizar={() => setServicios((x) => ({ ...x, reiniciarLayout: x.reiniciarLayout + 1 }))}
+        onCerrar={(id) => setServicios((x) => x.filter((t) => t.id !== id))}
+        onPty={(id, ptyId) => setServicios((x) => x.map((t) => (t.id === id ? { ...t, ptyId } : t)))}
         onDetener={detenerServicio}
-        onDetenerTodo={() => [...new Set(servicios.terminales.flatMap((t) => (t.arranque ? [t.arranque.proyectoId] : [])))].forEach((proyectoId) => void window.api.arranque.operar('detener', { proyectoId }).catch(() => undefined))}
+        onDetenerProyectos={(ids) => ids.forEach((proyectoId) => void window.api.arranque.operar('detener', { proyectoId }).catch(() => undefined))}
       />
       {guiaAbierta && (
         <Suspense fallback={null}>

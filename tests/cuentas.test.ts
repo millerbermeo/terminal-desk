@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
@@ -35,9 +35,19 @@ function arrancar() {
   const i = a.indexOf('--resume')
   const reanuda = i >= 0 ? a[i + 1] : null
   const sesionOk = !reanuda || (fs.existsSync(path.join(dir, 'projects')) && fs.readdirSync(path.join(dir, 'projects')).some((p) => fs.existsSync(path.join(dir, 'projects', p, reanuda + '.jsonl'))))
-  fs.appendFileSync(process.env.FALSO_VOLCADO, JSON.stringify({ dir, reanuda, sesionOk, clave: process.env.ANTHROPIC_API_KEY ?? null }) + '\\n')
+  fs.appendFileSync(process.env.FALSO_VOLCADO, JSON.stringify({ dir, reanuda, sesionOk, clave: process.env.ANTHROPIC_API_KEY ?? null, entrada: entrada.slice(0, 2000) }) + '\\n')
   const l = (o) => console.log(JSON.stringify(o))
   l({ type: 'system', subtype: 'init', session_id: 'cli-1', model: 'claude-sonnet-5-5' })
+  if (hay('limite-a-medias')) {
+    // Hace una herramienta (deja su transcripción, como el CLI real) y la cuenta se agota antes de terminar la tarea.
+    fs.mkdirSync(path.join(dir, 'projects', '-proy'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'projects', '-proy', 'cli-medias.jsonl'), '{"paso":"edito archivo"}\\n')
+    l({ type: 'assistant', session_id: 'cli-medias', parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: 'a.txt' } }] } })
+    l({ type: 'user', session_id: 'cli-medias', parent_tool_use_id: null, message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } })
+    l({ type: 'rate_limit_event', session_id: 'cli-medias', rate_limit_info: { status: 'rejected', resetsAt: 4102444800, rateLimitType: 'five_hour' } })
+    l({ type: 'result', subtype: 'success', is_error: true, session_id: 'cli-medias', result: "You've hit your limit", api_error_status: 429 })
+    process.exit(1)
+  }
   if (hay('limite')) {
     l({ type: 'rate_limit_event', session_id: 'cli-1', rate_limit_info: { status: 'rejected', resetsAt: 4102444800, rateLimitType: 'five_hour' } })
     l({ type: 'result', subtype: 'success', is_error: true, session_id: 'cli-1', result: "You've hit your limit", api_error_status: 429 })
@@ -60,7 +70,7 @@ const tocar = async (ruta: string, contenido = ''): Promise<void> => {
   await mkdir(join(ruta, '..'), { recursive: true })
   await writeFile(ruta, contenido)
 }
-const lineasVolcado = async (): Promise<{ dir: string; reanuda: string | null; sesionOk: boolean; clave: string | null }[]> =>
+const lineasVolcado = async (): Promise<{ dir: string; reanuda: string | null; sesionOk: boolean; clave: string | null; entrada: string }[]> =>
   (await readFile(volcado, 'utf8').catch(() => ''))
     .split('\n')
     .filter(Boolean)
@@ -171,10 +181,10 @@ describe('detección de límite', () => {
 })
 
 describe('Nucleo: varias cuentas de suscripción', () => {
-  const ejecutar = async (nucleo: TipoNucleo): Promise<EventoAgente[]> => {
+  const ejecutar = async (nucleo: TipoNucleo, sesionId = 's1', prompt = 'hola'): Promise<EventoAgente[]> => {
     const eventos: EventoAgente[] = []
     await new Promise<void>((resolver) => {
-      void nucleo.ejecutar({ prompt: 'hola', proyectoId: 'p1', sesionId: 's1' }, (e) => {
+      void nucleo.ejecutar({ prompt, proyectoId: 'p1', sesionId }, (e) => {
         eventos.push(e)
         if (e.tipo === 'fin') resolver()
       })
@@ -242,5 +252,55 @@ describe('Nucleo: varias cuentas de suscripción', () => {
     expect(eventos.some((e) => e.tipo === 'cuenta_cambiada')).toBe(false)
     expect(eventos.find((e) => e.tipo === 'fin')).toMatchObject({ resultado: { estado: 'error' } })
     expect((await lineasVolcado()).length).toBe(antes + 1)
+  })
+
+  it('si la cuenta se agota a mitad de la tarea, otra cuenta sigue desde ahí sin repetir lo hecho', async () => {
+    const nucleo = new Nucleo()
+    const principal = join(home, '.claude')
+    const trabajo = (await nucleo.cuentaEstado()).cuentas.find((c) => c.nombre === 'Trabajo')!
+    await nucleo.cuentaActivar(trabajo.id) // activar a mano quita la marca de límite de las pruebas anteriores
+    await nucleo.cuentaActivar('principal')
+    await nucleo.cuentaCambioAutomatico(true)
+    await rm(join(principal, 'limite'), { force: true })
+    await tocar(join(principal, 'limite-a-medias'))
+    const antes = (await lineasVolcado()).length
+    try {
+      const eventos = await ejecutar(nucleo, 's2', 'refactoriza el módulo')
+      expect(eventos.find((e) => e.tipo === 'cuenta_cambiada')).toMatchObject({ de: 'Principal', a: 'Trabajo', continua: true })
+      expect(eventos.find((e) => e.tipo === 'fin')).toMatchObject({ resultado: { estado: 'completado', texto: `hola desde ${trabajo.id}` } })
+      expect(eventos.filter((e) => e.tipo === 'herramienta_fin')).toHaveLength(1) // lo hecho no se repite
+      expect(eventos.filter((e) => e.tipo === 'inicio')).toHaveLength(1)
+
+      const llamadas = (await lineasVolcado()).slice(antes)
+      expect(llamadas).toHaveLength(2)
+      expect(llamadas[0]).toMatchObject({ dir: principal, reanuda: null })
+      expect(llamadas[0]!.entrada).toContain('refactoriza el módulo')
+      // La otra cuenta reanuda la transcripción a medias (copiada) y recibe «continúa», no la petición original otra vez.
+      expect(llamadas[1]).toMatchObject({ dir: join(home, '.odesk-agent', 'cuentas', trabajo.id), reanuda: 'cli-medias', sesionOk: true })
+      expect(llamadas[1]!.entrada).toContain('Continúa exactamente donde quedaste')
+      expect(llamadas[1]!.entrada).not.toContain('refactoriza el módulo')
+      expect((await nucleo.cuentaEstado()).cuentaActivaId).toBe(trabajo.id)
+    } finally {
+      await rm(join(principal, 'limite-a-medias'), { force: true })
+    }
+  })
+
+  it('sin otra cuenta, el avance a medias se guarda: el siguiente mensaje reanuda esa conversación', async () => {
+    const nucleo = new Nucleo()
+    const principal = join(home, '.claude')
+    const trabajo = (await nucleo.cuentaEstado()).cuentas.find((c) => c.nombre === 'Trabajo')!
+    await nucleo.cuentaActivar('principal')
+    await nucleo.cuentaCambioAutomatico(true)
+    await nucleo.cuentas.marcarLimite(trabajo.id, Date.now() + 60_000)
+    await tocar(join(principal, 'limite-a-medias'))
+    try {
+      const eventos = await ejecutar(nucleo, 's3', 'tarea larga')
+      expect(eventos.find((e) => e.tipo === 'fin')).toMatchObject({ resultado: { estado: 'error' } })
+    } finally {
+      await rm(join(principal, 'limite-a-medias'), { force: true })
+    }
+    await nucleo.cuentaActivar('principal')
+    await ejecutar(nucleo, 's3', 'continúa')
+    expect((await lineasVolcado()).at(-1)).toMatchObject({ dir: principal, reanuda: 'cli-medias', sesionOk: true })
   })
 })

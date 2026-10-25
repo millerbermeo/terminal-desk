@@ -52,4 +52,15 @@ describe('permiso del CLI de suscripción', () => {
     puerta.responder(eventos[0]!.solicitudId, { aprobado: true, siempre: true })
     expect(await r).toEqual({ permitir: true })
   })
+
+  it('en autónomo aprueba los comandos sin preguntar, salvo los catastróficos, que deniega avisando', async () => {
+    const puerta = new PuertaHumana()
+    const eventos: EventoAgente[] = []
+    const permiso = crearPermisoCli({ puerta, ejecucionId: 'e1', alEvento: (e) => void eventos.push(e), validar: async () => null, reglas: async () => [], guardarRegla: async () => undefined, autonomia: 'autonomo' })
+    expect(await permiso({ herramienta: 'Bash', entrada: { command: 'npm test && rm -rf build' } })).toEqual({ permitir: true })
+    const r = await permiso({ herramienta: 'Bash', entrada: { command: 'git push origin main --force' } })
+    expect(r).toMatchObject({ permitir: false, mensaje: expect.stringMatching(/autónomo.*push forzado/) })
+    expect(eventos).toEqual([expect.objectContaining({ tipo: 'guardrail', herramienta: 'Bash' })])
+    expect(eventos.some((e) => e.tipo === 'solicitud_humana')).toBe(false)
+  })
 })

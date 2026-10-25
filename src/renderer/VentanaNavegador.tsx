@@ -83,6 +83,11 @@ export function VentanaNavegador({ id }: { id: number }) {
           aria-label="Dirección"
         />
       </form>
+      {estado?.ia && (
+        <span className="chip nav-ia" title={`La IA controla esta ventana. Última acción: ${estado.ia}`}>
+          🤖 {estado.ia}
+        </span>
+      )}
       {(error || estado?.error) && (
         <span className="chip chip-aviso nav-error" title={error || estado?.error}>
           {error || estado?.error}

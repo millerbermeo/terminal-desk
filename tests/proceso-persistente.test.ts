@@ -29,6 +29,8 @@ let entrada = ''
 let pendiente = null // turno en marcha: { temporizador }
 let acum = { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, costUSD: 0 }
 let iniciado = false
+const vistos = new Set()
+let fantasma = false
 anota({ arranque: true, reanuda, args: a, env: { checkpoints: process.env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING } })
 
 // Consulta de un solo uso (resumen/título): JSON y fin.
@@ -65,6 +67,20 @@ function recibir(m) {
   if (m.type === 'user') {
     const texto = typeof m.message.content === 'string' ? m.message.content : ''
     anota({ usuario: texto, uuid: m.uuid ?? null })
+    // como el real: un uuid ya visto se ignora en silencio, y con --replay-user-messages repite el mensaje al tomarlo
+    if (m.uuid && vistos.has(m.uuid)) return
+    if (m.uuid) vistos.add(m.uuid)
+    // MUDO: no lo toma nunca (ni eco ni salida). COMPACTA: trabaja 2,5 s (saca avisos) antes de tomarlo
+    if (texto.includes('MUDO')) return
+    if (texto.includes('COMPACTA')) {
+      const aviso = setInterval(() => l({ type: 'system', subtype: 'status', session_id: sid }), 300)
+      setTimeout(() => { clearInterval(aviso); l({ type: 'user', uuid: m.uuid, session_id: sid, message: m.message }); paso('compactado'); resultado(false) }, 2500)
+      return
+    }
+    // FANTASMA: deja pendiente un turno que el CLI abre solo (p. ej. al acabar una tarea en segundo plano) y que sale justo antes de tomar el siguiente mensaje
+    if (texto.includes('FANTASMA')) fantasma = true
+    else if (fantasma) { fantasma = false; paso('turno espontáneo'); resultado(false) }
+    if (a.includes('--replay-user-messages')) l({ type: 'user', uuid: m.uuid, session_id: sid, message: m.message })
     if (texto.includes('LENTO')) {
       paso('empiezo')
       pendiente = setTimeout(() => { pendiente = null; paso('terminé'); resultado(false) }, 4000)
@@ -125,6 +141,7 @@ beforeAll(async () => {
   volcado = join(home, 'volcado.jsonl')
   vi.stubEnv('FALSO_VOLCADO', volcado)
   vi.stubEnv('ODESK_MAX_PASOS', '4')
+  vi.stubEnv('ODESK_ESPERA_ECO_S', '1')
   await mkdir(join(home, '.claude'), { recursive: true })
   await writeFile(join(home, '.claude', 'sesion'), '')
   const proyecto = join(home, 'proyecto')
@@ -168,6 +185,35 @@ describe('proceso persistente del CLI', () => {
     expect(arranques).toHaveLength(2)
     expect(arranques[0]!.pid).not.toBe(arranques[1]!.pid)
     expect(arranques[1]!.reanuda).toBe(a.sesionCli)
+    pool.cerrarTodos()
+  })
+
+  it('lo que el CLI emite antes de tomar el mensaje (un turno que abrió solo) no se cuela en el turno siguiente', async () => {
+    await writeFile(volcado, '')
+    const pool = new ProcesosCli(4, 60_000)
+    await ejecutarEnProceso(pool, 'c-eco', opciones({ prompt: 'FANTASMA' }).o)
+    const textos: string[] = []
+    const r = await ejecutarEnProceso(pool, 'c-eco', opciones({ prompt: 'dos', alEvento: (e) => void (e.tipo === 'texto' && textos.push(String(e.texto))) }).o)
+    expect(r.resultado).toMatchObject({ estado: 'completado', pasos: 1 })
+    expect(textos).toEqual(['hecho: dos'])
+    expect((await lineas()).find((x) => x.arranque)?.args).toContain('--replay-user-messages')
+    pool.cerrarTodos()
+  })
+
+  it('si el CLI no toma el mensaje (ni eco ni salida), el turno termina con error en vez de quedarse esperando', async () => {
+    const pool = new ProcesosCli(4, 60_000)
+    const t0 = Date.now()
+    const r = await ejecutarEnProceso(pool, 'c-mudo', opciones({ prompt: 'MUDO' }).o)
+    expect(r.resultado.estado).toBe('error')
+    expect(r.resultado.error).toMatch(/no tomó el mensaje/)
+    expect(Date.now() - t0).toBeLessThan(8000)
+    pool.cerrarTodos()
+  })
+
+  it('mientras el CLI siga sacando algo antes de tomar el mensaje (p. ej. compactando), se le espera', async () => {
+    const pool = new ProcesosCli(4, 60_000)
+    const r = await ejecutarEnProceso(pool, 'c-compacta', opciones({ prompt: 'COMPACTA' }).o)
+    expect(r.resultado).toMatchObject({ estado: 'completado', pasos: 1 })
     pool.cerrarTodos()
   })
 
@@ -371,5 +417,54 @@ describe('Nucleo con proceso persistente', () => {
     expect(eventos.filter((e) => e.tipo === 'continuacion_automatica')).toHaveLength(0)
     expect(eventos.find((e) => e.tipo === 'fin')).toMatchObject({ resultado: { estado: 'limite_pasos' } })
     expect((await lineas()).filter((x) => x.usuario)).toHaveLength(1)
+  })
+
+  // Un mensaje enviado mientras otro sigue en marcha en la misma conversación espera su turno (como la cola de Claude Code).
+  const lanzar = (n: TipoNucleo, sol: Parameters<TipoNucleo['ejecutar']>[0]): { fin: Promise<EventoAgente[]>; iniciada: Promise<{ ejecucionId: string }> } => {
+    const ev: EventoAgente[] = []
+    let iniciada!: Promise<{ ejecucionId: string }>
+    const fin = new Promise<EventoAgente[]>((resolver) => {
+      iniciada = n.ejecutar(sol, (e) => {
+        ev.push(Object.assign({ t: Date.now() }, e))
+        if (e.tipo === 'fin') resolver(ev)
+      })
+    })
+    return { fin, iniciada }
+  }
+  const instante = (ev: EventoAgente[], tipo: EventoAgente['tipo']): number => (ev.find((e) => e.tipo === tipo) as unknown as { t: number }).t
+
+  it('un segundo mensaje con otra configuración espera a que termine la tarea en marcha en vez de matarla', async () => {
+    await writeFile(volcado, '')
+    vi.stubEnv('ODESK_SIN_TITULO', '1')
+    const n = await nuevo()
+    const primero = lanzar(n, { prompt: 'LENTO', proyectoId: 'p1', sesionId: 's-cola' })
+    await esperar(600)
+    const segundo = lanzar(n, { prompt: 'segundo', proyectoId: 'p1', sesionId: 's-cola', autonomia: 'autonomo' }) // otra firma de proceso
+    const [e1, e2] = await Promise.all([primero.fin, segundo.fin])
+    expect(e1.find((e) => e.tipo === 'fin')).toMatchObject({ resultado: { estado: 'completado', texto: 'ok' } })
+    expect(e1.some((e) => e.tipo === 'texto' && e.texto === 'terminé')).toBe(true)
+    expect(e2.find((e) => e.tipo === 'fin')).toMatchObject({ resultado: { estado: 'completado' } })
+    expect(instante(e2, 'inicio')).toBeGreaterThanOrEqual(instante(e1, 'fin'))
+    const usuario = (await lineas()).filter((x) => x.usuario)
+    expect(usuario.map((x) => x.usuario?.trim().split('\n').pop())).toEqual(['LENTO', 'segundo'])
+  })
+
+  it('cancelar un mensaje que espera su turno lo descarta sin enviarlo; la tarea en marcha sigue', async () => {
+    await writeFile(volcado, '')
+    vi.stubEnv('ODESK_SIN_TITULO', '1')
+    const n = await nuevo()
+    const primero = lanzar(n, { prompt: 'LENTO', proyectoId: 'p1', sesionId: 's-cola2' })
+    await esperar(600)
+    const enCola = lanzar(n, { prompt: 'NO-ENVIAR', proyectoId: 'p1', sesionId: 's-cola2' })
+    const { ejecucionId } = await enCola.iniciada
+    const t0 = Date.now()
+    n.cancelar(ejecucionId)
+    const e2 = await enCola.fin
+    expect(Date.now() - t0).toBeLessThan(1000)
+    expect(e2.find((e) => e.tipo === 'fin')).toMatchObject({ resultado: { estado: 'cancelado' } })
+    expect(e2.some((e) => e.tipo === 'inicio')).toBe(false)
+    const e1 = await primero.fin
+    expect(e1.find((e) => e.tipo === 'fin')).toMatchObject({ resultado: { estado: 'completado' } })
+    expect((await lineas()).some((x) => x.usuario?.includes('NO-ENVIAR'))).toBe(false)
   })
 })
