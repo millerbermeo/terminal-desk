@@ -25,6 +25,7 @@ import { Repositorio } from './core/git/repositorio'
 import { importarProyectosLocales } from './servidor/importar'
 import { iniciarSesionGoogle } from './servidor/google'
 import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
+import { ServicioVoz } from './voz'
 import { servidorPorDefecto } from './servidor/por-defecto'
 import { cifradorDelSistema } from './cifrador'
 import { URL_SERVIDOR_PRODUCCION, type CredencialesSesion, type EstadoSesion, type NombreOperacionCuenta, type ResultadoBoveda, type ResultadoPaso, type ResultadoSesion } from '@shared/sesion'
@@ -482,6 +483,11 @@ function registrarIpc(): void {
   ipcMain.handle(Canales.gitOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGit(carpetaDeProyecto, op, entrada, nucleo.github.credencialesPara))
   ipcMain.handle(Canales.githubOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGitHub(nucleo.github, op, entrada))
   ipcMain.handle(Canales.historialOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionHistorial(historial, op, entrada))
+  const voz = new ServicioVoz(servidor)
+  ipcMain.handle(Canales.vozEstado, () => voz.estado())
+  ipcMain.handle(Canales.vozTranscribir, (_e, audio: unknown, mime: unknown, duracionMs: unknown, mejorar: unknown) =>
+    voz.transcribir(audio instanceof Uint8Array ? audio : new Uint8Array(0), String(mime ?? ''), Number(duracionMs) || 0, mejorar !== false)
+  )
   ipcMain.handle(Canales.arranqueOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionArranque(arranque, op as never, entrada as never))
   ipcMain.handle(Canales.credencialesOperar, (_e, op: 'listar' | 'guardar' | 'eliminar', entrada: unknown) => ejecutarOperacionCredenciales(op, entrada as never))
   ipcMain.handle(Canales.equiposOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionEquipos(equipos, depsEquipos, op, entrada))

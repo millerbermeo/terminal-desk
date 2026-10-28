@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DatosProyectos } from '@shared/modelos'
-import { PRIORIDADES, dependenciasAbiertas, type DetalleTarea, type EstadoTarea, type ItemLista, type Prioridad, type Tarea, type TipoReferencia } from '@shared/tareas'
-import { NOMBRE_PRIORIDAD } from './Tareas'
+import { COLORES_TAREA, PRIORIDADES, dependenciasAbiertas, type DetalleTarea, type EstadoTarea, type ItemLista, type Prioridad, type Tarea, type TipoReferencia } from '@shared/tareas'
+import { NOMBRE_COLOR, NOMBRE_PRIORIDAD } from './Tareas'
 import { ModalConfirmar } from './ModalConfirmar'
 
 interface Props {
@@ -152,6 +152,15 @@ export function TareaDetalle({ id, datos, todas, estados, onCerrar, onEstado, on
                 ))}
               </select>
             </label>
+            <div className="td-campo">
+              Color
+              <span className="td-colores" role="radiogroup" aria-label="Color de la tarjeta">
+                <button type="button" role="radio" aria-checked={!t.color} className={`td-color sin-color${!t.color ? ' on' : ''}`} onClick={() => void editar({ color: null })} title="Sin color" aria-label="Sin color" />
+                {COLORES_TAREA.map((c) => (
+                  <button key={c} type="button" role="radio" aria-checked={t.color === c} className={`td-color color-${c}${t.color === c ? ' on' : ''}`} onClick={() => void editar({ color: c })} title={NOMBRE_COLOR[c]} aria-label={NOMBRE_COLOR[c]} />
+                ))}
+              </span>
+            </div>
             <label>
               Proyecto
               <select value={t.proyectoId ?? ''} onChange={(e) => void editar({ proyectoId: e.target.value || null })}>

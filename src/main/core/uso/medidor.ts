@@ -1,5 +1,5 @@
 import type { Uso } from '@shared/core/agente'
-import type { LimiteApi, LimitesApi, ResumenUso, UsoModelo } from '@shared/core/uso'
+import type { LimiteApi, LimitesApi, ResumenUso, UsoModelo, UsoPlan } from '@shared/core/uso'
 import { AlmacenJson } from '../memory/almacen'
 import type { PeticionLLM, ProveedorLLM, RespuestaLLM } from '../agents/llm/proveedor'
 
@@ -47,6 +47,7 @@ export class Medidor {
   private datos: Documento = { dias: {} }
   private cargado: Promise<void>
   private limites: LimitesApi | undefined
+  private plan: UsoPlan | undefined
   private readonly oyentes = new Set<(r: ResumenUso) => void>()
   private aviso: NodeJS.Timeout | undefined
 
@@ -82,6 +83,13 @@ export class Medidor {
     this.avisar()
   }
 
+  /** Uso del plan de suscripción. Un fallo conserva los últimos datos buenos de la misma cuenta y solo añade el motivo. */
+  fijarPlan(cuenta: string, r: { datos: Omit<UsoPlan, 'cuenta'> } | { error: string }): void {
+    const previo = this.plan?.cuenta === cuenta ? this.plan : undefined
+    this.plan = 'datos' in r ? { cuenta, ...r.datos } : { ...(previo ?? {}), cuenta, error: r.error }
+    this.avisar()
+  }
+
   async resumen(): Promise<ResumenUso> {
     await this.cargado
     const dia = diaLocal(this.ahora())
@@ -103,7 +111,8 @@ export class Medidor {
       hoy: structuredClone(hoy),
       total: sumar([hoy]),
       ultimos7Dias: sumar(Object.entries(this.datos.dias).filter(([d]) => d >= desde).map(([, v]) => v)),
-      ...(this.limites ? { limites: this.limites } : {})
+      ...(this.limites ? { limites: this.limites } : {}),
+      ...(this.plan ? { plan: structuredClone(this.plan) } : {})
     }
   }
 

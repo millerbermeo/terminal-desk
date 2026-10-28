@@ -12,6 +12,7 @@ import type { NombreOperacionGit, OperacionesGit } from './versiones'
 import type { EstadoZoom } from './zoom'
 import type { NombreOperacionApi, OperacionesApi } from './api'
 import type { EstadoArranque, NombreOperacionArranque, OperacionesArranque, TerminalArranque } from './arranque'
+import type { EstadoVoz, ResultadoVoz } from './voz'
 import type { NombreOperacionCredenciales, OperacionesCredenciales } from './credenciales'
 import type { NombreOperacionEquipos, OperacionesEquipos } from './equipos'
 import type { NombreOperacionGitHub, OperacionesGitHub } from './github'
@@ -93,6 +94,8 @@ export const Canales = {
   equiposOperar: 'equipos:operar',
   credencialesOperar: 'credenciales:operar',
   arranqueOperar: 'arranque:operar',
+  vozEstado: 'voz:estado',
+  vozTranscribir: 'voz:transcribir',
   arranqueEstado: 'arranque:estado',
   arranqueTerminal: 'arranque:terminal',
   historialOperar: 'historial:operar',
@@ -109,6 +112,7 @@ export const Canales = {
   coreCuentaAuto: 'core:cuenta-auto',
   coreUsoObtener: 'core:uso-obtener',
   coreUso: 'core:uso',
+  coreUsoPlan: 'core:uso-plan',
   coreAdjuntoSubir: 'core:adjunto-subir',
   coreAdjuntoLeer: 'core:adjunto-leer',
   coreAdjuntoEliminar: 'core:adjunto-eliminar',
@@ -306,6 +310,8 @@ export interface ApiCentro {
     cuentaCambioAutomatico(activo: boolean): Promise<EstadoCuenta>
     /** Consumo de esta aplicación hoy y límites de tasa que informa la API. */
     uso(): Promise<ResumenUso>
+    /** Consulta ya el uso del plan de suscripción (botón «actualizar»). */
+    usoPlan(): Promise<ResumenUso>
     /** Cambios en el consumo en tiempo real (tras cada llamada al modelo). */
     onUso(cb: (r: ResumenUso) => void): () => void
     /** Valida y guarda un archivo (imagen, PDF o texto) para adjuntarlo a un mensaje; lanza con un motivo claro si no es admisible. */
@@ -356,6 +362,12 @@ export interface ApiCentro {
   /** Historial local de versiones de los archivos de cada proyecto (independiente de git): consultar, comparar y restaurar. */
   historial: {
     operar<K extends NombreOperacionHistorial>(op: K, entrada: OperacionesHistorial[K]['entrada']): Promise<OperacionesHistorial[K]['salida']>
+  }
+  /** Dictado por voz: el backend transcribe (Groq) y mejora el texto; la interfaz lo deja en el campo sin enviarlo. */
+  voz: {
+    /** ¿Está configurado el dictado en el servidor? (clave de Groq presente y válida). */
+    estado(): Promise<EstadoVoz>
+    transcribir(audio: Uint8Array, mime: string, duracionMs: number, mejorar: boolean): Promise<ResultadoVoz>
   }
   /** Comandos de arranque de cada proyecto: se lanzan en orden, esperando a que cada uno esté listo, y vigilando los puertos. */
   arranque: {

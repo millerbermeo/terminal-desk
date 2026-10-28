@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { DatosProyectos } from '@shared/modelos'
 import {
+  COLORES_TAREA,
   MAX_TAREAS,
   PRIORIDADES,
   ESTADOS_POR_DEFECTO,
@@ -11,11 +12,14 @@ import {
   fechaCorta,
   filtrarTareas,
   haceCiclo,
+  referenciasTareas,
   resumirTareas,
   siguienteTarea,
+  tareasDelProyecto,
   validarEstados,
   type Actividad,
   type Autor,
+  type ColorTarea,
   type DatosNuevaTarea,
   type DetalleTarea,
   type EstadoTarea,
@@ -90,6 +94,11 @@ const prioridad = (v: unknown): Prioridad => {
   return v as Prioridad
 }
 
+const color = (v: unknown): ColorTarea => {
+  if (!COLORES_TAREA.includes(v as ColorTarea)) throw new Error(`El color debe ser: ${COLORES_TAREA.join(', ')}.`)
+  return v as ColorTarea
+}
+
 const etiquetas = (v: unknown): string[] => {
   if (!Array.isArray(v)) throw new Error('«etiquetas» debe ser una lista.')
   const limpias = [...new Set(v.map((e) => texto(e, 'etiqueta', 30, true)))]
@@ -106,6 +115,8 @@ const referencia = (r: { tipo?: TipoReferencia | undefined; titulo?: string | un
   if (tipo === 'enlace' && !/^https?:\/\/\S+$/i.test(destino)) throw new Error('Un enlace debe empezar por http:// o https://.')
   return { id: randomUUID().slice(0, 8), tipo, titulo: texto(r.titulo, 'titulo', 120) || destino.slice(0, 120), destino }
 }
+
+const recortar = (t: string, max: number): string => (t.length > max ? `${t.slice(0, max)}…` : t)
 
 const corto = (t: Pick<Tarea, 'numero' | 'titulo'>): string => `#${t.numero} «${t.titulo}»`
 
@@ -195,6 +206,7 @@ export class ServicioTareas {
       descripcion: texto(n.descripcion, 'descripcion', 20_000),
       estado: estado.id,
       prioridad: n.prioridad ? prioridad(n.prioridad) : 'media',
+      ...(n.color ? { color: color(n.color) } : {}),
       ...this.vinculo(datos, n.proyectoId, n.grupoId),
       etiquetas: n.etiquetas ? etiquetas(n.etiquetas) : [],
       creada: ahora,
@@ -311,6 +323,17 @@ export class ServicioTareas {
       if (parche.prioridad !== undefined && parche.prioridad !== t.prioridad) {
         cambios.push(`prioridad (${t.prioridad} → ${prioridad(parche.prioridad)})`)
         t.prioridad = parche.prioridad
+      }
+      if (parche.color !== undefined && parche.color !== t.color) {
+        if (parche.color === null) {
+          if (t.color !== undefined) {
+            cambios.push('color (quitado)')
+            delete t.color
+          }
+        } else {
+          t.color = color(parche.color)
+          cambios.push(`color (${t.color})`)
+        }
       }
       if (parche.etiquetas !== undefined) {
         const v = etiquetas(parche.etiquetas)
@@ -609,15 +632,30 @@ export class ServicioTareas {
    * Resumen compacto de las tareas del proyecto para el prompt del asistente: lo que está abierto, lo que bloquea y la
    * siguiente recomendada. Va acotado: la IA consulta el detalle con las herramientas.
    */
-  async contextoParaIA(proyectoId: string, nombreProyecto: string): Promise<string> {
+  /** Tareas abiertas que el Asistente de un proyecto ofrece en el chat: las del proyecto y las sueltas de su grupo. */
+  async paraAsistente(proyectoId: string): Promise<Tarea[]> {
     const d = await this.leer()
-    const tareas = filtrarTareas(d.tareas, d.estados, { proyectoId })
+    const grupoId = (await this.ctx.proyectos()).proyectos.find((p) => p.id === proyectoId)?.grupo
+    return filtrarTareas(tareasDelProyecto(d.tareas, proyectoId, grupoId), d.estados, { abiertas: true })
+  }
+
+  /**
+   * Contexto de tareas para el Asistente: resumen de las del proyecto (y las sueltas de su grupo) y, si el mensaje nombra tareas
+   * («#20», «tarea 20»), su ficha completa. Así la IA sabe de qué tarea se habla sin depender de que la busque con herramientas.
+   */
+  async contextoParaIA(proyectoId: string, nombreProyecto: string, prompt = ''): Promise<string> {
+    const d = await this.leer()
+    const datos = await this.ctx.proyectos()
+    const grupoId = datos.proyectos.find((p) => p.id === proyectoId)?.grupo
+    const tareas = filtrarTareas(tareasDelProyecto(d.tareas, proyectoId, grupoId), d.estados)
     const abiertas = tareas.filter((t) => estaAbierta(t, d.estados))
     const reglas =
       'Reglas: antes de implementar algo, consulta las tareas relacionadas (listar_tareas / obtener_tarea) y respeta sus criterios de aceptación; ' +
       'pasa la tarea a «en curso» al empezar; marca cada criterio al cumplirlo; completa la tarea solo cuando todos se cumplan; ' +
       'documenta decisiones y problemas con comentar_tarea. No borres tareas: si ya no valen, descártalas con un motivo.'
-    if (tareas.length === 0) return `Tareas de «${nombreProyecto}»: aún no hay ninguna. Puedes crearlas con crear_tarea / crear_tareas.\n${reglas}`
+    const fichas = this.fichasMencionadas(d, datos, prompt)
+    const conFichas = (texto: string): string => [texto, fichas].filter(Boolean).join('\n\n')
+    if (tareas.length === 0) return conFichas(`Tareas de «${nombreProyecto}»: aún no hay ninguna. Puedes crearlas con crear_tarea / crear_tareas.\n${reglas}`)
     const r = resumirTareas(tareas, d.tareas, d.estados)
     const nombreEstado = (id: string): string => d.estados.find((e) => e.id === id)?.nombre ?? id
     const lineas = abiertas.slice(0, 25).map((t) => {
@@ -625,12 +663,43 @@ export class ServicioTareas {
       const crit = t.criterios.length ? ` · criterios ${t.criterios.filter((c) => c.hecho).length}/${t.criterios.length}` : ' · sin criterios'
       return `#${t.numero} [${nombreEstado(t.estado)} · ${t.prioridad}] ${t.titulo}${t.vence ? ` · vence ${fechaCorta(t.vence)}` : ''}${deps.length ? ` · espera a ${deps.map((x) => `#${x.numero}`).join(', ')}` : ''}${crit}`
     })
+    return conFichas(
+      [
+        `Tareas de «${nombreProyecto}»: ${r.abiertas} abiertas, ${r.hechas} terminadas (${r.progreso} %).`,
+        ...lineas,
+        ...(abiertas.length > 25 ? [`… y ${abiertas.length - 25} más (usa listar_tareas).`] : []),
+        ...(r.siguiente ? [`Siguiente recomendada: #${r.siguiente.numero} ${r.siguiente.titulo}.`] : []),
+        reglas
+      ].join('\n')
+    )
+  }
+
+  /** Ficha completa de cada tarea que nombra el mensaje (las que no existen se avisan para que la IA no invente). */
+  private fichasMencionadas(d: Documento, datos: DatosProyectos, prompt: string): string {
+    const numeros = referenciasTareas(prompt)
+    if (numeros.length === 0) return ''
+    const nombreEstado = (id: string): string => d.estados.find((e) => e.id === id)?.nombre ?? id
+    const lista = (titulo: string, items: ItemLista[]): string[] => (items.length ? [`${titulo}:`, ...items.map((i) => `  [${i.hecho ? 'x' : ' '}] ${i.texto}`)] : [])
+    const fichas = numeros.map((n) => {
+      const t = d.tareas.find((x) => x.numero === n)
+      if (!t) return `#${n}: no existe en el tablero.`
+      const deps = dependenciasAbiertas(t, d.tareas, d.estados)
+      const proyecto = t.proyectoId ? (datos.proyectos.find((p) => p.id === t.proyectoId)?.nombre ?? 'proyecto eliminado') : 'sin proyecto'
+      const grupo = t.grupoId ? datos.grupos.find((g) => g.id === t.grupoId)?.nombre : undefined
+      return [
+        `#${t.numero} «${t.titulo}» — estado ${nombreEstado(t.estado)}, prioridad ${t.prioridad}, ${proyecto}${grupo ? ` (grupo ${grupo})` : ''}${t.vence ? `, vence ${fechaCorta(t.vence)}` : ''}${t.etiquetas.length ? `, etiquetas: ${t.etiquetas.join(', ')}` : ''}`,
+        ...(t.descripcion ? ['Descripción:', recortar(t.descripcion, 4000)] : []),
+        ...lista('Criterios de aceptación', t.criterios),
+        ...lista('Subtareas', t.checklist),
+        ...(deps.length ? [`Espera a: ${deps.map((x) => `#${x.numero} «${x.titulo}»`).join(', ')} (no se puede completar antes).`] : []),
+        ...(t.notasTecnicas ? ['Notas técnicas:', recortar(t.notasTecnicas, 2000)] : []),
+        ...(t.referencias.length ? ['Referencias:', ...t.referencias.map((x) => `  - ${x.titulo}: ${recortar(x.destino, 300)}`)] : []),
+        ...(t.comentarios.length ? ['Últimos comentarios:', ...t.comentarios.slice(-3).map((c) => `  - ${c.autor === 'ia' ? 'IA' : 'Usuario'}: ${recortar(c.texto, 300)}`)] : [])
+      ].join('\n')
+    })
     return [
-      `Tareas de «${nombreProyecto}»: ${r.abiertas} abiertas, ${r.hechas} terminadas (${r.progreso} %).`,
-      ...lineas,
-      ...(abiertas.length > 25 ? [`… y ${abiertas.length - 25} más (usa listar_tareas).`] : []),
-      ...(r.siguiente ? [`Siguiente recomendada: #${r.siguiente.numero} ${r.siguiente.titulo}.`] : []),
-      reglas
-    ].join('\n')
+      'Tareas del tablero que nombra el mensaje del usuario (ficha completa; trabaja sobre ellas con las herramientas de tareas y respeta sus criterios):',
+      ...fichas
+    ].join('\n\n')
   }
 }

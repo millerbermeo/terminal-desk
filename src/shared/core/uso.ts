@@ -36,6 +36,31 @@ export interface ResumenUso {
   total: UsoModelo // hoy, todos los modelos
   ultimos7Dias: UsoModelo
   limites?: LimitesApi
+  /** Cuánto del plan de suscripción se ha usado (toda la cuenta: web, terminales, otros equipos). */
+  plan?: UsoPlan
+}
+
+/** Una ventana de límite del plan. */
+export interface VentanaPlan {
+  /** 0–100 */
+  porcentaje: number
+  /** Cuándo se reinicia (epoch ms). */
+  reinicio?: number
+}
+
+/** Uso del plan de Claude (Pro/Max) tal como lo muestra `/usage` de Claude Code. */
+export interface UsoPlan {
+  cuenta: string
+  /** pro, max… */
+  tipo?: string
+  cincoHoras?: VentanaPlan
+  semana?: VentanaPlan
+  semanaOpus?: VentanaPlan
+  semanaSonnet?: VentanaPlan
+  /** Epoch ms de la última consulta correcta. */
+  actualizado?: number
+  /** Por qué no se pudo consultar la última vez (se siguen mostrando los últimos datos buenos). */
+  error?: string
 }
 
 /** Modelos que se conocen aunque la API no responda a la lista. */

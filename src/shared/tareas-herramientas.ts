@@ -82,7 +82,7 @@ export const HERRAMIENTAS_TAREAS: readonly DefHerramientaTareas[] = [
   {
     nombre: 'editar_tarea',
     descripcion:
-      'Edita campos de una tarea (título, descripción, prioridad, etiquetas, vencimiento, notas técnicas, proyecto/grupo). No cambia el estado (usa cambiar_estado_tarea). Para quitar el vencimiento o el proyecto, pasa una cadena vacía.',
+      'Edita campos de una tarea (título, descripción, prioridad, color, etiquetas, vencimiento, notas técnicas, proyecto/grupo). No cambia el estado (usa cambiar_estado_tarea). Para quitar el vencimiento o el proyecto, pasa una cadena vacía.',
     esquema: {
       type: 'object',
       properties: {
@@ -91,6 +91,7 @@ export const HERRAMIENTAS_TAREAS: readonly DefHerramientaTareas[] = [
         descripcion: t('Nueva descripción'),
         prioridad: { type: 'string', description: 'Prioridad', enum: ['baja', 'media', 'alta', 'urgente'] },
         etiquetas: lista('Lista completa de etiquetas'),
+        color: { type: 'string', description: 'Color de la tarjeta, o vacío para quitarlo', enum: ['', 'rojo', 'naranja', 'amarillo', 'verde', 'azul', 'morado', 'rosa', 'gris'] },
         vence: t('AAAA-MM-DD, o vacío para quitarlo'),
         notas_tecnicas: t('Nuevas notas técnicas'),
         proyecto_id: t('Id del proyecto al que vincularla, o vacío para dejarla suelta'),

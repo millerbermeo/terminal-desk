@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DatosProyectos } from '@shared/modelos'
-import { PRIORIDADES, categoriaDe, dependenciasAbiertas, estaAbierta, fechaCorta, filtrarTareas, type Actividad, type Prioridad, type ResumenTareas, type Tarea } from '@shared/tareas'
+import { PRIORIDADES, categoriaDe, dependenciasAbiertas, estaAbierta, fechaCorta, filtrarTareas, type Actividad, type ColorTarea, type Prioridad, type ResumenTareas, type Tarea } from '@shared/tareas'
 import { filtroDeAmbito, useTareas, mensajeDe, type Ambito } from '../tareas/useTareas'
 import { TareaDetalle } from './TareaDetalle'
 import { TareasEstados } from './TareasEstados'
@@ -15,6 +15,7 @@ const PESTANAS: { id: Pestana; nombre: string }[] = [
   { id: 'actividad', nombre: 'Actividad' }
 ]
 export const NOMBRE_PRIORIDAD: Record<Prioridad, string> = { baja: 'Baja', media: 'Media', alta: 'Alta', urgente: 'Urgente' }
+export const NOMBRE_COLOR: Record<ColorTarea, string> = { rojo: 'Rojo', naranja: 'Naranja', amarillo: 'Amarillo', verde: 'Verde', azul: 'Azul', morado: 'Morado', rosa: 'Rosa', gris: 'Gris' }
 
 interface Props {
   datos: DatosProyectos
@@ -180,7 +181,7 @@ function Tarjeta({ t, todas, estados, nombreProyecto, onAbrir, arrastrable }: { 
   const abierta = estaAbierta(t, estados)
   return (
     <div
-      className={`tarea-tarjeta prioridad-${t.prioridad}`}
+      className={`tarea-tarjeta prioridad-${t.prioridad}${t.color ? ` color-${t.color}` : ''}`}
       role="button"
       tabIndex={0}
       draggable={arrastrable}

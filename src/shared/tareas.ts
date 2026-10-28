@@ -7,6 +7,10 @@ export type Prioridad = 'baja' | 'media' | 'alta' | 'urgente'
 export const PRIORIDADES: readonly Prioridad[] = ['baja', 'media', 'alta', 'urgente']
 const PESO_PRIORIDAD: Record<Prioridad, number> = { baja: 0, media: 1, alta: 2, urgente: 3 }
 
+/** Color opcional de la tarjeta (sin color por defecto). */
+export type ColorTarea = 'rojo' | 'naranja' | 'amarillo' | 'verde' | 'azul' | 'morado' | 'rosa' | 'gris'
+export const COLORES_TAREA: readonly ColorTarea[] = ['rojo', 'naranja', 'amarillo', 'verde', 'azul', 'morado', 'rosa', 'gris']
+
 /** Qué significa un estado para las reglas (el usuario puede renombrar y añadir estados, pero cada uno tiene una categoría). */
 export type CategoriaEstado = 'pendiente' | 'en_curso' | 'bloqueada' | 'hecha' | 'cancelada'
 export const CATEGORIAS: readonly CategoriaEstado[] = ['pendiente', 'en_curso', 'bloqueada', 'hecha', 'cancelada']
@@ -68,6 +72,7 @@ export interface Tarea {
   descripcion: string
   estado: string
   prioridad: Prioridad
+  color?: ColorTarea
   proyectoId?: string
   grupoId?: string
   etiquetas: string[]
@@ -294,6 +299,28 @@ export function validarEstados(estados: readonly EstadoTarea[]): string | null {
   return null
 }
 
+const MAX_REFERENCIAS = 5
+const REF_HASH = /(?:^|[^\w&#])#(\d{1,5})(?![\w])/g
+const REF_PALABRA = /\btareas?\s+(?:n[úu]m(?:ero)?s?\.?\s*|n[º°o]\.?\s*)?#?(\d{1,5}(?:\s*(?:,|y|e)\s*#?\d{1,5})*)\b/gi
+
+/**
+ * Números de tarea que nombra un mensaje: «#20», «tarea 20», «tarea número 20», «tareas 3, 5 y 7». En orden de aparición, sin
+ * repetir y como mucho 5 (el resto la IA lo consulta con sus herramientas).
+ */
+export function referenciasTareas(texto: string): number[] {
+  const encontrados: { pos: number; n: number }[] = []
+  for (const m of texto.matchAll(REF_HASH)) encontrados.push({ pos: m.index, n: Number(m[1]) })
+  for (const m of texto.matchAll(REF_PALABRA)) for (const d of m[1]!.matchAll(/\d+/g)) encontrados.push({ pos: m.index + d.index, n: Number(d[0]) })
+  const salida: number[] = []
+  for (const { n } of encontrados.sort((a, b) => a.pos - b.pos)) if (n > 0 && !salida.includes(n)) salida.push(n)
+  return salida.slice(0, MAX_REFERENCIAS)
+}
+
+/** Tareas de un proyecto para el Asistente: las suyas y las de su grupo que no son de ningún proyecto. */
+export function tareasDelProyecto(todas: readonly Tarea[], proyectoId: string, grupoId?: string): Tarea[] {
+  return todas.filter((t) => t.proyectoId === proyectoId || (!t.proyectoId && grupoId !== undefined && t.grupoId === grupoId))
+}
+
 /** Cómo se muestra una fecha de vencimiento en el contexto que se le da a la IA. */
 export const fechaCorta = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
 
@@ -303,6 +330,7 @@ export interface DatosNuevaTarea {
   titulo: string
   descripcion?: string
   prioridad?: Prioridad
+  color?: ColorTarea
   proyectoId?: string
   grupoId?: string
   estado?: string
@@ -321,6 +349,8 @@ export interface ParcheTarea {
   titulo?: string
   descripcion?: string
   prioridad?: Prioridad
+  /** `null` quita el color. */
+  color?: ColorTarea | null
   etiquetas?: string[]
   inicio?: number | null
   vence?: number | null
@@ -339,6 +369,8 @@ export interface DetalleTarea {
 
 export interface OperacionesTareas {
   listar: { entrada: FiltroTareas; salida: Tarea[] }
+  /** Abiertas del proyecto y sueltas de su grupo (selector de tareas del Asistente). */
+  paraAsistente: { entrada: { proyectoId: string }; salida: Tarea[] }
   obtener: { entrada: { tarea: string }; salida: DetalleTarea }
   crear: { entrada: DatosNuevaTarea; salida: Tarea }
   /** Varias tareas de una vez; `dependeDeIndices` apunta a otras del mismo lote (0 = la primera). */

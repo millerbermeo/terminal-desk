@@ -92,3 +92,10 @@ Biblioteca de recursos (compartidos o individuales de un proyecto) con activaci�
 - En cada teléfono: activar **Depuración USB** y **aceptar en el teléfono** el aviso de depuración la primera vez (Odesk no puede hacerlo por ti). En Xiaomi: también «Depuración USB (ajustes de seguridad)» e «Instalar vía USB».
 - Linux con `no permissions`: reglas udev (`sudo apt install android-sdk-platform-tools-common`) y `sudo usermod -aG plugdev $USER`, cerrar sesión y reconectar.
 - Ver `docs/movil.md`.
+
+## 11. Dictado por voz del Asistente (Groq)
+
+- Crear una clave **gratuita** en https://console.groq.com/keys y añadir `GROQ_API_KEY=<clave>` al `.env` del **backend** (`terminal-desk-api`); reiniciar el API. **Nunca** en el escritorio: la app no la ve ni la necesita.
+- Sin la clave (o si Groq la rechaza) el botón 🎤 muestra estas instrucciones y no se graba ni se procesa nada.
+- El servidor tiene que estar actualizado (rutas `/voz/estado` y `/voz/transcribir`); un servidor antiguo responde 404 y el escritorio pide actualizar el backend.
+- En macOS la app empaquetada pide permiso de micrófono la primera vez (`NSMicrophoneUsageDescription` en `electron-builder.yml`); en Linux depende del sistema de audio (PipeWire/PulseAudio).

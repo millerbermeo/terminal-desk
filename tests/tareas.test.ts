@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { DatosProyectos } from '@shared/modelos'
-import { ESTADOS_POR_DEFECTO, evaluarTransicion, haceCiclo, siguienteTarea, validarEstados, type Tarea } from '@shared/tareas'
+import { ESTADOS_POR_DEFECTO, evaluarTransicion, haceCiclo, referenciasTareas, siguienteTarea, validarEstados, type Tarea } from '@shared/tareas'
+import { aplicarMencionTarea, detectarMencionTarea, opcionesTarea } from '../src/renderer/agente/tareas-chat'
 import { HERRAMIENTAS_ODESK } from '@shared/herramientas-odesk'
 import { HERRAMIENTAS_TAREAS } from '@shared/tareas-herramientas'
 import { AlmacenJson } from '../src/main/core/memory/almacen'
@@ -79,6 +80,22 @@ describe('reglas puras', () => {
     expect(siguienteTarea(todas, todas, ESTADOS_POR_DEFECTO)?.id).toBe('a')
   })
 
+  it('reconoce las tareas que nombra un mensaje', () => {
+    expect(referenciasTareas('implementa la tarea número 20')).toEqual([20])
+    expect(referenciasTareas('haz las tareas 3, 5 y 7 y luego #12')).toEqual([3, 5, 7, 12])
+    expect(referenciasTareas('tarea nº 4, tarea #9 y otra vez la tarea 4')).toEqual([4, 9])
+    expect(referenciasTareas('el color #fff, issue&#20 y el paso 3')).toEqual([])
+  })
+
+  it('el «#» del chat sugiere tareas por número o título y deja «#N »', () => {
+    const ts = [base({ id: 'a', numero: 20, titulo: 'Pantalla de inicio de sesión' }), base({ id: 'b', numero: 3, titulo: 'Menú' })]
+    expect(detectarMencionTarea('haz la #2', 9)).toEqual({ inicio: 7, consulta: '2' })
+    expect(detectarMencionTarea('color#2', 7)).toBeNull()
+    expect(opcionesTarea(ts, '2').map((t) => t.numero)).toEqual([20])
+    expect(opcionesTarea(ts, 'sesion').map((t) => t.numero)).toEqual([20])
+    expect(aplicarMencionTarea('haz la #2', 9, { inicio: 7, consulta: '2' }, ts[0]!)).toEqual({ texto: 'haz la #20 ', cursor: 11 })
+  })
+
   it('valida la lista de estados', () => {
     expect(validarEstados(ESTADOS_POR_DEFECTO)).toBeNull()
     expect(validarEstados([{ id: 'a', nombre: 'A', categoria: 'hecha' }])).toMatch(/sin empezar/)
@@ -116,6 +133,14 @@ describe('ServicioTareas', () => {
     expect((await s.obtener('1')).tarea.proyectoId).toBeUndefined()
     expect((await s.editar('1', { proyectoId: 'p1' }, 'usuario')).grupoId).toBe('g1')
     expect(await s.editar('1', { proyectoId: null }, 'usuario')).not.toHaveProperty('proyectoId')
+  })
+
+  it('la tarjeta nace sin color, se le pone uno válido y se le quita', async () => {
+    const t = await s.crear({ titulo: 'Pintar' }, 'usuario')
+    expect(t).not.toHaveProperty('color')
+    expect((await s.editar('#1', { color: 'verde' }, 'usuario')).color).toBe('verde')
+    await expect(s.editar('#1', { color: 'fucsia' as never }, 'usuario')).rejects.toThrow(/color/)
+    expect(await s.editar('#1', { color: null }, 'usuario')).not.toHaveProperty('color')
   })
 
   it('aplica las reglas de estado igual para usuario e IA y deja el motivo en el historial', async () => {
@@ -217,6 +242,24 @@ describe('ServicioTareas', () => {
     expect(c).not.toMatch(/Otro proyecto/)
     expect(c).toMatch(/Siguiente recomendada: #1/)
     expect(c).toMatch(/solo cuando todos se cumplan/)
+  })
+
+  it('el Asistente ve las tareas sueltas del grupo y recibe la ficha completa de las que nombra el mensaje', async () => {
+    await s.crear({ titulo: 'Del proyecto', proyectoId: 'p1', descripcion: 'Detalle largo', criterios: ['Valida el correo'], checklist: ['Formulario'] }, 'usuario')
+    await s.crear({ titulo: 'Suelta del grupo', grupoId: 'g1' }, 'usuario')
+    await s.crear({ titulo: 'De otro proyecto', proyectoId: 'p2', notasTecnicas: 'Usar zod' }, 'usuario')
+    const c = await s.contextoParaIA('p1', 'Tienda')
+    expect(c).toMatch(/#2 .*Suelta del grupo/)
+    expect(c).not.toMatch(/De otro proyecto/)
+    expect(c).not.toMatch(/ficha completa/)
+    expect((await s.paraAsistente('p1')).map((t) => t.numero).sort()).toEqual([1, 2])
+    const f = await s.contextoParaIA('p1', 'Tienda', 'implementa la tarea número 1 y mira la #3 y la #99')
+    expect(f).toMatch(/ficha completa/)
+    expect(f).toMatch(/Detalle largo/)
+    expect(f).toMatch(/\[ \] Valida el correo/)
+    expect(f).toMatch(/Subtareas:\n {2}\[ \] Formulario/)
+    expect(f).toMatch(/#3 «De otro proyecto».*Blog[\s\S]*Usar zod/)
+    expect(f).toMatch(/#99: no existe/)
   })
 
   it('la interfaz usa las mismas operaciones por IPC y rechaza las desconocidas', async () => {

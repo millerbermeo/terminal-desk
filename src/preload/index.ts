@@ -58,6 +58,7 @@ const api: ApiCentro = {
     cuentaActivar: (id) => ipcRenderer.invoke(Canales.coreCuentaActivar, id),
     cuentaCambioAutomatico: (activo) => ipcRenderer.invoke(Canales.coreCuentaAuto, activo),
     uso: () => ipcRenderer.invoke(Canales.coreUsoObtener),
+    usoPlan: () => ipcRenderer.invoke(Canales.coreUsoPlan),
     onUso: (cb) => suscribir<ResumenUso>(Canales.coreUso, cb),
     adjuntoSubir: (nombre, datos) => ipcRenderer.invoke(Canales.coreAdjuntoSubir, nombre, datos),
     adjuntoLeer: (id) => ipcRenderer.invoke(Canales.coreAdjuntoLeer, id),
@@ -90,6 +91,10 @@ const api: ApiCentro = {
   },
   historial: {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.historialOperar, op, entrada)
+  },
+  voz: {
+    estado: () => ipcRenderer.invoke(Canales.vozEstado),
+    transcribir: (audio, mime, duracionMs, mejorar) => ipcRenderer.invoke(Canales.vozTranscribir, audio, mime, duracionMs, mejorar)
   },
   arranque: {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.arranqueOperar, op, entrada),

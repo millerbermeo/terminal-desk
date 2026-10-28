@@ -6,6 +6,7 @@ type Implementaciones = { [K in NombreOperacionTareas]: (s: ServicioTareas, e: O
 /** Operaciones de la interfaz (autor «usuario»). Todo pasa por las mismas reglas del servicio que usa la IA. */
 const OPERACIONES: Implementaciones = {
   listar: (s, e) => s.listar(e),
+  paraAsistente: (s, e) => s.paraAsistente(String(e.proyectoId)),
   obtener: (s, e) => s.obtener(e.tarea),
   crear: (s, e) => s.crear(e, 'usuario'),
   crearVarias: (s, e) => s.crearVarias(e, 'usuario'),

@@ -112,6 +112,7 @@ const IMPLEMENTACIONES: Record<string, Implementacion> = {
       ...opcional(e.descripcion as string | undefined, 'descripcion'),
       ...opcional(e.prioridad as ParcheTarea['prioridad'], 'prioridad'),
       ...opcional(e.etiquetas as string[] | undefined, 'etiquetas'),
+      ...(e.color === undefined ? {} : { color: e.color === '' ? null : (e.color as ParcheTarea['color']) }),
       ...opcional(e.notas_tecnicas as string | undefined, 'notasTecnicas'),
       ...(e.vence === undefined ? {} : { vence: e.vence === '' ? null : aMs(e.vence, 'vence') }),
       ...(e.proyecto_id === undefined ? {} : { proyectoId: e.proyecto_id === '' ? null : String(e.proyecto_id) }),

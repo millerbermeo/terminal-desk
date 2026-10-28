@@ -221,7 +221,18 @@ export class ClienteServidor {
     return this.peticion<T>('DELETE', ruta, cuerpo)
   }
 
-  private async peticion<T>(metodo: string, ruta: string, cuerpo?: unknown, conSesion = true): Promise<T> {
+  /** Envía datos binarios (p. ej. un audio) con sesión. `espera` es más larga que la de las peticiones JSON. */
+  binario<T>(ruta: string, datos: Uint8Array, tipo: string, cabeceras: Record<string, string> = {}, espera = 90_000): Promise<T> {
+    return this.peticion<T>('POST', ruta, undefined, true, { binario: { datos, tipo, cabeceras }, espera })
+  }
+
+  private async peticion<T>(
+    metodo: string,
+    ruta: string,
+    cuerpo?: unknown,
+    conSesion = true,
+    { binario, espera = TIEMPO_MAX_MS }: { binario?: { datos: Uint8Array; tipo: string; cabeceras: Record<string, string> }; espera?: number } = {}
+  ): Promise<T> {
     await this.cargar()
     if (conSesion && !this.token) throw new ErrorSesion()
     // Contraseñas y token nunca por http hacia otra máquina (ODESK_PERMITIR_HTTP=1 lo permite, solo para pruebas en una red propia).
@@ -233,11 +244,11 @@ export class ClienteServidor {
       res = await fetch(this.url + ruta, {
         method: metodo,
         headers: {
-          ...(cuerpo !== undefined ? { 'content-type': 'application/json' } : {}),
+          ...(binario ? { 'content-type': binario.tipo, ...binario.cabeceras } : cuerpo !== undefined ? { 'content-type': 'application/json' } : {}),
           ...(conSesion && this.token ? { authorization: `Bearer ${this.token}` } : {})
         },
-        ...(cuerpo !== undefined ? { body: JSON.stringify(cuerpo) } : {}),
-        signal: AbortSignal.timeout(TIEMPO_MAX_MS)
+        ...(binario ? { body: new Uint8Array(binario.datos) } : cuerpo !== undefined ? { body: JSON.stringify(cuerpo) } : {}),
+        signal: AbortSignal.timeout(espera)
       })
     } catch {
       throw new ErrorServidor(`No se pudo conectar con el servidor (${this.url}). ¿Está en marcha?`)

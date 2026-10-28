@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
@@ -10,6 +10,7 @@ import { ProveedorAnthropic } from '../src/main/core/agents/llm/anthropic'
 import { MemoriaCortoPlazo } from '../src/main/core/memory/sesion'
 import { RegistroHerramientas } from '../src/main/core/tools/registro'
 import { diaLocal, leerLimites, LlmMedido, Medidor } from '../src/main/core/uso/medidor'
+import { consultarUsoPlan, interpretarUsoPlan } from '../src/main/core/uso/plan'
 import type { Nucleo as TipoNucleo } from '../src/main/core/index'
 import { LlmFalso, texto, usar } from './ayudas'
 import { ServidorFalso } from './servidor-falso'
@@ -92,6 +93,40 @@ describe('Medidor', () => {
     const r = await m.resumen()
     expect(Object.keys(r.hoy).sort()).toEqual(['claude-opus-5-5', 'por-defecto'])
     expect(diaLocal()).toBe(r.dia)
+  })
+})
+
+describe('uso del plan de suscripción', () => {
+  const respuesta = { five_hour: { utilization: 37.4, resets_at: '2026-10-27T22:00:00Z' }, seven_day: { utilization: 12, resets_at: null }, seven_day_opus: null, extra: 1 }
+
+  it('traduce la respuesta (porcentaje 0-100 y reinicio en ms) e ignora lo que no entiende', () => {
+    expect(interpretarUsoPlan(respuesta)).toEqual({ cincoHoras: { porcentaje: 37, reinicio: Date.parse('2026-10-27T22:00:00Z') }, semana: { porcentaje: 12 } })
+    expect(interpretarUsoPlan('basura')).toEqual({})
+  })
+
+  it('consulta con la sesión de la carpeta de la cuenta y explica cuándo no se puede', async () => {
+    const dir = await tmp()
+    const pedir = vi.fn(async () => new Response(JSON.stringify(respuesta), { status: 200 }))
+    expect(await consultarUsoPlan(dir, pedir as unknown as typeof fetch)).toMatchObject({ ok: false, error: expect.stringMatching(/sesión|llavero/) })
+    await writeFile(join(dir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 'tok', expiresAt: 2000, subscriptionType: 'max' } }))
+    expect(await consultarUsoPlan(dir, pedir as unknown as typeof fetch, 3000)).toMatchObject({ ok: false, error: expect.stringMatching(/caducó/) })
+    expect(pedir).not.toHaveBeenCalled()
+    const r = await consultarUsoPlan(dir, pedir as unknown as typeof fetch, 1000)
+    expect(r).toMatchObject({ ok: true, datos: { tipo: 'max', cincoHoras: { porcentaje: 37 }, actualizado: 1000 } })
+    const [url, init] = pedir.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://api.anthropic.com/api/oauth/usage')
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok')
+    const limitado = vi.fn(async () => new Response('', { status: 429 }))
+    expect(await consultarUsoPlan(dir, limitado as unknown as typeof fetch, 1000)).toMatchObject({ ok: false, reintentarEn: 300_000 })
+  })
+
+  it('el medidor conserva los últimos datos buenos de la cuenta si una consulta falla', async () => {
+    const m = new Medidor(await tmp())
+    m.fijarPlan('principal', { datos: { cincoHoras: { porcentaje: 40 }, actualizado: 1 } })
+    m.fijarPlan('principal', { error: 'Sin conexión con Anthropic.' })
+    expect((await m.resumen()).plan).toEqual({ cuenta: 'principal', cincoHoras: { porcentaje: 40 }, actualizado: 1, error: 'Sin conexión con Anthropic.' })
+    m.fijarPlan('otra', { error: 'Sin sesión de Claude Code en esta cuenta.' })
+    expect((await m.resumen()).plan).toEqual({ cuenta: 'otra', error: 'Sin sesión de Claude Code en esta cuenta.' })
   })
 })
 
