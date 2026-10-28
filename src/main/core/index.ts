@@ -61,6 +61,7 @@ import { MemoriaCortoPlazo, type Sesion } from './memory/sesion'
 import type { Tarea } from '@shared/tareas'
 import { OrquestadorMcp } from './mcp/orquestador'
 import { Cuentas, llevarSesion } from './cuentas'
+import { consultarUsoPlan } from './uso/plan'
 import { Repositorio } from './git/repositorio'
 import { AlmacenJson } from './memory/almacen'
 import { ServicioTareas, type Documento as DocumentoTareas } from './tareas/servicio'
@@ -398,7 +399,7 @@ export class Nucleo {
    */
   private async contextoPartes(prompt: string, proyecto: Proyecto | undefined, conAdjuntos: boolean): Promise<{ estable: string; dinamico: string }> {
     const memoria = await this.memoria.contextoPara(prompt, proyecto?.id)
-    const tareas = proyecto ? await this.tareas.contextoParaIA(proyecto.id, proyecto.nombre).catch(() => '') : ''
+    const tareas = proyecto ? await this.tareas.contextoParaIA(proyecto.id, proyecto.nombre, prompt).catch(() => '') : ''
     const git = proyecto ? await this.contextoGit(proyecto.ruta) : { estado: '', guia: '' }
     const pruebas = proyecto ? await credencialesDe(proyecto.id).catch(() => []) : []
     const credsCtx = pruebas.length
@@ -413,13 +414,38 @@ export class Nucleo {
   /** Contexto que se añade al prompt de sistema (modo API): memoria de largo plazo, tareas del proyecto y, si hay, el aviso de adjuntos. */
   private async contextoSistema(prompt: string, proyecto: Proyecto | undefined, conAdjuntos: boolean): Promise<string> {
     const memoria = await this.memoria.contextoPara(prompt, proyecto?.id)
-    const tareas = proyecto ? await this.tareas.contextoParaIA(proyecto.id, proyecto.nombre).catch(() => '') : ''
+    const tareas = proyecto ? await this.tareas.contextoParaIA(proyecto.id, proyecto.nombre, prompt).catch(() => '') : ''
     const gitCtx = proyecto ? (({ estado, guia }) => [estado, guia].filter(Boolean).join('\n'))(await this.contextoGit(proyecto.ruta)) : ''
     const pruebas = proyecto ? await credencialesDe(proyecto.id).catch(() => []) : []
     const credsCtx = pruebas.length
       ? `Hay ${pruebas.length} credencial(es) de PRUEBA guardadas en este equipo para este proyecto (${pruebas.map((c) => c.nombre).join(', ')}). Cuando necesites un usuario, clave o URL para probar, consúltalas con credenciales_listar / credenciales_obtener en vez de pedírselas al usuario; no las escribas en archivos versionados ni en commits.`
       : ''
     return [memoria, tareas, gitCtx, credsCtx, conAdjuntos ? AVISO_ADJUNTOS : '', AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim()
+  }
+
+  private planEnCurso: Promise<void> | undefined
+  private planEspera: NodeJS.Timeout | undefined
+  private planNoAntesDe = 0
+
+  /** Consulta ya el uso del plan de la cuenta activa (una a la vez; tras un 429 espera lo que pida). */
+  actualizarPlan(): Promise<void> {
+    if (this.planEnCurso || Date.now() < this.planNoAntesDe) return this.planEnCurso ?? Promise.resolve()
+    this.planEnCurso = (async () => {
+      const id = await this.cuentas.activa()
+      const r = await consultarUsoPlan(this.cuentas.carpetaEfectiva(id))
+      if (!r.ok && r.reintentarEn) this.planNoAntesDe = Date.now() + r.reintentarEn
+      this.medidor.fijarPlan(id, r.ok ? { datos: r.datos } : { error: r.error })
+    })()
+      .catch(() => undefined)
+      .finally(() => (this.planEnCurso = undefined))
+    return this.planEnCurso
+  }
+
+  /** Tras un mensaje del Asistente el consumo cambió: se consulta en unos segundos (agrupa ráfagas). */
+  planPronto(): void {
+    clearTimeout(this.planEspera)
+    this.planEspera = setTimeout(() => void this.actualizarPlan(), 4000)
+    this.planEspera.unref?.()
   }
 
   /** Cuentas de suscripción con el estado de su sesión (se consulta al CLI de cada una en paralelo). */
@@ -598,7 +624,7 @@ export class Nucleo {
             ...(this.cuentas.carpetaDe(cuenta) ? { carpeta: this.cuentas.carpetaDe(cuenta)! } : {}),
             cwd: proyecto?.ruta ?? process.cwd(),
             senal: ctl.signal,
-            alUso: (u) => u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo }))
+            alUso: (u) => (u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo })), this.planPronto())
           }).catch(() => undefined)
           if (!rot) return false
           emitir({ tipo: 'contexto_compactado', motivo, tokensAntes: meta?.contexto ?? 0, imagenes: meta?.imagenes ?? 0, conModelo: rot.conModelo })
@@ -653,6 +679,7 @@ export class Nucleo {
               u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo }))
               const costo = u.reduce((t, x) => t + x.costo, 0)
               if (costo >= AVISO_COSTO_TURNO) emitir({ tipo: 'aviso_consumo', motivo: 'costo', costo })
+              this.planPronto()
             },
             prompt: promptActual,
             ...(prefijoPrompt ? { prefijoPrompt } : {}),
@@ -903,7 +930,7 @@ export class Nucleo {
       const pluginDirs = [await pluginCavemanLigero(), await pluginGuardia()].filter((d): d is string => Boolean(d))
       const carpetaCuenta = this.cuentas.carpetaDe(await this.cuentas.activa())
       await ejecutarSuscripcion({
-        alUso: (u) => u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo })),
+        alUso: (u) => (u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo })), this.planPronto()),
         prompt,
         presupuestoUsd: 1,
         cwd: viva.cwd,
@@ -1332,6 +1359,12 @@ export function registrarIpcCore(nucleo: Nucleo): void {
   ipcMain.handle(Canales.coreCuentaActivar, (_e, id: string) => nucleo.cuentaActivar(String(id)))
   ipcMain.handle(Canales.coreCuentaAuto, (_e, activo: boolean) => nucleo.cuentaCambioAutomatico(activo))
   ipcMain.handle(Canales.coreUsoObtener, () => nucleo.medidor.resumen())
+  ipcMain.handle(Canales.coreUsoPlan, () => nucleo.actualizarPlan().then(() => nucleo.medidor.resumen()))
+  // Uso del plan de suscripción en tiempo real: cada minuto mientras alguna ventana está a la vista (también cuenta lo que se gasta fuera de la app).
+  void nucleo.actualizarPlan()
+  setInterval(() => {
+    if (BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.isVisible() && !w.isMinimized())) void nucleo.actualizarPlan()
+  }, 60_000).unref()
   nucleo.medidor.suscribir((r) => {
     for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(Canales.coreUso, r)
   })

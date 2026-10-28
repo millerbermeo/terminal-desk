@@ -4,6 +4,7 @@ import { LIMITES_ADJUNTOS, type Adjunto } from '@shared/core/adjuntos'
 import { COMANDOS_CLAUDE, COMANDOS_INCLUIDOS, NOMBRES_CLAUDE_CODE, PLANTILLAS_INCLUIDAS, expandirPlantilla, type ComandoUsuario } from '@shared/core/comandos'
 import type { ModoAutonomia } from '@shared/core/permisos'
 import type { DatosProyectos } from '@shared/modelos'
+import type { EstadoTarea, Tarea } from '@shared/tareas'
 import type { Agente, Turno } from '../agente/useAgente'
 import { useCuenta } from '../agente/cuenta'
 import { ESFUERZOS_AJUSTE, type AjustesAsistente, type Esfuerzo } from '@shared/ajustes'
@@ -18,7 +19,11 @@ import { EstadoVacio } from './EstadoVacio'
 import { HistorialAgente } from './HistorialAgente'
 import { IconoChispa } from './Iconos'
 import { aplicarMencion, detectarMencion, opcionesMencion } from '../agente/menciones'
+import { aplicarMencionTarea, detectarMencionTarea, opcionesTarea, pedirImplementar } from '../agente/tareas-chat'
+import { NOMBRE_PRIORIDAD } from './Tareas'
 import { SolicitudesChat } from './ModalSolicitud'
+import { useGrabadora, type TextoDictado } from '../agente/grabadora'
+import { BarraGrabacion, BotonMicrofono } from './GrabadorVoz'
 
 interface Props {
   agente: Agente
@@ -230,6 +235,12 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [archivosProyecto, setArchivosProyecto] = useState<string[] | null>(null) // para las menciones «@»
   const [mencionOculta, setMencionOculta] = useState(false)
   const [selMencion, setSelMencion] = useState(0)
+  const [tareasChat, setTareasChat] = useState<Tarea[] | null>(null) // para «#» y el botón de tareas
+  const [estadosTareas, setEstadosTareas] = useState<EstadoTarea[]>([])
+  const [verTareas, setVerTareas] = useState(false)
+  const [mencionTareaOculta, setMencionTareaOculta] = useState(false)
+  const [selTarea, setSelTarea] = useState(0)
+  const [dictado, setDictado] = useState<(TextoDictado & { inicio: number }) | null>(null) // último dictado mejorado: permite volver al original
   const cursorPendiente = useRef<number | null>(null)
   const selector = useRef<HTMLInputElement>(null)
   const modelos = useModelos()
@@ -367,6 +378,78 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     setCursor(r.cursor)
     setSelMencion(0)
   }
+  // Tareas «#N»: las abiertas del proyecto y las sueltas de su grupo. Al nombrarlas, el núcleo manda su ficha completa a la IA.
+  const mencionTarea = useMemo(() => (proyecto && !mencionTareaOculta && !abierta ? detectarMencionTarea(texto, cursor) : null), [proyecto, mencionTareaOculta, abierta, texto, cursor])
+  const necesitaTareas = !!proyectoId && (verTareas || mencionTarea !== null)
+  useEffect(() => {
+    if (!necesitaTareas || !proyectoId) return
+    let vigente = true
+    const cargar = (): void =>
+      void Promise.all([window.api.tareas.operar('paraAsistente', { proyectoId }), window.api.tareas.operar('estados', {})])
+        .then(([t, e]) => vigente && (setTareasChat(t), setEstadosTareas(e)))
+        .catch(() => vigente && setTareasChat([]))
+    cargar()
+    const quitar = window.api.tareas.onCambio(cargar)
+    return () => {
+      vigente = false
+      quitar()
+      setTareasChat(null)
+    }
+  }, [necesitaTareas, proyectoId])
+  const opcionesTareas = useMemo(() => (mencionTarea && tareasChat ? opcionesTarea(tareasChat, mencionTarea.consulta) : []), [mencionTarea, tareasChat])
+  const elegirTarea = (i: number): void => {
+    const t = opcionesTareas[i]
+    if (!mencionTarea || !t) return
+    const r = aplicarMencionTarea(texto, cursor, mencionTarea, t)
+    cursorPendiente.current = r.cursor
+    setTexto(r.texto)
+    setCursor(r.cursor)
+    setSelTarea(0)
+  }
+  const nombreEstadoTarea = (id: string): string => estadosTareas.find((e) => e.id === id)?.nombre ?? id
+  /** Desde el panel de tareas: «Mencionar» añade «#N» donde está el cursor; «Implementar» deja escrita la petición completa. */
+  const insertarTarea = (t: Tarea, implementar: boolean): void => {
+    setVerTareas(false)
+    if (implementar) {
+      const nuevo = pedirImplementar(t)
+      cursorPendiente.current = nuevo.length
+      setTexto(nuevo)
+      setCursor(nuevo.length)
+      return
+    }
+    const antes = texto.slice(0, cursor)
+    const insertado = `${antes && !/\s$/.test(antes) ? ' ' : ''}#${t.numero} `
+    const nuevo = antes + insertado + texto.slice(cursor)
+    cursorPendiente.current = antes.length + insertado.length
+    setTexto(nuevo)
+    setCursor(antes.length + insertado.length)
+  }
+
+  // Dictado por voz: el texto queda en el campo, donde estaba el cursor, para revisarlo. Nunca se envía solo.
+  const voz = useGrabadora((d) => {
+    const pos = Math.min(cursor, texto.length)
+    const antes = texto.slice(0, pos)
+    const despues = texto.slice(pos)
+    const prefijo = antes && !/\s$/.test(antes) ? ' ' : ''
+    const sufijo = despues && !/^\s/.test(despues) ? ' ' : ''
+    const nuevo = antes + prefijo + d.texto + sufijo + despues
+    cursorPendiente.current = antes.length + prefijo.length + d.texto.length
+    setTexto(nuevo)
+    setCursor(cursorPendiente.current)
+    setDictado(d.mejorado ? { ...d, inicio: antes.length + prefijo.length } : null)
+  })
+  /** Cambia la versión mejorada por la transcripción literal (si sigue sin tocar en el campo). */
+  const usarOriginal = (): void => {
+    if (!dictado) return
+    const i = texto.slice(dictado.inicio, dictado.inicio + dictado.texto.length) === dictado.texto ? dictado.inicio : texto.indexOf(dictado.texto)
+    setDictado(null)
+    if (i < 0) return
+    const nuevo = texto.slice(0, i) + dictado.original + texto.slice(i + dictado.texto.length)
+    cursorPendiente.current = i + dictado.original.length
+    setTexto(nuevo)
+    setCursor(cursorPendiente.current)
+  }
+
   // Tras insertar, el cursor se coloca después de lo insertado (el texto del campo se actualiza en el siguiente render).
   useEffect(() => {
     if (cursorPendiente.current === null) return
@@ -671,6 +754,12 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             </label>
           )}
           <span className="ag-espacio" />
+          {proyecto && (
+            <button className="ag-icono" onClick={() => setVerTareas((v) => !v)} aria-expanded={verTareas} aria-label="Tareas" title="Tareas del proyecto y su grupo: menciónalas o pide que el Asistente implemente una (también escribiendo «#»)">
+              ☑
+            </button>
+          )}
+          <BotonMicrofono voz={voz} />
           <button className="ag-icono" onClick={() => selector.current?.click()} disabled={pendientes.length >= LIMITES_ADJUNTOS.porMensaje} title="Adjuntar imágenes, PDF o archivos de texto (también puedes pegarlos o arrastrarlos)" aria-label="Adjuntar archivos">
             📎
           </button>
@@ -695,6 +784,18 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         <AdjuntosAgente adjuntos={pendientes} onQuitar={quitar} />
         {subiendo > 0 && <div className="cfg-nota">Subiendo archivo…</div>}
         {errorAdjunto && <div className="cfg-error" role="alert">{errorAdjunto}</div>}
+        <BarraGrabacion voz={voz} />
+        {dictado && texto.includes(dictado.texto) && (
+          <div className="ag-voz-nota">
+            <span>✦ Redacción mejorada. Revísala antes de enviar.</span>
+            <button className="enlace" onClick={usarOriginal}>
+              Usar lo que dije
+            </button>
+            <button className="icono" onClick={() => setDictado(null)} aria-label="Cerrar aviso">
+              ✕
+            </button>
+          </div>
+        )}
         <div className="ag-entrada">
           {sugerencias.length > 0 && (
             <div className="ag-sugerencias" role="listbox" aria-label="Comandos">
@@ -726,6 +827,43 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               )}
             </div>
           )}
+          {mencionTarea && sugerencias.length === 0 && (tareasChat === null || opcionesTareas.length > 0) && (
+            <div className="ag-sugerencias ag-menciones" role="listbox" aria-label="Tareas del proyecto">
+              {tareasChat === null ? (
+                <div className="ag-sug-vacio">Buscando tareas…</div>
+              ) : (
+                opcionesTareas.map((t, i) => (
+                  <button key={t.id} role="option" aria-selected={i === selTarea} className={i === selTarea ? 'sel' : ''} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setSelTarea(i)} onClick={() => elegirTarea(i)}>
+                    <span className="ag-sug-ico tarea-num" aria-hidden>#{t.numero}</span>
+                    <strong>{t.titulo}</strong>
+                    <small>{nombreEstadoTarea(t.estado)} · {NOMBRE_PRIORIDAD[t.prioridad]}</small>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+          {verTareas && sugerencias.length === 0 && !mencionTarea && (
+            <div className="ag-sugerencias ag-tareas" role="dialog" aria-label="Tareas para el Asistente">
+              {tareasChat === null ? (
+                <div className="ag-sug-vacio">Cargando tareas…</div>
+              ) : tareasChat.length === 0 ? (
+                <div className="ag-sug-vacio">No hay tareas abiertas en este proyecto ni en su grupo.</div>
+              ) : (
+                tareasChat.map((t) => (
+                  <div key={t.id} className="ag-tarea-fila">
+                    <button className="ag-tarea-ref" onMouseDown={(e) => e.preventDefault()} onClick={() => insertarTarea(t, false)} title="Mencionarla en el mensaje (la IA recibe su ficha completa)">
+                      <span className="tarea-num">#{t.numero}</span>
+                      <strong>{t.titulo}</strong>
+                      <small>{nombreEstadoTarea(t.estado)} · {NOMBRE_PRIORIDAD[t.prioridad]}</small>
+                    </button>
+                    <button className="ag-tarea-hacer" onMouseDown={(e) => e.preventDefault()} onClick={() => insertarTarea(t, true)} title="Escribe la petición para que el Asistente la haga de principio a fin">
+                      Implementar
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
           {cola.length > 0 && (
             <ul className="ag-cola" aria-label="Mensajes en cola">
               {cola.map((m, i) => (
@@ -748,7 +886,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             ref={areaTexto}
             rows={2}
             value={texto}
-            placeholder={pendientes.length > 0 ? 'Mensaje opcional: pulsa Enter para enviar solo los archivos…' : modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo…  (Ctrl+Enter envía · «/» comandos · «@» archivos · pega o arrastra archivos)'}
+            placeholder={pendientes.length > 0 ? 'Mensaje opcional: pulsa Enter para enviar solo los archivos…' : modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo…  (Ctrl+Enter envía · «/» comandos · «@» archivos · «#» tareas · pega o arrastra archivos)'}
             onPaste={(e) => {
               const archivos = [...e.clipboardData.files]
               if (archivos.length) {
@@ -763,9 +901,23 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               setSeleccion(0)
               setMencionOculta(false)
               setSelMencion(0)
+              setMencionTareaOculta(false)
+              setSelTarea(0)
             }}
             onSelect={(e) => setCursor(e.currentTarget.selectionStart)}
             onKeyDown={(e) => {
+              if (mencionTarea && opcionesTareas.length > 0 && sugerencias.length === 0) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  return setSelTarea((s) => (s + (e.key === 'ArrowDown' ? 1 : opcionesTareas.length - 1)) % opcionesTareas.length)
+                }
+                if ((e.key === 'Tab' || e.key === 'Enter') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+                  e.preventDefault()
+                  return elegirTarea(Math.min(selTarea, opcionesTareas.length - 1))
+                }
+              }
+              if (mencionTarea && e.key === 'Escape') return setMencionTareaOculta(true)
+              if (verTareas && e.key === 'Escape') return setVerTareas(false)
               if (abierta && opciones.length > 0 && sugerencias.length === 0) {
                 if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                   e.preventDefault()

@@ -16,6 +16,9 @@ linux:
   category: Development
 mac:
   target: dmg
+  # Dictado por voz del Asistente: sin esto macOS niega el micrófono a la app empaquetada.
+  extendInfo:
+    NSMicrophoneUsageDescription: Odesk Agent usa el micrófono solo mientras dictas un mensaje al Asistente.
 win:
   icon: icon.ico
   target: nsis
