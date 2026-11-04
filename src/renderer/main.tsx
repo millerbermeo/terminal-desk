@@ -13,6 +13,7 @@ import { IndicadorZoom } from './components/IndicadorZoom'
 import { capturarErroresGlobales, vigilarVistaVacia } from './vigilancia'
 import './estilos.css'
 import './estilos-mejoras.css'
+import './estilos-apple.css'
 
 // ?ventana=<token> => ventana separada (solo terminales); sin parámetro => ventana principal
 const parametros = new URLSearchParams(location.search)
