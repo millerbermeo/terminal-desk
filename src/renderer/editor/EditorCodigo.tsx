@@ -1,8 +1,11 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Annotation, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { basicSetup } from 'codemirror'
+import { openSearchPanel, search, searchPanelOpen } from '@codemirror/search'
+import { BuscarEnArchivo } from './BuscarEnArchivo'
+import { semillaDeSeleccion } from './busquedaArchivo'
 import { lenguajeDe } from './lenguajes'
 
 /** Marca los cambios que vienen del disco (no son del usuario: no ensucian el archivo ni entran en el historial de deshacer). */
@@ -50,15 +53,42 @@ export const EditorCodigo = forwardRef<ManejoEditor, Props>(function EditorCodig
   const actual = useRef<string | null>(null)
   const cb = useRef({ onCambio, onGuardar, onCursor })
   cb.current = { onCambio, onGuardar, onCursor }
+  /** Buscador dentro del archivo (Ctrl+F / Ctrl+H). `pedido` cambia en cada apertura para volver a enfocar el campo. */
+  const [buscador, setBuscador] = useState<{ pedido: number; reemplazo: boolean; semilla?: string } | null>(null)
+  const [version, setVersion] = useState(0)
+  const pedirBuscador = (v: EditorView, reemplazo: boolean): boolean => {
+    const semilla = semillaDeSeleccion(v.state)
+    openSearchPanel(v)
+    setBuscador((b) => ({ pedido: (b?.pedido ?? 0) + 1, reemplazo, semilla }))
+    return true
+  }
 
   const crear = (r: string, doc: string): EditorState => {
     const extensiones: Extension[] = [
+      // Antes que basicSetup para ganarle a sus atajos: Ctrl+F y Ctrl+H abren el buscador propio (estilo VS Code).
+      keymap.of([
+        { key: 'Mod-f', preventDefault: true, run: (v) => pedirBuscador(v, false) },
+        { key: 'Mod-h', preventDefault: true, run: (v) => pedirBuscador(v, true) }
+      ]),
+      // El panel de CodeMirror queda vacío y oculto: solo se usa su estado (resaltado de coincidencias, F3, Enter).
+      search({
+        createPanel: () => {
+          const dom = document.createElement('div')
+          dom.className = 'ed-buscar-ancla'
+          return {
+            dom,
+            mount: () => setBuscador((b) => b ?? { pedido: 1, reemplazo: false }),
+            destroy: () => setBuscador(null)
+          }
+        }
+      }),
       basicSetup,
       oneDark,
       tema,
       keymap.of([{ key: 'Mod-s', preventDefault: true, run: () => (cb.current.onGuardar(r), true) }]),
       EditorView.updateListener.of((u) => {
         if (u.docChanged && !u.transactions.some((t) => t.annotation(externa))) cb.current.onCambio(r)
+        if (searchPanelOpen(u.state)) setVersion((n) => n + 1)
         if (u.selectionSet || u.docChanged) {
           const p = u.state.selection.main.head
           const l = u.state.doc.lineAt(p)
@@ -107,5 +137,19 @@ export const EditorCodigo = forwardRef<ManejoEditor, Props>(function EditorCodig
     enfocar: () => vista.current?.focus()
   }))
 
-  return <div className="ed-codigo" ref={contenedor} style={{ display: ruta ? 'block' : 'none' }} />
+  return (
+    <>
+      <div className="ed-codigo" ref={contenedor} style={{ display: ruta ? 'block' : 'none' }} />
+      {ruta && buscador && vista.current && (
+        <BuscarEnArchivo
+          vista={vista.current}
+          version={version}
+          pedido={buscador.pedido}
+          conReemplazo={buscador.reemplazo}
+          semilla={buscador.semilla}
+          onCerrar={() => setBuscador(null)}
+        />
+      )}
+    </>
+  )
 })

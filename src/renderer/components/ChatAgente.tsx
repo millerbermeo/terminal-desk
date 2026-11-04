@@ -17,7 +17,7 @@ import { BarraUso } from './BarraUso'
 import { GestionProyecto } from './GestionProyecto'
 import { EstadoVacio } from './EstadoVacio'
 import { HistorialAgente } from './HistorialAgente'
-import { IconoChispa } from './Iconos'
+import { IconoArchivo, IconoCarpeta, IconoChispa } from './Iconos'
 import { aplicarMencion, detectarMencion, opcionesMencion } from '../agente/menciones'
 import { aplicarMencionTarea, detectarMencionTarea, opcionesTarea, pedirImplementar } from '../agente/tareas-chat'
 import { NOMBRE_PRIORIDAD } from './Tareas'
@@ -818,7 +818,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
                   const dir = o.ruta.includes('/') ? o.ruta.slice(0, o.ruta.lastIndexOf('/')) : ''
                   return (
                     <button key={o.ruta + o.carpeta} role="option" aria-selected={i === selMencion} className={i === selMencion ? 'sel' : ''} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setSelMencion(i)} onClick={() => elegirMencion(i)}>
-                      <span className="ag-sug-ico" aria-hidden>{o.carpeta ? '📁' : '📄'}</span>
+                      <span className="ag-sug-ico" aria-hidden>{o.carpeta ? <IconoCarpeta /> : <IconoArchivo />}</span>
                       <strong>{nombre}{o.carpeta ? '/' : ''}</strong>
                       {dir && <small>{dir}/</small>}
                     </button>

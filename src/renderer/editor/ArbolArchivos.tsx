@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { EntradaArchivo, MarcaGit } from '@shared/archivos'
+import { IconoCarpeta, IconoCarpetaAbierta } from '../components/Iconos'
 import { insigniaDe } from './lenguajes'
 
 export interface CreandoEn {
@@ -75,7 +76,7 @@ export function ArbolArchivos(p: Props) {
               title={e.tipo === 'enlace' ? `${e.ruta} (enlace simbólico)` : e.ruta}
             >
               {e.tipo === 'carpeta' ? <span className="ed-chev">{abierta ? '▾' : '▸'}</span> : <span className="ed-chev" />}
-              {e.tipo === 'carpeta' ? <span className="ed-ico">{abierta ? '📂' : '📁'}</span> : <span className="ed-ico ed-ins" style={{ color: ins.color }}>{ins.txt}</span>}
+              {e.tipo === 'carpeta' ? <span className="ed-ico ed-ico-carpeta">{abierta ? <IconoCarpetaAbierta /> : <IconoCarpeta />}</span> : <span className="ed-ico ed-ins" style={{ color: ins.color }}>{ins.txt}</span>}
               <span className={`ed-nombre${marca ? ' con-marca' : ''}`} style={marca ? { color: COLOR_MARCA[marca] } : undefined}>
                 {e.nombre}
               </span>

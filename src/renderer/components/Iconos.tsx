@@ -144,3 +144,15 @@ export const IconoGitHub = () => (
     <path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21" />
   </Icono>
 )
+export const IconoCarpetaAbierta = () => (
+  <Icono><path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1" /><path d="M3 17V9h16.5a1.5 1.5 0 0 1 1.4 2l-2 6a2 2 0 0 1-1.9 1.5H5a2 2 0 0 1-2-2z" /></Icono>
+)
+export const IconoArchivoNuevo = () => (
+  <Icono><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M12 11v6M9 14h6" /></Icono>
+)
+export const IconoCarpetaNueva = () => (
+  <Icono><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M12 10v6M9 13h6" /></Icono>
+)
+export const IconoPlegar = () => (
+  <Icono><path d="m7 20 5-5 5 5M7 4l5 5 5-5" /></Icono>
+)

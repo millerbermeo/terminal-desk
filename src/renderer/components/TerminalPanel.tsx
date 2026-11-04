@@ -1,6 +1,5 @@
 import { memo, useEffect, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { MarcaAgua } from './MarcaAgua'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -349,7 +348,6 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
   return (
     <>
       <div className="terminal-caja" onMouseDown={() => onActivar(id)} onContextMenu={alMenuContextual}>
-        <MarcaAgua />
         <div ref={contenedor} className="terminal" />
       </div>
       {menu &&

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { CambioArchivo, EntradaArchivo, MarcaGit } from '@shared/archivos'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { ModalHistorialArchivo } from '../components/ModalHistorialArchivo'
-import { IconoArchivo } from '../components/Iconos'
+import { IconoArchivo, IconoArchivoNuevo, IconoCarpetaNueva, IconoPlegar, IconoReiniciar, IconoReloj } from '../components/Iconos'
 import { ArbolArchivos, type CreandoEn } from './ArbolArchivos'
 import { BuscadorArchivos } from './BuscadorArchivos'
 import { buscarArchivos } from './busqueda'
@@ -562,10 +562,10 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
         <div className="ed-arbol-cab">
           <strong title={nombre}>{nombre}</strong>
           <span className="ag-espacio" />
-          <button className="icono" title="Nuevo archivo" aria-label="Nuevo archivo" onClick={() => iniciarNuevo('', 'archivo')}>＋📄</button>
-          <button className="icono" title="Nueva carpeta" aria-label="Nueva carpeta" onClick={() => iniciarNuevo('', 'carpeta')}>＋📁</button>
-          <button className="icono" title="Actualizar" aria-label="Actualizar" onClick={refrescarTodo}>↻</button>
-          <button className="icono" title="Plegar todo" aria-label="Plegar todo" onClick={plegarTodo}>⊟</button>
+          <button className="icono" title="Nuevo archivo" aria-label="Nuevo archivo" onClick={() => iniciarNuevo('', 'archivo')}><IconoArchivoNuevo /></button>
+          <button className="icono" title="Nueva carpeta" aria-label="Nueva carpeta" onClick={() => iniciarNuevo('', 'carpeta')}><IconoCarpetaNueva /></button>
+          <button className="icono" title="Actualizar" aria-label="Actualizar" onClick={refrescarTodo}><IconoReiniciar /></button>
+          <button className="icono" title="Plegar todo" aria-label="Plegar todo" onClick={plegarTodo}><IconoPlegar /></button>
         </div>
         <div className="ed-busqueda">
           <input
@@ -655,7 +655,7 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
               if (activa) setHistorialDe(activa)
             })()}
           >
-            🕘 Historial
+            <IconoReloj /> Historial
           </button>
         </div>
 
