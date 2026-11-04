@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   aplicarComando,
   claveComando,
+  conEntornoPython,
+  gestionaEntorno,
   clasificarPuerto,
   contieneTexto,
   dentroDe,
@@ -184,5 +186,18 @@ describe('arranque: de quién es un puerto', () => {
     expect(describirConflicto({ ...c, tipo: 'ajeno', proceso: 'postgres', pid: 12 })).toContain('postgres (pid 12)')
     expect(describirConflicto({ ...c, tipo: 'ajeno' })).toContain('otro programa')
     expect(describirConflicto({ ...c, tipo: 'configurado-en-otro', proyectoNombre: 'Blog', bloquea: false })).toContain('también está configurado')
+  })
+})
+
+describe('entorno virtual de Python', () => {
+  it('antepone la activación solo si hay entorno y el comando no lo gestiona ya', () => {
+    expect(conEntornoPython('uvicorn app.main:app', 'venv')).toBe('. "venv/bin/activate" && uvicorn app.main:app')
+    expect(conEntornoPython('flask run', '.venv', true)).toBe('call ".venv\\Scripts\\activate.bat" && flask run')
+    expect(conEntornoPython('pnpm dev', undefined)).toBe('pnpm dev')
+    for (const c of ['source venv/bin/activate && uvicorn x', 'poetry run uvicorn x', 'uv run main.py', './.venv/bin/python main.py', 'venv\\Scripts\\python app.py', 'conda activate x && python a.py']) {
+      expect(gestionaEntorno(c)).toBe(true)
+      expect(conEntornoPython(c, 'venv')).toBe(c)
+    }
+    expect(gestionaEntorno('uvicorn app.main:app --reload')).toBe(false)
   })
 })
