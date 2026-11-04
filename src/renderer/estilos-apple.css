@@ -1,0 +1,218 @@
+/* ===== Capa «apple-design» (va después de estilos-mejoras.css) =====
+   Misma paleta; cambia cómo se mueve, se siente y se lee la interfaz
+   (skill .claude/skills/apple-design):
+   - movimiento con muelles reales (CSS linear() calculado: amortiguación 1.0 / 0.8),
+   - respuesta al pulsar (pointer-down), no al soltar,
+   - materiales translúcidos: el peso del material marca la jerarquía,
+   - menús y popovers anclados a su origen; entrar y salir por el mismo camino,
+   - tipografía con tracking según tamaño,
+   - movimiento reducido, transparencia reducida y más contraste. */
+
+:root {
+  /* Muelle críticamente amortiguado (damping 1.0, response 0.4 s): sin rebote, por defecto. */
+  --muelle: linear(0, 0.0492, 0.1573, 0.285, 0.4111, 0.5253, 0.6236, 0.7054, 0.7718, 0.8247, 0.8663, 0.8987, 0.9236, 0.9427, 0.9571, 0.9681, 0.9763, 0.9824, 0.987, 0.9904, 0.993, 0.9948, 0.9962, 0.9972, 1);
+  --muelle-t: 520ms;
+  /* Muelle con un poco de rebote (damping 0.8, response 0.35 s): solo para cosas con impulso físico (interruptor, arrastre). */
+  --muelle-rebote: linear(0, 0.0465, 0.1553, 0.2912, 0.4315, 0.5623, 0.6765, 0.771, 0.846, 0.9032, 0.945, 0.9742, 0.9935, 1.0054, 1.0119, 1.0147, 1.0151, 1.014, 1.0122, 1.0101, 1.008, 1.0061, 1.0044, 1.0031, 1);
+  --muelle-rebote-t: 440ms;
+  /* La forma del muelle también sirve como curva corta para colores y bordes. */
+  --ease: var(--muelle);
+  --salida: cubic-bezier(0.32, 0, 0.67, 0); /* inversa de la entrada: el camino de vuelta refleja el de ida */
+
+  /* materiales: más pesado = región estructural; más ligero = elemento interactivo */
+  --material-grueso: rgba(13, 14, 19, 0.78);
+  --material-medio: rgba(20, 22, 28, 0.72);
+  --material-fino: rgba(26, 28, 36, 0.68);
+  --desenfoque-grueso: blur(28px) saturate(180%);
+  --desenfoque-medio: blur(20px) saturate(170%);
+  --canto-luz: inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+
+  --radio: 9px;
+  --radio-lg: 13px;
+  --radio-xl: 18px;
+  --sombra-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.025);
+  --sombra-2: 0 10px 30px -6px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.28);
+  --sombra: 0 32px 80px -12px rgba(0, 0, 0, 0.7), 0 12px 28px -8px rgba(0, 0, 0, 0.45);
+  --anillo: 0 0 0 3.5px rgba(129, 140, 248, 0.24);
+}
+
+/* ---------- tipografía: tracking y leading según tamaño ---------- */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', sans-serif;
+  font-optical-sizing: auto;
+  letter-spacing: 0;
+}
+h1, h2 { letter-spacing: -0.022em; line-height: 1.15; }
+h3 { letter-spacing: -0.017em; line-height: 1.3; }
+h4 { letter-spacing: -0.01em; line-height: 1.35; }
+small, .chip, .insignia, kbd { letter-spacing: 0.01em; }
+.modal h3 { font-size: 18px; font-weight: 650; letter-spacing: -0.022em; }
+.config h2 { letter-spacing: -0.025em; }
+/* etiquetas en mayúsculas: pequeñas, tracking positivo y peso para que se lean */
+.seccion-toggle, .menu-ia-tit, .columna h4 { letter-spacing: 0.06em; font-weight: 650; }
+.estado-vacio h3 { font-size: 16px; letter-spacing: -0.02em; }
+.estado-vacio p { text-wrap: pretty; }
+h1, h2, h3 { text-wrap: balance; }
+.modal-texto { text-wrap: pretty; }
+/* botón dentro de un párrafo: se lee como enlace, sin romper la línea */
+.modal-texto button.icono { display: inline; padding: 0 2px; vertical-align: baseline; line-height: inherit; color: var(--acento); font-weight: 550; }
+.modal-texto button.icono:hover:not(:disabled) { background: transparent; color: #a5adff; text-decoration: underline; text-underline-offset: 2px; }
+.cfg-acciones { align-items: center; }
+
+/* ---------- respuesta: el botón reacciona al pulsar, al instante ---------- */
+button {
+  transition:
+    background var(--rapido) ease-out, border-color var(--rapido) ease-out, color var(--rapido) ease-out,
+    box-shadow var(--rapido) ease-out, filter var(--rapido) ease-out, opacity var(--rapido) ease-out,
+    transform var(--muelle-t) var(--muelle);
+  -webkit-tap-highlight-color: transparent;
+}
+button:active:not(:disabled) { transform: scale(0.97); transition-duration: 0ms, 0ms, 0ms, 0ms, 0ms, 0ms, 90ms; transition-timing-function: ease-out; }
+.item:active:not(:disabled), .ventana-tab:active, .pestana:active { transform: scale(0.985); }
+/* acción principal: mismo índigo, con menos brillo artificial y más material */
+button.primario, .btn-nueva, .ag-cuenta-btn.primario {
+  background: linear-gradient(180deg, #767dfa 0%, #6366f1 100%);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 10px -2px rgba(99, 102, 241, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+button.primario:hover:not(:disabled), .btn-nueva:hover:not(:disabled), .ag-cuenta-btn.primario:hover:not(:disabled) {
+  background: linear-gradient(180deg, #8288fb 0%, #6b6ef2 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px -2px rgba(99, 102, 241, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.26);
+}
+button.primario:active:not(:disabled), .btn-nueva:active:not(:disabled) { filter: brightness(0.94); }
+
+/* ---------- campos ---------- */
+input, select, textarea { border-radius: var(--radio); transition: border-color var(--rapido) ease-out, box-shadow var(--medio) var(--muelle), background var(--rapido) ease-out; }
+input:focus, textarea:focus, select:focus { border-color: rgba(129, 140, 248, 0.85); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 2px; outline-color: rgba(129, 140, 248, 0.8); }
+
+/* ---------- barra lateral: el material más pesado (región estructural) ---------- */
+.sidebar {
+  background: var(--material-grueso);
+  backdrop-filter: var(--desenfoque-grueso);
+  transition: width var(--muelle-t) var(--muelle);
+}
+.item { border-radius: var(--radio); transition: background var(--rapido) ease-out, color var(--rapido) ease-out, transform var(--muelle-t) var(--muelle); }
+.item-config.activo { background: rgba(129, 140, 248, 0.12); box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.1); }
+.item-icono { border-radius: 8px; transition: background var(--rapido) ease-out, border-color var(--rapido) ease-out, box-shadow var(--medio) var(--muelle); }
+
+/* ---------- barras flotantes: vidrio sobre el contenido ---------- */
+.barra, .ventanas {
+  background: var(--material-medio);
+  backdrop-filter: var(--desenfoque-medio);
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+}
+.ventana-tab { border-radius: 11px 11px 0 0; transition: background var(--rapido) ease-out, color var(--rapido) ease-out, transform var(--muelle-t) var(--muelle); }
+.ventana-tab.activa::after, .pestana.activa::after { height: 2px; border-radius: 0 0 2px 2px; }
+
+/* control segmentado: «pulgar» elevado, como en macOS */
+.segmentado { border-radius: 11px; padding: 3px; background: rgba(0, 0, 0, 0.32); border-color: rgba(255, 255, 255, 0.05); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35); }
+.segmentado button { border-radius: 8px; transition: background var(--medio) var(--muelle), color var(--rapido) ease-out, box-shadow var(--medio) var(--muelle), transform var(--muelle-t) var(--muelle); }
+.segmentado button.on {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.06)), var(--bg-elevado);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 6px -1px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* interruptor tipo iOS: el pulgar se estira al pulsar y llega con un poco de rebote */
+.interruptor { width: 36px; height: 22px; }
+.interruptor span { border-radius: 999px; background: rgba(255, 255, 255, 0.14); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04); transition: background var(--medio) ease-out; }
+.interruptor span::after {
+  width: 18px; height: 18px; border-radius: 999px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.1);
+  transition: transform var(--muelle-rebote-t) var(--muelle-rebote), width var(--muelle-t) var(--muelle);
+}
+.interruptor input:checked + span::after { transform: translateX(14px); }
+.interruptor:active span::after { width: 22px; }
+.interruptor:active input:checked + span::after { transform: translateX(10px); }
+
+/* ---------- paneles y tarjetas ---------- */
+.panel { border-radius: var(--radio-lg); transition: border-color var(--medio) ease-out, box-shadow var(--medio) var(--muelle); }
+.panel.activa { border-color: rgba(129, 140, 248, 0.42); }
+.panel-barra { background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01)), var(--bg-sidebar); }
+.cfg-grupo { border-radius: var(--radio-lg); box-shadow: var(--sombra-1), var(--canto-luz); transition: border-color var(--medio) ease-out, box-shadow var(--medio) var(--muelle); }
+.columna { border-radius: var(--radio-lg); }
+.tarea-tarjeta {
+  border-radius: 10px;
+  box-shadow: var(--sombra-1), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  transition: background var(--rapido) ease-out, border-color var(--rapido) ease-out, box-shadow var(--medio) var(--muelle), transform var(--muelle-t) var(--muelle);
+}
+.tarea-tarjeta:hover { transform: translateY(-2px); }
+.tarea-tarjeta:active { transform: translateY(0) scale(0.99); transition-duration: 90ms; }
+.chip { border-radius: 999px; }
+
+/* ---------- menús y popovers: material fino, anclados a quien los abre ---------- */
+.menu-ia, .ag-popover {
+  background: var(--material-fino);
+  backdrop-filter: var(--desenfoque-medio);
+  border-color: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: var(--sombra-2), 0 0 0 0.5px rgba(0, 0, 0, 0.6), var(--canto-luz);
+}
+.menu-ia { padding: 5px; animation: materializar-menu 300ms var(--muelle) both; }
+.menu-ia button { border-radius: 7px; transition: background 80ms ease-out, color 80ms ease-out; }
+/* resaltado de fila al estilo macOS: color de acento sólido, no un gris */
+.menu-ia button:hover:not(:disabled) { background: rgba(99, 102, 241, 0.85); color: #fff; }
+.menu-ia button:hover:not(:disabled) svg, .menu-ia button:hover:not(:disabled) small, .menu-ia button:hover:not(:disabled) kbd { color: rgba(255, 255, 255, 0.85); }
+.menu-ia button:active:not(:disabled) { transform: none; }
+.ag-popover { transform-origin: bottom right; animation: materializar-arriba 320ms var(--muelle) both; }
+
+/* ---------- modales: oscurecer para enfocar; el material llega, no solo aparece ---------- */
+.modal-fondo {
+  background: radial-gradient(circle at 50% 30%, rgba(99, 102, 241, 0.1), rgba(4, 5, 8, 0.72) 70%);
+  backdrop-filter: blur(6px) saturate(115%);
+  animation: aparecer 260ms ease-out both;
+}
+.modal {
+  border-radius: var(--radio-xl);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: var(--sombra), 0 0 0 0.5px rgba(0, 0, 0, 0.7), var(--canto-luz);
+  animation: modal-entrar var(--muelle-t) var(--muelle) both;
+}
+.modal-fondo.saliendo { animation: fondo-salir 200ms var(--salida) both; }
+.modal-fondo.saliendo .modal { animation: modal-salir 200ms var(--salida) both; }
+.modal-filas > div { animation: subir var(--muelle-t) var(--muelle) both; }
+
+/* ---------- entradas de contenido ---------- */
+.panel { animation: entrar-panel var(--muelle-t) var(--muelle) both; }
+.cfg-grupo { animation: subir var(--muelle-t) var(--muelle) both; }
+.ventana-tab, .pestana { animation-timing-function: var(--muelle); animation-duration: 420ms; }
+
+/* misma trayectoria al entrar y al salir (mismo desplazamiento y escala), y con el desenfoque del material */
+@keyframes modal-entrar { from { opacity: 0; transform: translateY(12px) scale(0.965); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes modal-salir { from { opacity: 1; transform: none; filter: none; } to { opacity: 0; transform: translateY(12px) scale(0.965); filter: blur(4px); } }
+@keyframes materializar-menu { from { opacity: 0; transform: scale(0.94); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes materializar-arriba { from { opacity: 0; transform: translateY(6px) scale(0.96); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes entrar-panel { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes subir { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ---------- scrollbars: finas, se marcan al pasar ---------- */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border: 2.5px solid transparent; background-clip: content-box; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); border: 2px solid transparent; background-clip: content-box; }
+
+/* ---------- accesibilidad ---------- */
+/* Menos movimiento: sin desplazamientos, escalas ni rebotes; quedan fundidos cortos que ayudan a entender. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-timing-function: ease-out !important; scroll-behavior: auto !important; }
+  .modal, .menu-ia, .ag-popover, .panel, .cfg-grupo, .modal-filas > div, .ventana-tab, .pestana { animation-name: aparecer !important; animation-duration: 180ms !important; }
+  .modal-fondo.saliendo .modal { animation-name: fondo-salir !important; }
+  button:active:not(:disabled), .item:active:not(:disabled), .tarea-tarjeta:hover, .tarea-tarjeta:active { transform: none !important; }
+  .interruptor span::after { transition: transform 120ms ease-out !important; }
+  .interruptor:active span::after { width: 18px; }
+}
+/* Menos transparencia: materiales sólidos, sin desenfoque. */
+@media (prefers-reduced-transparency: reduce) {
+  .sidebar { background: var(--bg-sidebar); backdrop-filter: none; }
+  .barra, .ventanas { background: var(--bg-sidebar); backdrop-filter: none; }
+  .menu-ia, .ag-popover { background: var(--bg-popover); backdrop-filter: none; }
+  .modal-fondo { background: rgba(4, 5, 8, 0.86); backdrop-filter: none; }
+}
+/* Más contraste: bordes definidos y texto secundario más claro. */
+@media (prefers-contrast: more) {
+  :root { --borde: rgba(255, 255, 255, 0.2); --borde-fuerte: rgba(255, 255, 255, 0.32); --texto-suave: #c4c4cf; --texto-tenue: #9a9aa8; }
+  .sidebar, .barra, .ventanas, .menu-ia, .ag-popover { backdrop-filter: none; }
+  .sidebar { background: var(--bg-sidebar); }
+  .menu-ia, .ag-popover { background: var(--bg-popover); border-color: var(--borde-fuerte); }
+}
