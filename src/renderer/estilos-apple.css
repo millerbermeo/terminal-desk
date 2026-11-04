@@ -216,3 +216,305 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .sidebar { background: var(--bg-sidebar); }
   .menu-ia, .ag-popover { background: var(--bg-popover); border-color: var(--borde-fuerte); }
 }
+
+/* =====================================================================
+   Módulo por módulo
+   ===================================================================== */
+
+/* ---------- barra lateral: filas compactas como en macOS; la cuenta siempre a la vista ---------- */
+:root { --alto-fila: 30px; --alto-barra: 52px; }
+.sidebar footer { max-height: 56%; gap: 8px; padding: 6px 8px 0; }
+.nav-grupo { gap: 0; }
+.nav-etiqueta { padding: 6px 10px 3px; font-size: 10.5px; letter-spacing: 0.06em; font-weight: 650; }
+.item-config { min-height: var(--alto-fila); padding: 3px 8px; gap: 9px; border-radius: 8px; }
+.item-icono { width: 22px; height: 22px; border-radius: 6px; }
+.item-icono svg { width: 14px; height: 14px; }
+.lista .item { min-height: var(--alto-fila); padding: 4px 10px; }
+.cuenta-tarjeta { position: sticky; bottom: 0; z-index: 1; margin-top: auto; margin-bottom: 8px; border-radius: 11px; backdrop-filter: var(--desenfoque-medio); }
+.btn-nueva { padding: 8px 12px; border-radius: 10px; }
+.acciones-proyecto button, .buscar input { border-radius: 8px; }
+
+/* ---------- barras superiores: misma altura y mismo material en todos los módulos ---------- */
+.barra, .tareas-barra, .vc-tabs { min-height: var(--alto-barra); padding-block: 8px; }
+.tareas-barra, .vc-tabs, .ag-pestanas, .api-tabs, .ag-cuenta {
+  background: var(--material-medio);
+  backdrop-filter: var(--desenfoque-medio);
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+.vc-tabs { background: transparent; backdrop-filter: none; }
+.ag-pestanas, .api-tabs { min-height: var(--alto-barra); align-items: flex-end; }
+.ag-pestanas button { padding: 8px 13px 9px; border-radius: 8px 8px 0 0; transition: background var(--rapido) ease-out, color var(--rapido) ease-out, border-color var(--medio) var(--muelle); }
+.ag-pestanas button.on { background: none; font-weight: 600; }
+/* avisos de franja (sin sesión, etc.): tono suave, sin caja pesada */
+.ag-cuenta { min-height: 40px; padding-block: 8px; }
+
+/* ---------- Asistente: compositor en una sola cápsula ---------- */
+.ag-compositor { background: linear-gradient(180deg, transparent, rgba(11, 12, 15, 0.6) 30%); border-top-color: transparent; }
+.ag-opciones { gap: 6px; margin-bottom: 8px; }
+.ag-opciones select {
+  height: 28px; padding: 0 26px 0 11px; border-radius: 999px; font-size: 12px; font-weight: 500;
+  background-color: rgba(255, 255, 255, 0.045); border-color: rgba(255, 255, 255, 0.07); background-position: right 9px center; background-size: 11px;
+}
+.ag-opciones select:hover { background-color: rgba(255, 255, 255, 0.075); }
+.ag-opciones .segmentado { border-radius: 999px; padding: 2px; }
+.ag-opciones .segmentado button { border-radius: 999px; padding: 3px 12px; font-size: 12px; }
+.ag-icono { width: 30px; height: 28px; padding: 0; border-radius: 999px; background: transparent; border-color: transparent; color: var(--texto-suave); }
+.ag-icono:hover:not(:disabled) { background: var(--bg-hover); color: var(--texto); border-color: transparent; }
+.ag-entrada {
+  align-items: flex-end; gap: 6px; padding: 6px 6px 6px 4px;
+  background: var(--bg-elevado); border: 1px solid var(--borde-fuerte); border-radius: 18px;
+  box-shadow: 0 8px 28px -10px rgba(0, 0, 0, 0.6), var(--canto-luz);
+  transition: border-color var(--rapido) ease-out, box-shadow var(--medio) var(--muelle);
+}
+.ag-entrada:focus-within { border-color: rgba(129, 140, 248, 0.6); box-shadow: 0 8px 28px -10px rgba(0, 0, 0, 0.6), var(--anillo), var(--canto-luz); }
+.ag-entrada textarea, .ag-entrada textarea:hover, .ag-entrada textarea:focus {
+  background: transparent; border-color: transparent; box-shadow: none; resize: none; min-height: 44px; padding: 8px 10px; line-height: 1.55;
+}
+.ag-entrada button.primario { align-self: flex-end; height: 34px; min-width: 0; padding: 0 16px; border-radius: 999px; }
+.ag-estado-barra { background: transparent; border-top: 0; color: var(--texto-tenue); }
+.ag-ctx-barra { height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); }
+.ag-ctx-barra i { border-radius: 999px; transition: width var(--muelle-t) var(--muelle), background var(--medio) ease-out; }
+.ag-uso-chip { border-radius: 999px; }
+
+/* conversación: la burbuja propia con color; la respuesta, texto limpio sobre el fondo */
+.ag-hilo { gap: 16px; }
+.ag-turno { gap: 12px; padding-bottom: 20px; border-bottom-color: rgba(255, 255, 255, 0.045); animation: subir var(--muelle-t) var(--muelle) both; }
+.ag-usuario {
+  border-radius: 18px 18px 6px 18px; padding: 9px 15px;
+  background: linear-gradient(180deg, rgba(124, 131, 251, 0.3), rgba(99, 102, 241, 0.24)); border-color: rgba(129, 140, 248, 0.28);
+  box-shadow: 0 2px 10px -4px rgba(99, 102, 241, 0.45);
+}
+.ag-burbuja { background: transparent; border-color: transparent; box-shadow: none; padding: 2px 2px; line-height: 1.65; }
+.ag-herramienta { border-radius: 10px; background: rgba(255, 255, 255, 0.022); border-color: rgba(255, 255, 255, 0.05); transition: background var(--rapido) ease-out, border-color var(--rapido) ease-out; }
+.ag-herramienta:hover { background: rgba(255, 255, 255, 0.04); border-color: var(--borde); }
+.ag-herramienta[open] { background: rgba(255, 255, 255, 0.035); }
+.ag-final { border-radius: 12px; padding: 10px 14px; }
+.ag-opciones { flex-wrap: nowrap; }
+.ag-opciones > select:first-child { flex: 0 1 220px; min-width: 120px; text-overflow: ellipsis; }
+.ag-opciones > .ag-espacio { flex: 1; }
+.ag-opciones > button.ag-icono { flex: none; width: 28px; }
+@container (max-width: 860px) { .ag-opciones { flex-wrap: wrap; } }
+
+/* ---------- Tareas ---------- */
+.tareas-barra { gap: 8px; padding-inline: 20px; }
+.tareas-buscar { border-radius: 999px; padding-left: 14px; }
+.columna { background: rgba(255, 255, 255, 0.018); border-color: rgba(255, 255, 255, 0.05); padding: 10px; gap: 8px; }
+.columna h4 { padding: 2px 4px 4px; font-size: 10.5px; }
+.columna h4 .contador, .columna h4 small { border-radius: 999px; }
+.tarea-tarjeta { padding: 11px 12px 10px 13px; border-left-width: 1px; position: relative; overflow: hidden; }
+/* prioridad y color: una franja fina a la izquierda en vez de bordes y fondos llenos */
+.tarea-tarjeta::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--franja, transparent); }
+.tarea-tarjeta.prioridad-media { --franja: var(--acento); }
+.tarea-tarjeta.prioridad-alta { --franja: var(--aviso); }
+.tarea-tarjeta.prioridad-urgente { --franja: var(--error); }
+.tarea-tarjeta.prioridad-media, .tarea-tarjeta.prioridad-alta, .tarea-tarjeta.prioridad-urgente { border-left-color: var(--borde); }
+.tarea-tarjeta[class*=' color-'] {
+  --franja: var(--tarea-color);
+  background: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--tarea-color) 15%, transparent), transparent 70%), var(--bg-elevado);
+  border-color: color-mix(in srgb, var(--tarea-color) 24%, var(--borde));
+}
+.tarea-tarjeta[class*=' color-']:hover {
+  background: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--tarea-color) 22%, transparent), transparent 70%), #1b1e25;
+  border-color: color-mix(in srgb, var(--tarea-color) 45%, var(--borde));
+}
+.tarea-tit { font-weight: 560; letter-spacing: -0.005em; }
+.tarea-num { color: var(--texto-tenue); font-weight: 500; }
+.tarea-meta { gap: 4px; margin-top: 9px; }
+.tarea-meta .chip { border-color: transparent; background: rgba(255, 255, 255, 0.055); padding: 1px 8px; font-size: 10.5px; }
+.tarea-meta .chip.prio-alta { background: rgba(251, 191, 36, 0.12); }
+.tarea-meta .chip.prio-urgente { background: rgba(248, 113, 113, 0.14); }
+.td-color { transition: transform var(--muelle-rebote-t) var(--muelle-rebote), box-shadow var(--rapido) ease-out; }
+.td-color:hover { transform: scale(1.15); }
+
+/* detalle de tarea: hoja flotante que entra desde la derecha (y se aparta del borde, como en macOS) */
+.td-fondo { background: rgba(4, 5, 8, 0.45); backdrop-filter: blur(2px); }
+.td {
+  height: calc(100% - 16px); margin: 8px; border-radius: 16px; overflow: hidden;
+  background: rgba(21, 23, 28, 0.95); backdrop-filter: var(--desenfoque-grueso);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: var(--sombra), 0 0 0 0.5px rgba(0, 0, 0, 0.7), var(--canto-luz);
+  animation: entrar-lateral var(--muelle-t) var(--muelle) both;
+}
+@keyframes entrar-lateral { from { transform: translateX(32px); opacity: 0; } to { transform: none; opacity: 1; } }
+.td-cab { padding: 12px 14px 12px 20px; border-bottom-color: rgba(255, 255, 255, 0.06); }
+.td-titulo { font-size: 17px; }
+.td-cuerpo { padding: 20px 22px 28px; gap: 26px; }
+.td-seccion h4 { font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; }
+.td-colores { gap: 4px; }
+.td-color { width: 18px; height: 18px; }
+.td-color.on { box-shadow: 0 0 0 2px var(--bg-popover), 0 0 0 3.5px var(--tarea-color, var(--texto)); border-color: transparent; }
+.td-items li { padding: 3px 6px; margin: 0 -6px; border-radius: 8px; transition: background var(--rapido) ease-out; }
+.td-items li:hover { background: rgba(255, 255, 255, 0.035); }
+.td-items li .cerrar, .td-items li button.icono { opacity: 0; transition: opacity var(--rapido) ease-out; }
+.td-items li:hover .cerrar, .td-items li:hover button.icono, .td-items li :focus-visible { opacity: 1; }
+@media (prefers-reduced-transparency: reduce) { .td { background: var(--bg-popover); backdrop-filter: none; } }
+
+/* ---------- Versiones (git) ---------- */
+.vc-lista-scroll { padding: 6px 0; }
+.vc-seccion h4 { font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; }
+.vc-fila { margin: 1px 8px; border-radius: 8px; transition: background var(--rapido) ease-out; }
+.vc-fila.sel { background: rgba(129, 140, 248, 0.16); box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.14); }
+.vc-commit { background: transparent; border-top-color: rgba(255, 255, 255, 0.05); }
+.vc-commit textarea { border-radius: 14px; background: var(--bg-elevado); padding: 10px 12px; }
+.vc-diff-cab { background: var(--material-medio); backdrop-filter: var(--desenfoque-medio); border-bottom-color: rgba(255, 255, 255, 0.06); }
+.vc-l { line-height: 1.6; }
+.vc-n { color: rgba(255, 255, 255, 0.22); }
+.vc-l-add { background: rgba(52, 211, 153, 0.085); box-shadow: inset 2px 0 0 rgba(52, 211, 153, 0.55); }
+.vc-l-del { background: rgba(248, 113, 113, 0.085); box-shadow: inset 2px 0 0 rgba(248, 113, 113, 0.55); }
+.vc-l-hunk { background: rgba(129, 140, 248, 0.08); color: #a5adff; margin: 10px 0 4px; }
+.vc-l-hunk:first-child { margin-top: 0; }
+
+/* ---------- estados vacíos: superficie suave; el borde punteado queda solo para zonas donde se suelta algo ---------- */
+.estado-vacio.compacto { border: 1px solid rgba(255, 255, 255, 0.045); background: rgba(255, 255, 255, 0.015); border-radius: 14px; }
+.estado-vacio-icono { border-radius: 14px; }
+
+/* ---------- Guía y pantallas de ajustes: el contenedor sigue a todo lo ancho, la prosa a un ancho de lectura ---------- */
+.doc-art p, .doc-art ul:not(.doc-pasos) li { max-width: 88ch; }
+.doc-art p, .doc-art li { line-height: 1.65; }
+.doc-indice { background: var(--material-grueso); backdrop-filter: var(--desenfoque-grueso); }
+.doc-indice h4 { font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; }
+.doc-enlace { min-height: var(--alto-fila); padding: 4px 9px; border-radius: 8px; }
+.doc-enlace.activo { background: rgba(129, 140, 248, 0.14); color: #d4d7ff; }
+.doc-pasos { gap: 0; }
+.doc-pasos li { background: rgba(255, 255, 255, 0.022); border-color: rgba(255, 255, 255, 0.06); }
+.cfg-cab h2 { font-size: 24px; letter-spacing: -0.028em; }
+.config { padding: 32px 40px 48px; }
+.cfg-grupo-cab { min-height: 48px; }
+.cfg-grupo-cab h3 { font-size: 13.5px; letter-spacing: -0.012em; }
+
+/* ---------- rejilla de terminales ---------- */
+/* panel activo: mismo degradado de marca, más tenue; el foco se nota sin gritar */
+.panel.activa {
+  background: linear-gradient(var(--bg), var(--bg)) padding-box, linear-gradient(135deg, rgba(99, 102, 241, 0.75), rgba(167, 139, 250, 0.35) 50%, rgba(192, 132, 252, 0.6)) border-box;
+  box-shadow: 0 12px 34px -8px rgba(0, 0, 0, 0.55), 0 0 32px -6px rgba(99, 102, 241, 0.16);
+}
+.panel-barra { min-height: 34px; }
+.panel-vista { padding: 4px 8px; }
+.panel-vista button { border-radius: 7px; transition: background var(--rapido) ease-out, color var(--rapido) ease-out, box-shadow var(--rapido) ease-out; }
+.divisor::after { transition: background var(--medio) ease-out, transform var(--muelle-t) var(--muelle); border-radius: 999px; }
+.divisor-h:hover::after { transform: translateX(-50%) scaleX(1.5); }
+.divisor-v:hover::after { transform: translateY(-50%) scaleY(1.5); }
+.ventanas { padding-top: 6px; }
+.ventana-tab { padding-block: 7px 8px; }
+
+/* menús sobre contenido con texto (terminales, código): material casi opaco para que se lean; el desenfoque sigue dando profundidad */
+:root { --material-fino: rgba(24, 26, 33, 0.93); }
+.menu-ia button { text-align: left; line-height: 1.35; }
+.menu-ia-tit { line-height: 1.4; }
+
+/* ---------- editor de archivos ---------- */
+.ed-ico-carpeta { display: inline-grid; place-items: center; color: #8b93f9; }
+.ed-ico-carpeta svg { width: 14px; height: 14px; }
+.ed-arbol-cab button.icono svg { width: 14px; height: 14px; }
+.ag-sug-ico { display: inline-grid; place-items: center; color: var(--texto-tenue); }
+.ag-sug-ico svg { width: 14px; height: 14px; }
+.ed-fila { margin: 0 6px; border-radius: 6px; transition: background 80ms ease-out; }
+.ed-fila.sel { background: rgba(129, 140, 248, 0.18); }
+.ed-pestana { border-radius: 8px 8px 0 0; transition: background var(--rapido) ease-out, color var(--rapido) ease-out; }
+
+/* ---------- tablas: filas sin rejilla pesada, resaltado redondeado ---------- */
+.tareas-tabla { border-collapse: separate; border-spacing: 0 2px; }
+.tareas-tabla th { font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; border-bottom-color: rgba(255, 255, 255, 0.06); }
+.tareas-tabla td { border-bottom: 0; padding-block: 9px; transition: background 80ms ease-out; }
+.tareas-tabla tbody tr td:first-child { border-radius: 9px 0 0 9px; color: var(--texto-tenue); }
+.tareas-tabla tbody tr td:last-child { border-radius: 0 9px 9px 0; }
+.tareas-tabla tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.016); }
+.tareas-tabla tbody tr:hover td, .tareas-tabla tbody tr:focus-visible td { background: rgba(255, 255, 255, 0.05); }
+.tareas-tabla tbody tr:hover, .tareas-tabla tbody tr:focus-visible { background: transparent; }
+.tareas-tabla .chip { border-color: transparent; background: rgba(255, 255, 255, 0.055); }
+.api-tabla tr { border-bottom-color: rgba(255, 255, 255, 0.05); }
+
+/* resumen de tareas: tarjetas agrupadas como en Ajustes de macOS */
+.resumen { gap: 12px; }
+.resumen-cab, .resumen section { background: rgba(255, 255, 255, 0.022); border-color: rgba(255, 255, 255, 0.055); border-radius: 14px; box-shadow: var(--canto-luz); }
+.resumen h4 { font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; }
+.progreso { height: 6px; }
+.progreso i { transition: width var(--muelle-t) var(--muelle); }
+
+/* modales largos (Cuenta…): secciones separadas por aire y una línea fina, títulos con más peso */
+.modal .cfg-acciones { border-top-color: rgba(255, 255, 255, 0.06); }
+.modal-chico h4 { font-size: 14px; letter-spacing: -0.012em; margin-top: 8px; }
+.modal::-webkit-scrollbar-track { margin-block: 14px; }
+
+/* ---------- Cliente API: método + URL en una sola barra ---------- */
+.api-lateral { background: var(--material-grueso); backdrop-filter: var(--desenfoque-grueso); }
+.api-linea { gap: 0; align-items: stretch; }
+.api-linea .api-metodo { border-radius: 10px 0 0 10px; border-right-color: transparent; width: 104px; }
+.api-linea .api-url { border-radius: 0 10px 10px 0; margin-right: 8px; }
+.api-linea .api-metodo:focus { position: relative; z-index: 1; border-right-color: rgba(129, 140, 248, 0.85); }
+.api-linea > button { margin-left: 6px; }
+.api-linea > button.primario { margin-left: 0; padding-inline: 18px; }
+.api-tab { border-radius: 10px 10px 0 0; transition: background var(--rapido) ease-out, color var(--rapido) ease-out; }
+
+/* ---------- casillas al estilo macOS (las ocultas de interruptores y chips no se ven igual) ---------- */
+input[type='checkbox'] {
+  appearance: none; flex: none; width: 16px; height: 16px; margin: 0; padding: 0; display: inline-grid; place-items: center; vertical-align: -3px;
+  border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 5px; background: rgba(255, 255, 255, 0.05); cursor: pointer;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.25);
+  transition: background var(--rapido) ease-out, border-color var(--rapido) ease-out, transform var(--muelle-rebote-t) var(--muelle-rebote);
+}
+input[type='checkbox']:hover { border-color: rgba(255, 255, 255, 0.35); }
+input[type='checkbox']:active { transform: scale(0.9); transition-duration: 80ms; }
+input[type='checkbox']:checked { background: linear-gradient(180deg, #767dfa, #6366f1); border-color: rgba(255, 255, 255, 0.18); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22); }
+input[type='checkbox']:checked::after {
+  content: ''; width: 9px; height: 9px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 6.3 5 8.7 9.6 3.4'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+input[type='checkbox']:indeterminate { background: var(--acento-fuerte); border-color: transparent; }
+input[type='checkbox']:indeterminate::after { content: ''; width: 8px; height: 2px; border-radius: 1px; background: #fff; }
+input[type='checkbox']:disabled { opacity: 0.4; cursor: not-allowed; }
+.interruptor input[type='checkbox'], .chip-sel input[type='checkbox'] { appearance: auto; width: auto; height: auto; }
+/* reglas antiguas ponen `width: auto` a ciertas casillas (sin apariencia nativa eso es 0 de ancho): una casilla siempre mide 16 px */
+input[type='checkbox']:not(.interruptor input):not(.chip-sel input) { width: 16px !important; height: 16px !important; min-width: 16px !important; padding: 0 !important; }
+
+/* ---------- buscador dentro del archivo (Ctrl+F / Ctrl+H), flotante como en VS Code ---------- */
+.ed-codigo .cm-panels-top:has(> .ed-buscar-ancla:only-child) { display: none; }
+.ed-buscar {
+  position: absolute; top: 8px; right: 18px; z-index: 6; display: flex; align-items: flex-start; gap: 2px;
+  padding: 5px 5px 5px 3px; border-radius: 12px;
+  background: var(--material-fino); backdrop-filter: var(--desenfoque-medio);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--sombra-2), 0 0 0 0.5px rgba(0, 0, 0, 0.6), var(--canto-luz);
+  transform-origin: top right; animation: materializar-menu 260ms var(--muelle) both;
+  font-size: 12px;
+}
+.ed-buscar-filas { display: flex; flex-direction: column; gap: 4px; }
+.ed-buscar-fila { display: flex; align-items: center; gap: 2px; }
+.ed-buscar button.icono { width: 24px; height: 24px; padding: 0; border-radius: 6px; }
+.ed-buscar button.icono svg { width: 14px; height: 14px; }
+.ed-buscar-plegar { align-self: stretch !important; height: auto !important; }
+.ed-buscar-plegar svg { transform: none; transition: transform var(--muelle-t) var(--muelle); }
+.ed-buscar-plegar.abierto svg { transform: rotate(90deg); }
+.ed-buscar-ant svg { transform: rotate(-90deg); }
+.ed-buscar-sig svg { transform: rotate(90deg); }
+.ed-buscar-campo {
+  display: flex; align-items: center; gap: 1px; width: 250px; height: 26px; padding: 0 3px 0 0;
+  background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 7px;
+  transition: border-color var(--rapido) ease-out, box-shadow var(--medio) var(--muelle);
+}
+.ed-buscar-campo:focus-within { border-color: rgba(129, 140, 248, 0.85); box-shadow: 0 0 0 2.5px rgba(129, 140, 248, 0.22); }
+.ed-buscar-campo.sin { border-color: rgba(248, 113, 113, 0.6); }
+.ed-buscar-campo.sin:focus-within { box-shadow: 0 0 0 2.5px rgba(248, 113, 113, 0.2); }
+.ed-buscar-campo input, .ed-buscar-campo input:hover, .ed-buscar-campo input:focus {
+  flex: 1; min-width: 0; height: 100%; padding: 0 8px; border: 0; background: transparent; box-shadow: none; outline: none;
+  font: 12.5px 'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', monospace;
+}
+.ed-buscar-op {
+  width: 22px; height: 20px; padding: 0; border-radius: 5px; border-color: transparent; background: transparent;
+  color: var(--texto-tenue); font: 600 11px 'JetBrains Mono', 'DejaVu Sans Mono', monospace;
+}
+.ed-buscar-op:hover:not(:disabled) { background: var(--bg-hover); border-color: transparent; color: var(--texto); }
+.ed-buscar-op.on { background: rgba(129, 140, 248, 0.22); border-color: rgba(129, 140, 248, 0.55); color: #d4d7ff; }
+.ed-buscar-op u { text-underline-offset: 2px; }
+.ed-buscar-total { min-width: 92px; padding: 0 8px; color: var(--texto-suave); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ed-buscar-total.sin { color: var(--error); }
+.ed-buscar-accion { height: 24px; padding: 0 9px; font-size: 11.5px; border-radius: 6px; margin-left: 2px; }
+/* coincidencias resaltadas por CodeMirror: todas en ámbar suave, la seleccionada más marcada */
+.ed-codigo .cm-searchMatch { background-color: rgba(251, 191, 36, 0.22); outline: 1px solid rgba(251, 191, 36, 0.35); border-radius: 2px; }
+.ed-codigo .cm-searchMatch-selected { background-color: rgba(251, 146, 60, 0.5); outline-color: rgba(251, 146, 60, 0.9); }
+@container ed (max-width: 460px) {
+  .ed-buscar { left: 8px; right: 8px; }
+  .ed-buscar-filas { flex: 1; min-width: 0; }
+  .ed-buscar-campo { flex: 1; width: auto; min-width: 0; }
+  .ed-buscar-total { min-width: 0; }
+}
