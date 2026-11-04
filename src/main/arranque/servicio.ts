@@ -2,7 +2,9 @@ import { existsSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
 import {
   bloqueaPuerto,
+  CARPETAS_VENV,
   clasificarPuerto,
+  conEntornoPython,
   contieneTexto,
   describirConflicto,
   enCurso,
@@ -69,6 +71,12 @@ interface Vivo {
 type Espera = { ok: true; mensaje?: string } | { ok: false; mensaje: string; cancelado?: boolean }
 
 const MAX_BUFFER = 64 * 1024
+const WINDOWS = process.platform === 'win32'
+
+/** Entorno virtual de Python de la carpeta (`.venv`, `venv`, `env`), relativo a ella; `undefined` si no hay. */
+export function entornoPython(carpeta: string, windows = WINDOWS): string | undefined {
+  return CARPETAS_VENV.find((d) => existsSync(windows ? resolve(carpeta, d, 'Scripts', 'activate.bat') : resolve(carpeta, d, 'bin', 'activate')))
+}
 const clave = (proyectoId: string, comandoId: string): string => `${proyectoId}|${comandoId}`
 
 const dormir = (ms: number, signal?: AbortSignal): Promise<void> =>
@@ -310,7 +318,8 @@ export class ServicioArranque {
     this.emitir(proyecto.id, c.id, 'arrancando', undefined, ptyId)
     this.deps.alTerminal({ proyectoId: proyecto.id, comandoId: c.id, nombre: c.nombre, ptyId, cwd: ruta })
     // Se escribe en el shell interactivo (hereda PATH/nvm); si no ha terminado de iniciar, la entrada espera en el pty.
-    this.deps.terminales.escribir(ptyId, c.comando + '\r')
+    // Con un entorno virtual de Python en la carpeta, se activa antes (si no, `uvicorn` y compañía no se encuentran).
+    this.deps.terminales.escribir(ptyId, conEntornoPython(c.comando, entornoPython(ruta), WINDOWS) + '\r')
 
     const r = await this.esperarListo(c, vivo, signal)
     if (r.ok) {

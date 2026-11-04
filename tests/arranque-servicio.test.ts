@@ -1,10 +1,10 @@
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { MemoriaArranque } from '../src/main/arranque/almacen'
 import { ejecutarOperacionArranque } from '../src/main/arranque/operaciones'
-import { ServicioArranque, type DepsArranque } from '../src/main/arranque/servicio'
+import { ServicioArranque, entornoPython, type DepsArranque } from '../src/main/arranque/servicio'
 import type { ComandoArranque, EntradaComandoArranque, EstadoArranque, ProcesoPuerto, ProyectoRuta, TerminalArranque } from '../src/shared/arranque'
 
 const esperar = async (cond: () => boolean | Promise<boolean>, ms = 3000): Promise<void> => {
@@ -123,6 +123,19 @@ describe('servicio de arranque', () => {
     expect(await s.listar('tienda')).toHaveLength(1)
     expect((await s.listar('blog'))[0]!.nombre).toBe('Blog dev')
     await expect(s.listar('../etc')).rejects.toThrow('proyecto no válido')
+  })
+
+  it('activa el entorno virtual de Python de la carpeta del comando antes de lanzarlo', async () => {
+    await mkdir(join(raiz, 'tienda', 'api', 'venv', 'bin'), { recursive: true })
+    await writeFile(join(raiz, 'tienda', 'api', 'venv', 'bin', 'activate'), '')
+    expect(entornoPython(join(raiz, 'tienda', 'api'), false)).toBe('venv')
+    expect(entornoPython(join(raiz, 'tienda'), false)).toBeUndefined()
+    await guardar('tienda', { nombre: 'API', comando: 'uvicorn app.main:app --port 8081', cwd: 'api', esperar: 'nada' })
+    await guardar('tienda', { nombre: 'Web', comando: 'pnpm dev', esperar: 'nada' })
+    await s.arrancar('tienda')
+    const escrito = (): string[] => [...term.escrito.values()].flat()
+    await expect.poll(escrito).toContain('pnpm dev\r')
+    expect(escrito()).toContain('. "venv/bin/activate" && uvicorn app.main:app --port 8081\r')
   })
 
   it('arranca en orden, uno por uno: el siguiente espera a que el anterior esté listo (puerto, texto, nada)', async () => {

@@ -196,6 +196,22 @@ export function puertoSugerido(comando: string): number | undefined {
   return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : undefined
 }
 
+/** Carpetas de entorno virtual de Python que se buscan en la carpeta del comando, en este orden. */
+export const CARPETAS_VENV = ['.venv', 'venv', 'env'] as const
+
+/** ¿El comando ya activa su entorno o lo gestiona otra herramienta (`poetry run`, `uv run`, `venv/bin/python`…)? Entonces no se toca. */
+export const gestionaEntorno = (comando: string): boolean =>
+  /\bactivate(\.bat|\.ps1)?\b|\b(poetry|uv|pipenv|pdm|hatch|conda|rye)\s+run\b|\bconda\s+activate\b|(^|[\s"'/\\])\.?venv[/\\](bin|Scripts)[/\\]/i.test(comando)
+
+/**
+ * Antepone al comando la activación del entorno virtual de Python `venv` (relativo a la carpeta del comando), para que
+ * `uvicorn`, `flask`, `python`… sean los del proyecto y no los del sistema. Sin entorno, o si el comando ya lo gestiona, lo deja igual.
+ */
+export function conEntornoPython(comando: string, venv: string | undefined, windows = false): string {
+  if (!venv || gestionaEntorno(comando)) return comando
+  return windows ? `call "${venv}\\Scripts\\activate.bat" && ${comando}` : `. "${venv}/bin/activate" && ${comando}`
+}
+
 /** Quita secuencias de escape ANSI (colores, cursor, títulos) de lo que escribe una terminal. */
 // eslint-disable-next-line no-control-regex
 export const sinAnsi = (s: string): string => s.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[()][A-Za-z0-9]/g, '')
