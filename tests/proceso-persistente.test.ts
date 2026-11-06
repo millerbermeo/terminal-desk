@@ -71,7 +71,11 @@ function recibir(m) {
     if (m.uuid && vistos.has(m.uuid)) return
     if (m.uuid) vistos.add(m.uuid)
     // MUDO: no lo toma nunca (ni eco ni salida). COMPACTA: trabaja 2,5 s (saca avisos) antes de tomarlo
-    if (texto.includes('MUDO')) return
+    // MUDO1: solo el primer proceso no lo toma (el reintento en otro proceso sí)
+    if (texto.includes('MUDO1')) {
+      const marca = process.env.FALSO_VOLCADO + '.mudo1'
+      if (!fs.existsSync(marca)) { fs.writeFileSync(marca, ''); return }
+    } else if (texto.includes('MUDO')) return
     if (texto.includes('COMPACTA')) {
       const aviso = setInterval(() => l({ type: 'system', subtype: 'status', session_id: sid }), 300)
       setTimeout(() => { clearInterval(aviso); l({ type: 'user', uuid: m.uuid, session_id: sid, message: m.message }); paso('compactado'); resultado(false) }, 2500)
@@ -207,6 +211,41 @@ describe('proceso persistente del CLI', () => {
     expect(r.resultado.estado).toBe('error')
     expect(r.resultado.error).toMatch(/no tomó el mensaje/)
     expect(Date.now() - t0).toBeLessThan(8000)
+    pool.cerrarTodos()
+  })
+
+  it('una continuación automática sin eco se reenvía una vez en un proceso nuevo, con otro uuid', async () => {
+    await writeFile(volcado, '')
+    const pool = new ProcesosCli(4, 60_000)
+    const r = await ejecutarEnProceso(pool, 'c-mudo1', opciones({ prompt: 'MUDO1 continúa', omitirInicio: true, mensajeId: 'u-cont' }).o)
+    expect(r.resultado.estado).toBe('completado')
+    const l = await lineas()
+    expect(l.filter((x) => x.arranque)).toHaveLength(2)
+    const uuids = l.filter((x) => x.usuario).map((x) => x.uuid)
+    expect(uuids).toHaveLength(2)
+    expect(uuids[0]).toBe('u-cont')
+    expect(uuids[1]).not.toBe('u-cont')
+    pool.cerrarTodos()
+  })
+
+  it('el primer envío de un turno sin eco no se reenvía solo (su id sirve para deshacer)', async () => {
+    await writeFile(volcado, '')
+    const pool = new ProcesosCli(4, 60_000)
+    const r = await ejecutarEnProceso(pool, 'c-mudo-1o', opciones({ prompt: 'MUDO' }).o)
+    expect(r.resultado.estado).toBe('error')
+    expect((await lineas()).filter((x) => x.arranque)).toHaveLength(1)
+    pool.cerrarTodos()
+  })
+
+  it('tras un corte por el límite de pasos el proceso se cierra y el siguiente envío va a uno nuevo', async () => {
+    await writeFile(volcado, '')
+    const pool = new ProcesosCli(4, 60_000)
+    const a = await ejecutarEnProceso(pool, 'c-bucle', opciones({ prompt: 'BUCLE' }).o)
+    expect(a.resultado.estado).toBe('limite_pasos')
+    await ejecutarEnProceso(pool, 'c-bucle', opciones({ prompt: 'sigue', reanudar: a.sesionCli }).o)
+    const arranques = (await lineas()).filter((x) => x.arranque)
+    expect(arranques).toHaveLength(2)
+    expect(arranques[1]!.reanuda).toBe(a.sesionCli)
     pool.cerrarTodos()
   })
 

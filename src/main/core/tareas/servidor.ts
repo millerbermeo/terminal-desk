@@ -78,7 +78,7 @@ export async function iniciarServidorTareas(
           if (!socket.destroyed) socket.write(JSON.stringify({ id, texto: 'ok' } satisfies RespuestaTareas) + '\n')
           return
         }
-        const r = await ejecutar(String(p.herramienta ?? ''), p.entrada, { proyectoId: p.proyectoId })
+        const r = await ejecutar(String(p.herramienta ?? ''), p.entrada, { proyectoId: p.proyectoId, ...(typeof p.cliente === 'string' ? { cliente: p.cliente.slice(0, 60) } : {}) })
         const respuesta: RespuestaTareas = { id, ...r }
         if (!socket.destroyed) socket.write(JSON.stringify(respuesta) + '\n')
       } catch (err) {

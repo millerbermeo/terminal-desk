@@ -1,4 +1,5 @@
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { chmod, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { DIR } from '../../proyectos'
@@ -35,7 +36,49 @@ const SERVIDORES_DE_SERIE: Record<string, ServidorMcpConfig> = {
   // cada sesión lanza su propio Chromium con perfil temporal, así varias conversaciones pueden usarlo a la vez sin chocar por el perfil.
   // (El navegador integrado de Odesk tiene además sus propias herramientas `navegador_*` en el servidor «odesk».)
   // «escritura»: en suscripción se permite desde «Aceptar ediciones» (en «Preguntar» no hay quien confirme); en modo API sigue pidiendo confirmación.
-  playwright: { comando: 'npx', args: ['-y', '@playwright/mcp@latest', '--isolated'], env: {}, deshabilitado: false, riesgo: 'escritura' }
+  playwright: { comando: 'npx', args: ['-y', '@playwright/mcp@latest', '--isolated'], env: {}, deshabilitado: false, riesgo: 'escritura' },
+  // Chrome DevTools sobre el MISMO navegador que abre Playwright (ver `navegadorCompartido`): consola, red (peticiones, respuestas,
+  // códigos), DOM, rendimiento. No lanza Chrome propio: se conecta por CDP al Chromium de Playwright de esa conversación.
+  'chrome-devtools': { comando: 'npx', args: ['-y', 'chrome-devtools-mcp@latest', '--no-usage-statistics'], env: {}, deshabilitado: false, riesgo: 'escritura' }
+}
+
+const PUERTO_BASE = 20_000
+const PUERTOS = 10_000
+
+/** Puerto CDP estable por conversación (cambiarlo relanzaría el proceso persistente del CLI en cada mensaje). */
+export function puertoNavegador(clave: string): number {
+  return PUERTO_BASE + (createHash('sha1').update(clave).digest().readUInt32BE(0) % PUERTOS)
+}
+
+const mismosArgs = (a: string[], b: string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i])
+
+/**
+ * Une Playwright y Chrome DevTools en un solo navegador: el Chromium de Playwright abre además un puerto de depuración (solo
+ * 127.0.0.1) y chrome-devtools-mcp se conecta a él (`--browserUrl`). La conexión es perezosa: hasta que Playwright abre una página,
+ * las herramientas de DevTools responden «Could not connect to Chrome». Solo si ambos son los de serie (sin args propios en mcp.json).
+ */
+export async function navegadorCompartido(servidores: Record<string, ServidorMcpConfig>, clave: string, dir: string = DIR): Promise<Record<string, ServidorMcpConfig>> {
+  const pw = servidores.playwright
+  const dt = servidores['chrome-devtools']
+  const seriePw = SERVIDORES_DE_SERIE.playwright!
+  const serieDt = SERVIDORES_DE_SERIE['chrome-devtools']!
+  if (!pw || !dt || pw.deshabilitado || dt.deshabilitado) return servidores
+  if (!mismosArgs(pw.args, seriePw.args) || !mismosArgs(dt.args, serieDt.args)) return servidores
+  const puerto = puertoNavegador(clave)
+  const archivo = join(dir, 'mcp', `playwright-cdp-${puerto}.json`)
+  try {
+    await stat(archivo)
+  } catch {
+    await mkdir(join(dir, 'mcp'), { recursive: true })
+    const tmp = `${archivo}.${process.pid}.tmp`
+    await writeFile(tmp, JSON.stringify({ browser: { launchOptions: { args: [`--remote-debugging-port=${puerto}`, '--remote-debugging-address=127.0.0.1'] } } }, null, 2) + '\n', 'utf8')
+    await rename(tmp, archivo)
+  }
+  return {
+    ...servidores,
+    playwright: { ...pw, args: [...pw.args, '--config', archivo] },
+    'chrome-devtools': { ...dt, args: [...dt.args, '--browserUrl', `http://127.0.0.1:${puerto}`] }
+  }
 }
 
 export function conServidoresDeSerie(config: ConfigMcp): ConfigMcp {

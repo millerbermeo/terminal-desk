@@ -16,7 +16,8 @@ interface Peticion {
  * Servidor MCP mínimo por stdio (JSON-RPC, un mensaje por línea) con las herramientas de tareas. No tiene datos propios:
  * cada llamada se delega en `llamar`, que se las pide a la app abierta. Sin dependencias, para poder lanzarlo con el propio Electron.
  */
-export function servirMcpTareas(entrada: Readable, salida: Writable, llamar: (herramienta: string, entrada: unknown) => Promise<ResultadoHerramienta>): Promise<void> {
+export function servirMcpTareas(entrada: Readable, salida: Writable, llamar: (herramienta: string, entrada: unknown, cliente?: string) => Promise<ResultadoHerramienta>): Promise<void> {
+  let cliente: string | undefined
   const enviar = (o: unknown): void => void salida.write(JSON.stringify(o) + '\n')
   const ok = (id: string | number, result: unknown): void => enviar({ jsonrpc: '2.0', id, result })
   const fallo = (id: string | number, code: number, message: string): void => enviar({ jsonrpc: '2.0', id, error: { code, message } })
@@ -25,12 +26,15 @@ export function servirMcpTareas(entrada: Readable, salida: Writable, llamar: (he
     // Las notificaciones (sin id) no se responden.
     if (p.id === undefined) return
     switch (p.method) {
-      case 'initialize':
+      case 'initialize': {
+        const info = p.params?.clientInfo as { name?: unknown } | undefined
+        if (typeof info?.name === 'string' && info.name.trim()) cliente = info.name.trim().slice(0, 60)
         return ok(p.id, {
           protocolVersion: typeof p.params?.protocolVersion === 'string' ? p.params.protocolVersion : VERSION_PROTOCOLO,
           capabilities: { tools: {} },
           serverInfo: { name: SERVIDOR_MCP, version: '1.0.0' }
         })
+      }
       case 'ping':
         return ok(p.id, {})
       case 'tools/list':
@@ -38,7 +42,7 @@ export function servirMcpTareas(entrada: Readable, salida: Writable, llamar: (he
       case 'tools/call': {
         const nombre = String(p.params?.name ?? '')
         if (!HERRAMIENTAS_ODESK.some((h) => h.nombre === nombre)) return fallo(p.id, -32602, `Herramienta desconocida: ${nombre}`)
-        const r = await llamar(nombre, p.params?.arguments ?? {})
+        const r = await llamar(nombre, p.params?.arguments ?? {}, cliente)
         const imagen = r.imagen ? [{ type: 'image', data: r.imagen.datos, mimeType: r.imagen.tipo }] : []
         return ok(p.id, { content: [{ type: 'text', text: r.texto }, ...imagen], ...(r.error ? { isError: true } : {}) })
       }

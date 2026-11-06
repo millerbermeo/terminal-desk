@@ -14,7 +14,8 @@
     "lint": "eslint .",
     "evals": "vitest run --config vitest.evals.config.mts",
     "e2e:equipos": "node scripts/e2e/dos-equipos.mjs",
-    "e2e:arranque": "node scripts/e2e/arranque.mjs"
+    "e2e:arranque": "node scripts/e2e/arranque.mjs",
+    "e2e:control-ia": "node scripts/e2e/control-ia.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.134.0",

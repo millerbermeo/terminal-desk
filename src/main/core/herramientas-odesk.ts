@@ -2,6 +2,7 @@ import { isAbsolute, resolve } from 'node:path'
 import type { CredencialEfectiva } from '@shared/credenciales'
 import type { ResultadoHerramienta } from '@shared/core/herramientas'
 import { esArchivoSensible } from '@shared/github'
+import { HERRAMIENTAS_APP, confirmacionApp } from '@shared/app-herramientas'
 import { HERRAMIENTAS_CREDENCIALES } from '@shared/credenciales-herramientas'
 import { HERRAMIENTAS_GIT } from '@shared/git-herramientas'
 import { HERRAMIENTAS_GITHUB } from '@shared/github-herramientas'
@@ -18,6 +19,8 @@ import { validarEntrada, type Herramienta } from './tools/registro'
 export interface ContextoOdesk {
   /** Proyecto de la conversación: valor por defecto de `proyecto_id`. */
   proyectoId?: string | undefined
+  /** Quién llama (nombre del cliente MCP: «claude-code», «Claude Desktop»…), para la pregunta de confirmación. */
+  cliente?: string | undefined
 }
 
 export type EjecutorOdesk = (nombre: string, entrada: unknown, ctx?: ContextoOdesk) => Promise<ResultadoHerramienta>
@@ -33,6 +36,15 @@ export interface ServiciosOdesk {
   navegador?: () => ControlNavegador | undefined
   /** Dispositivos Android por USB (adb), herramientas `movil_*`. */
   movil?: () => ControlNavegador | undefined
+  /** La propia aplicación (proyectos, terminales, servicios, Asistente, ajustes, historial): solo con la app abierta. */
+  app?: () => ControlAppOdesk | undefined
+  /** Pregunta a la persona en Odesk antes de lo que cierra, para, quita o restaura. Sin ella, eso se deniega. */
+  confirmar?: (pregunta: string, cliente?: string) => Promise<boolean>
+}
+
+/** Lo que el ejecutor necesita del controlador de la app (`main/control-app.ts`). */
+export interface ControlAppOdesk {
+  ejecutar(nombre: string, entrada: Record<string, unknown>, ctx: ContextoOdesk): Promise<ResultadoHerramienta>
 }
 
 /** Lo que el núcleo necesita del navegador integrado (o de los móviles): ejecutar una herramienta `navegador_*`/`movil_*` ya validada. */
@@ -210,12 +222,29 @@ const conRutaApk = (s: ServiciosOdesk, ctx: ContextoOdesk) => async (e: Entrada)
   return { ...e, apk: resolve(await s.carpetaDe(proyectoId), e.apk) }
 }
 
+/** Herramientas de la propia app: validar, pedir confirmación en Odesk si toca, y delegar en el controlador. */
+async function ejecutarApp(s: ServiciosOdesk, nombre: string, entrada: unknown, ctx: ContextoOdesk): Promise<ResultadoHerramienta> {
+  const def = HERRAMIENTAS_APP.find((h) => h.nombre === nombre)!
+  const e = conNumeros(entrada ?? {}, def.esquema)
+  const motivo = validarEntrada(def.esquema, e)
+  if (motivo) return { texto: `Entrada inválida para ${nombre}: ${motivo}`, error: true }
+  const control = s.app?.()
+  if (!control) return { texto: 'Esto solo se puede hacer con Odesk Agent abierto.', error: true }
+  const pregunta = confirmacionApp(nombre, e as Entrada)
+  if (pregunta) {
+    const ok = s.confirmar ? await s.confirmar(pregunta, ctx.cliente).catch(() => false) : false
+    if (!ok) return { texto: 'La persona no lo permitió en Odesk (o no había nadie para confirmarlo). No lo reintentes sin que te lo pida.', error: true }
+  }
+  return control.ejecutar(nombre, e as Entrada, ctx)
+}
+
 export function crearEjecutorOdesk(s: ServiciosOdesk): EjecutorOdesk {
   return async (nombre, entrada, ctx = {}) => {
     if (HERRAMIENTAS_NAVEGADOR.some((h) => h.nombre === nombre))
       return ejecutarControlado(HERRAMIENTAS_NAVEGADOR, s.navegador?.(), 'El navegador integrado solo está disponible con Odesk Agent abierto.', nombre, entrada)
     if (HERRAMIENTAS_MOVIL.some((h) => h.nombre === nombre))
       return ejecutarControlado(HERRAMIENTAS_MOVIL, s.movil?.(), 'Los dispositivos móviles solo están disponibles con Odesk Agent abierto.', nombre, entrada, conRutaApk(s, ctx))
+    if (HERRAMIENTAS_APP.some((h) => h.nombre === nombre)) return ejecutarApp(s, nombre, entrada, ctx)
     if (HERRAMIENTAS_TAREAS.some((h) => h.nombre === nombre)) return ejecutarHerramientaTareas(s.tareas, nombre, entrada, ctx)
     if (HERRAMIENTAS_CREDENCIALES.some((h) => h.nombre === nombre)) return ejecutarCredenciales(s, nombre, entrada, ctx)
     const def = [...HERRAMIENTAS_GIT, ...HERRAMIENTAS_GITHUB].find((h) => h.nombre === nombre)

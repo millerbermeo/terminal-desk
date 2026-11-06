@@ -11,6 +11,18 @@ export const AVISO_SUBAGENTES =
  * solo el criterio). Sin esto, el modelo hacía él mismo tareas que eran justo la especialidad de un agente. Texto fijo para no
  * romper la caché del prompt al añadir o quitar recursos.
  */
+/** Cómo usar juntos Playwright y Chrome DevTools (comparten navegador); vacío si no están los dos. */
+export function guiaNavegador(servidores: string[]): string {
+  if (!servidores.includes('playwright') || !servidores.includes('chrome-devtools')) return ''
+  return [
+    'Navegador para pruebas: Playwright (mcp__playwright__*) y Chrome DevTools (mcp__chrome-devtools__*) controlan EL MISMO navegador.',
+    '- Abre y maneja la página con Playwright (browser_navigate, clics, formularios, capturas). DevTools solo se conecta cuando ya hay una página abierta por Playwright.',
+    '- Para diagnosticar usa DevTools sobre esa página (list_pages da el pageId): list_console_messages (errores y logs), list_network_requests / get_network_request (peticiones, respuestas, códigos), take_snapshot / evaluate_script (DOM), performance_start_trace (rendimiento).',
+    '- DevTools solo registra consola y red desde que se conecta: tras conectarlo, recarga (navigate_page type=reload) o repite la acción antes de leer los logs.',
+    '- Al implementar o probar algo web, comprueba consola y red además de lo que se ve: un cambio no está bien si deja errores en consola o peticiones 4xx/5xx.'
+  ].join('\n')
+}
+
 export function guiaRecursos(r: { agentes: boolean; skills: boolean }): string {
   if (!r.agentes && !r.skills) return ''
   const que = r.agentes && r.skills ? 'agentes (herramienta Agent) y skills (herramienta Skill)' : r.agentes ? 'agentes (herramienta Agent)' : 'skills (herramienta Skill)'

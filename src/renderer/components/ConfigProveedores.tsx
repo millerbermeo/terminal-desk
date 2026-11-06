@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { McpExterno } from './McpExterno'
 import type { ProveedorEstado } from '@shared/modelos'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoBasura, IconoChispa, IconoLapiz, IconoMas } from './Iconos'
@@ -52,6 +53,8 @@ export function ConfigProveedores({ proveedores, onProveedores }: Props) {
           </div>
         ))}
       </section>
+
+      <McpExterno />
 
       {modal && <ModalProveedor inicial={modal.inicial} onGuardado={onProveedores} onCerrar={() => setModal(null)} />}
     </div>

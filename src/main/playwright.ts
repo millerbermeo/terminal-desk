@@ -14,23 +14,29 @@ let enCurso: Promise<void> | undefined
 export function instalarNavegadorPlaywright(): Promise<void> {
   enCurso ??= (async () => {
     await cargarPathShell()
-    await new Promise<void>((res) => {
-      const hijo = spawn(WINDOWS ? 'npx.cmd' : 'npx', ['-y', '-p', '@playwright/mcp@latest', 'playwright-core', 'install', 'chromium'], {
-        env: entornoSuscripcion(),
-        stdio: 'ignore',
-        ...(WINDOWS ? { shell: true } : {})
-      })
-      const timer = setTimeout(() => hijo.kill(), TIMEOUT_MS)
-      hijo.on('error', () => res()) // sin npx/Node: Playwright tampoco arrancaría; no es un error de la app
-      hijo.on('close', () => {
-        clearTimeout(timer)
-        res()
-      })
-    })
+    await npx(['-y', '-p', '@playwright/mcp@latest', 'playwright-core', 'install', 'chromium'])
+    // Chrome DevTools MCP (de serie, sobre el mismo Chromium): se deja en la caché de npx para que el primer uso no espere la descarga.
+    await npx(['-y', 'chrome-devtools-mcp@latest', '--version'])
   })().finally(() => {
     enCurso = undefined
   })
   return enCurso
+}
+
+function npx(args: string[]): Promise<void> {
+  return new Promise<void>((res) => {
+    const hijo = spawn(WINDOWS ? 'npx.cmd' : 'npx', args, {
+      env: entornoSuscripcion(),
+      stdio: 'ignore',
+      ...(WINDOWS ? { shell: true } : {})
+    })
+    const timer = setTimeout(() => hijo.kill(), TIMEOUT_MS)
+    hijo.on('error', () => res()) // sin npx/Node: Playwright tampoco arrancaría; no es un error de la app
+    hijo.on('close', () => {
+      clearTimeout(timer)
+      res()
+    })
+  })
 }
 
 /** Al arrancar (instalación nueva o actualizada) y una vez al día: descarga el navegador sin bloquear nada ni lanzar. */

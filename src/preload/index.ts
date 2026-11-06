@@ -1,3 +1,4 @@
+import type { AccionIa } from '@shared/control-app'
 import { contextBridge, ipcRenderer } from 'electron'
 import type { EstadoArranque, TerminalArranque } from '@shared/arranque'
 import type { CambioArchivo } from '@shared/archivos'
@@ -95,6 +96,10 @@ const api: ApiCentro = {
   voz: {
     estado: () => ipcRenderer.invoke(Canales.vozEstado),
     transcribir: (audio, mime, duracionMs, mejorar) => ipcRenderer.invoke(Canales.vozTranscribir, audio, mime, duracionMs, mejorar)
+  },
+  ia: {
+    onAccion: (cb) => suscribir<AccionIa>(Canales.iaAccion, cb),
+    mcpExterno: (op, cliente) => ipcRenderer.invoke(Canales.mcpExterno, op, cliente)
   },
   arranque: {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.arranqueOperar, op, entrada),

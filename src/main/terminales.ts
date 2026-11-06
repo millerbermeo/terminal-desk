@@ -61,6 +61,11 @@ export class GestorTerminales {
     return id
   }
 
+  /** Ids de las terminales vivas. */
+  ids(): string[] {
+    return [...this.terminales.keys()]
+  }
+
   historialDe(id: string): { texto: string; fin: number } {
     const h = this.historial.get(id)
     return { texto: h?.trozos.join('') ?? '', fin: h?.fin ?? 0 }

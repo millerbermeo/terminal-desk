@@ -23,6 +23,8 @@ import { ModalClonarPendientes } from './components/ModalClonarPendientes'
 import { ModalConfirmar } from './components/ModalConfirmar'
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
 import { transferidas } from './components/TerminalPanel'
+import { encolarExterno } from './agente/externos'
+import type { AccionIa } from '@shared/control-app'
 import { aPayload, extrasSinPty, ptysDeExtras, reducirPestanas, type OperacionPestana } from './duplicar'
 
 const Documentacion = lazy(() => import('./components/Documentacion').then((m) => ({ default: m.Documentacion })))
@@ -372,6 +374,46 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     },
     [cambiar]
   )
+
+  // Un asistente maneja Odesk por MCP (servidor «odesk»): main ya hizo lo suyo y aquí se refleja en la interfaz.
+  const ventanasRef = useRef(ventanas)
+  ventanasRef.current = ventanas
+  const accionIa = useRef<(a: AccionIa) => Promise<void>>(async () => undefined)
+  accionIa.current = async (a) => {
+    if (a.tipo === 'proyectos-cambiados') return void (await window.api.proyectos.listar().then(setDatos).catch(() => undefined))
+    if (a.tipo === 'cerrar-terminal') {
+      for (const v of ventanasRef.current) {
+        const t = v.terminales.find((x) => x.ptyId === a.ptyId)
+        if (t) return cerrarTerminal(v.id, t.id)
+      }
+      return setServicios((x) => x.filter((t) => t.ptyId !== a.ptyId))
+    }
+    let d = datosRef.current
+    if (!d.proyectos.some((x) => x.id === a.proyectoId)) {
+      d = await window.api.proyectos.listar().catch(() => d)
+      setDatos(d)
+    }
+    const p = d.proyectos.find((x) => x.id === a.proyectoId)
+    if (!p) return
+    const { id, nombre } = claveDe(p)
+    const ventana = ventanasRef.current.find((v) => v.id === id)
+    if (a.tipo === 'terminal') {
+      agregar(id, nombre, [{ ...nuevaTerminal(tituloUnico(a.titulo, ventana?.terminales ?? []), p.ruta, undefined, p.id), ptyId: a.ptyId }])
+      return
+    }
+    const vistaPedida = a.tipo === 'asistente-enviar' ? 'asistente' : a.vista
+    if (vistaPedida === 'terminal') return abrirProyecto(p)
+    // Asistente o archivos: en la celda del proyecto que ya exista; si no hay, una nueva.
+    const celda = ventana?.terminales.find((t) => t.proyectoId === p.id && !t.proveedorId && !t.arranque)
+    if (celda) {
+      cambiar(id, (v) => ({ ...v, activa: celda.id, terminales: v.terminales.map((y) => (y.id === celda.id ? { ...y, vista: vistaPedida, extraActiva: undefined } : y)) }))
+      setVentanaActiva(id)
+      setVista('terminales')
+    } else if (vistaPedida === 'asistente') abrirAsistente(p)
+    else agregar(id, nombre, [{ ...nuevaTerminal(tituloUnico(p.nombre, ventana?.terminales ?? []), p.ruta, undefined, p.id), vista: 'archivos' }])
+    if (a.tipo === 'asistente-enviar') encolarExterno(p.id, a.mensaje)
+  }
+  useEffect(() => window.api.ia.onAccion((a) => void accionIa.current(a)), [])
 
   const cerrarVentana = useCallback(
     (id: string) => {

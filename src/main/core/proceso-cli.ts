@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
+import { confiarCarpeta } from './confianza'
 import {
   argumentosCli,
   CanalControl,
@@ -38,6 +39,12 @@ const ESPERA_ECO_MS = entero(process.env.ODESK_ESPERA_ECO_S, 120) * 1000
 
 /** El proceso ya había terminado: quien llama puede lanzar otro y repetir (el mensaje no llegó a enviarse). */
 export class ProcesoCerrado extends Error {}
+/** El CLI no repitió (eco) el mensaje a tiempo: no lo tomó, así que se puede reenviar en otro proceso. */
+export class SinEco extends Error {
+  constructor(readonly salida: SalidaEjecucion) {
+    super('El CLI no tomó el mensaje (no lo repitió a tiempo).')
+  }
+}
 
 const vivos = new Set<ProcesoCli>()
 // Si la app termina de golpe, que no queden CLIs huérfanos esperando en su entrada.
@@ -95,6 +102,7 @@ export class ProcesoCli implements ControlProceso {
     const bin = await rutaClaude()
     if (!bin) throw new Error('No encuentro el CLI «claude».')
     // Con el eco de cada mensaje del usuario se sabe cuándo empieza de verdad su turno (`LectorTurno` descarta lo anterior).
+    await confiarCarpeta(o.carpetaCuenta, o.cwd)
     const hijo = spawn(bin, [...argumentosCli(o, true), '--replay-user-messages'], { cwd: o.cwd, env: entornoEjecucion(o.carpetaCuenta), stdio: ['pipe', 'pipe', 'pipe'], ...(WINDOWS ? { shell: true } : {}) })
     return new ProcesoCli(hijo, firma, inactividadMs, alCerrar)
   }
@@ -132,14 +140,18 @@ export class ProcesoCli implements ControlProceso {
       if (!this.vivo) throw new ProcesoCerrado()
       clearTimeout(this.temporizador)
       this.ultimoUso = Date.now()
-      return new Promise<SalidaEjecucion>((res) => {
+      // El stderr es por turno: lo de turnos anteriores (avisos del arranque, etc.) no debe aparecer en el error de este.
+      this.errores = ''
+      return new Promise<SalidaEjecucion>((res, rej) => {
         let matar: NodeJS.Timeout | undefined
         let hecho = false
+        let sinEcoVencido = false
         const enviadoEn = Date.now()
         const sinEco = setInterval(() => {
           if (lector.conEco) return clearInterval(sinEco)
           if (Date.now() - Math.max(enviadoEn, this.ultimaSalida) < ESPERA_ECO_MS) return
           clearInterval(sinEco)
+          sinEcoVencido = true
           this.errores += '\nEl CLI no tomó el mensaje (no lo repitió a tiempo); vuelve a enviarlo.'
           this.matar()
         }, Math.min(5000, ESPERA_ECO_MS))
@@ -161,7 +173,10 @@ export class ProcesoCli implements ControlProceso {
           o.senal.removeEventListener('abort', alAbortar)
           this.ultimoUso = Date.now()
           this.armarInactividad()
-          res(lector.finalizar(codigo, this.errores))
+          // Sin eco el CLI no tomó el mensaje: quien llama decide si lo reenvía en un proceso nuevo.
+          const salida = lector.finalizar(codigo, this.errores)
+          if (sinEcoVencido && !lector.conEco && !o.senal.aborted) return rej(new SinEco(salida))
+          res(salida)
         }
         // Todo mensaje lleva un uuid propio: con él se reconoce su eco (y el CLI ignora los repetidos).
         const mensajeId = o.mensajeId ?? randomUUID()
@@ -257,14 +272,32 @@ export class ProcesosCli {
   }
 }
 
-/** Igual que `ejecutarSuscripcion`, pero en el proceso persistente de la conversación (se lanza si hace falta; si se había cerrado, se repite una vez). */
+/**
+ * Igual que `ejecutarSuscripcion`, pero en el proceso persistente de la conversación (se lanza si hace falta; si se había cerrado, se repite una vez).
+ * - Si el CLI no repitió el mensaje (sin eco) y el envío no es el primero del turno (`omitirInicio`: continuación automática, cambio de
+ *   cuenta), se reenvía una vez en un proceso nuevo que reanuda la sesión, con otro uuid (el CLI ignora en silencio uno ya visto).
+ *   El primer envío no: su id es el que sirve para deshacer, y el usuario ve el error y puede reenviarlo.
+ * - Tras un corte por el límite de pasos el proceso se cierra: el turno interrumpido puede seguir cerrándose y tragarse el siguiente mensaje
+ *   (la continuación automática); el siguiente envío reanuda la sesión en un proceso limpio.
+ */
 export async function ejecutarEnProceso(pool: ProcesosCli, clave: string, o: OpcionesEjecucion): Promise<SalidaEjecucion> {
+  let entrada = o
   for (let intento = 0; ; intento++) {
-    const { proceso } = await pool.obtener(clave, o)
-    o.alProceso?.(proceso)
+    const { proceso } = await pool.obtener(clave, entrada)
+    entrada.alProceso?.(proceso)
     try {
-      return await proceso.ejecutar(intento === 0 ? o : { ...o, omitirInicio: true })
+      const r = await proceso.ejecutar(intento === 0 ? entrada : { ...entrada, omitirInicio: true })
+      if (r.resultado.estado === 'limite_pasos') pool.cerrar(clave)
+      return r
     } catch (err) {
+      if (err instanceof SinEco) {
+        pool.cerrar(clave)
+        if (intento === 0 && o.omitirInicio && !o.senal.aborted) {
+          entrada = { ...o, mensajeId: randomUUID() }
+          continue
+        }
+        return err.salida
+      }
       if (!(err instanceof ProcesoCerrado) || intento >= 1) throw err
     }
   }

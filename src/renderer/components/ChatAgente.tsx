@@ -24,6 +24,7 @@ import { NOMBRE_PRIORIDAD } from './Tareas'
 import { SolicitudesChat } from './ModalSolicitud'
 import { useGrabadora, type TextoDictado } from '../agente/grabadora'
 import { BarraGrabacion, BotonMicrofono } from './GrabadorVoz'
+import { alExterno, tomarExternos } from '../agente/externos'
 
 interface Props {
   agente: Agente
@@ -252,6 +253,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [autonomia, setAutonomiaEstado] = useState<ModoAutonomia>('preguntar')
   const [esfuerzo, setEsfuerzoEstado] = useState<Esfuerzo | 'auto'>('auto')
   const versionAjustes = useRef(0) // sube con cada cambio hecho aquí: una lectura que empezó antes se descarta
+  const releerAjustes = useRef<() => Promise<void>>(async () => undefined)
   useEffect(() => {
     let vigente = true
     const leer = async (migrar: boolean): Promise<void> => {
@@ -263,6 +265,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
       setAutonomiaEstado(a.autonomia ?? 'preguntar')
       setEsfuerzoEstado(a.esfuerzo ?? 'auto')
     }
+    releerAjustes.current = () => leer(false)
     void leer(true)
     const alVolver = (): void => void leer(false)
     window.addEventListener('focus', alVolver)
@@ -331,8 +334,34 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     return proyecto?.nombre ?? 'sin proyecto'
   }, [datos?.grupos, destino, grupoSeleccionado, proyecto])
 
+  // Auto-scroll solo si el usuario está pegado al final; si subió, se respeta su posición.
+  const hilo = useRef<HTMLDivElement>(null)
+  const pegado = useRef(true)
+  const nTurnos = useRef(0)
+  const [verBajar, setVerBajar] = useState(false)
+
+  const alScroll = () => {
+    const el = hilo.current
+    if (!el) return
+    const cerca = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+    pegado.current = cerca
+    setVerBajar(!cerca)
+  }
+
+  const irAbajo = () => {
+    pegado.current = true
+    setVerBajar(false)
+    // Salto inmediato: un desplazamiento suave se queda corto mientras sigue llegando texto y sus eventos de scroll lo «despegan» otra vez.
+    if (hilo.current) hilo.current.scrollTop = hilo.current.scrollHeight
+  }
+
   useEffect(() => {
-    fin.current?.scrollIntoView({ block: 'end' })
+    const el = hilo.current
+    if (!el) return
+    // Un turno nuevo (p. ej. el usuario envía) vuelve a pegar al final.
+    if (agente.turnos.length > nTurnos.current) pegado.current = true
+    nTurnos.current = agente.turnos.length
+    if (pegado.current) el.scrollTop = el.scrollHeight
   }, [agente.turnos])
 
   useEffect(() => {
@@ -593,6 +622,30 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     lanzar(prompt)
   }
 
+  // Mensajes de otro asistente por MCP (`asistente_enviar`): entran como si los hubiera escrito la persona (sin comandos `/`, para que no
+  // cambien ajustes) y, si el Asistente está ocupado, a la cola. Solo en la celda de un proyecto.
+  const recibirExternos = useRef<() => void>(() => undefined)
+  recibirExternos.current = () => {
+    if (!proyectoFijo) return
+    const l = tomarExternos(proyectoFijo.id)
+    if (!l.length) return
+    const primero = agente.enCurso ? undefined : l.shift()
+    if (l.length) setCola((c) => [...c, ...l.map((prompt) => ({ prompt, adjuntos: [] as Adjunto[] }))])
+    if (primero) lanzar(primero, false, [])
+  }
+  // Antes de enviarlos se releen los ajustes del proyecto (otro asistente pudo cambiarlos con ajustes_fijar, y al montar la celda aún no
+  // han cargado): el envío espera a que se pinten con ellos (`turnoExterno`), para que `lanzar` use el modelo y la autonomía correctos.
+  const [turnoExterno, setTurnoExterno] = useState(0)
+  useEffect(() => {
+    if (turnoExterno) recibirExternos.current()
+  }, [turnoExterno])
+  useEffect(() => {
+    if (!proyectoFijo) return
+    const preparar = (): void => void releerAjustes.current().finally(() => setTurnoExterno((n) => n + 1))
+    preparar()
+    return alExterno((id) => id === proyectoFijo.id && preparar())
+  }, [proyectoFijo?.id])
+
   /** Responde ya, en paralelo, sin interrumpir la tarea en marcha (a diferencia de «Encolar», que espera a que termine). */
   const preguntarAhora = (): void => {
     const prompt = texto.trim()
@@ -668,7 +721,12 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         />
       )}
       {gestion && <GestionProyecto {...(proyecto ? { proyectoId: proyecto.id, nombre: proyecto.nombre } : {})} inicial={gestion} onCerrar={() => setGestion(null)} />}
-      <div className="ag-hilo">
+      <div
+        className="ag-hilo"
+        ref={hilo}
+        onScroll={alScroll}
+        onWheel={(e) => { if (e.deltaY < 0) pegado.current = false }}
+      >
         {agente.turnos.length === 0 && (
           <EstadoVacio
             icono={<IconoChispa />}
@@ -681,6 +739,13 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           <TurnoVista key={t.clave} t={t} onCancelar={() => agente.cancelar(t)} onDeshacer={() => void deshacer(t)} />
         ))}
         <div ref={fin} />
+        {verBajar && (
+          <button type="button" className="ag-ir-abajo" onClick={irAbajo} aria-label="Ir al final" title="Ir al final">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12l7 7 7-7" />
+            </svg>
+          </button>
+        )}
       </div>
       <SolicitudesChat ejecuciones={agente.turnos.map((t) => t.ejecucionId)} />
       <div className="ag-compositor">
