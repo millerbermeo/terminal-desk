@@ -4,6 +4,7 @@
  */
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { PUEDEN_CONFIRMAR } from '@shared/app-herramientas'
 import { llamarTareas } from './core/tareas/cliente'
 import { servirMcpTareas } from './core/tareas/mcp-servidor'
 import { ejecutarHookHistorial } from './historial/hook'
@@ -30,5 +31,8 @@ if (process.argv[2] === 'hook-bash') {
     .catch(() => undefined)
     .finally(() => process.exit(0))
 } else {
-  void servirMcpTareas(process.stdin, process.stdout, (herramienta, entrada) => llamarTareas(dir, herramienta, entrada, proyectoId)).then(() => process.exit(0))
+  // Lo que pide confirmación en Odesk puede esperar a la persona: 10 min en vez de 1; arrancar servicios o clonar también tarda.
+  void servirMcpTareas(process.stdin, process.stdout, (herramienta, entrada, cliente) =>
+    llamarTareas(dir, herramienta, entrada, proyectoId, PUEDEN_CONFIRMAR.has(herramienta) ? 600_000 : 60_000, cliente)
+  ).then(() => process.exit(0))
 }

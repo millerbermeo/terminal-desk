@@ -53,7 +53,7 @@ import { ejecutarArgv } from './tools/integradas/terminal'
 import { MODELOS_POR_DEFECTO, Router } from './router/router'
 import { CompresorContexto } from './context/compresion'
 import { MonitorContexto } from './context/monitor'
-import { leerConfigMcp } from './mcp/config'
+import { leerConfigMcp, navegadorCompartido } from './mcp/config'
 import { validarId } from './memory/almacen'
 import { herramientasMemoria } from './memory/herramientas'
 import { MemoriaLargoPlazo } from './memory/largo-plazo'
@@ -65,7 +65,7 @@ import { consultarUsoPlan } from './uso/plan'
 import { Repositorio } from './git/repositorio'
 import { AlmacenJson } from './memory/almacen'
 import { ServicioTareas, type Documento as DocumentoTareas } from './tareas/servicio'
-import { crearEjecutorOdesk, herramientasOdesk, type ControlNavegador, type EjecutorOdesk } from './herramientas-odesk'
+import { crearEjecutorOdesk, herramientasOdesk, type ControlAppOdesk, type ControlNavegador, type EjecutorOdesk } from './herramientas-odesk'
 import { AlmacenToken } from '../github/token'
 import { cifradorDelSistema } from '../cifrador'
 import { servidor } from '../servidor/cliente'
@@ -75,7 +75,7 @@ import { ejecutarOperacionTareas } from './tareas/operaciones'
 import { archivoMcpTareas, servidoresExternos } from './tareas/mcp-config'
 import { cerrarSesion, consultarCli, ejecutarSuscripcion, ESFUERZOS, estadoCuenta, estadoSesion, iniciarSesion, listarModelosCli, Preferencias, rebobinarArchivos, SesionesCli, type ControlProceso, type ResultadoRebobinado, type SalidaEjecucion } from './suscripcion'
 import { ejecutarEnProceso, ProcesosCli } from './proceso-cli'
-import { AVISO_SUBAGENTES, guiaRecursos } from './avisos'
+import { AVISO_SUBAGENTES, guiaNavegador, guiaRecursos } from './avisos'
 import { registrarIntegradas } from './tools/integradas'
 import { RegistroHerramientas } from './tools/registro'
 
@@ -169,6 +169,8 @@ export class Nucleo {
   readonly ejecutarHerramienta: EjecutorOdesk
   private navegadorIA?: ControlNavegador
   private movilIA?: ControlNavegador
+  private appIA?: ControlAppOdesk
+  private confirmarIA?: (pregunta: string, cliente?: string) => Promise<boolean>
   readonly cuentas = new Cuentas(join(DIR, 'cuentas.json'), join(DIR, 'cuentas'))
   readonly tareas = new ServicioTareas(new AlmacenJson<DocumentoTareas>(join(DIR, 'tareas'), 0o600, (_id, nuevo, previo) => this.sync.tareasCambiadas(nuevo, previo)), {
     proyectos: () => leerProyectos(),
@@ -224,7 +226,9 @@ export class Nucleo {
       credenciales: this.github.credencialesPara,
       credencialesPrueba: credencialesDe,
       navegador: () => this.navegadorIA,
-      movil: () => this.movilIA
+      movil: () => this.movilIA,
+      app: () => this.appIA,
+      confirmar: (pregunta, cliente) => (this.confirmarIA ? this.confirmarIA(pregunta, cliente) : Promise.resolve(false))
     })
     for (const h of herramientasOdesk(this.ejecutarHerramienta)) this.registro.registrar(h)
   }
@@ -239,9 +243,16 @@ export class Nucleo {
     this.movilIA = control
   }
 
+  /** La propia aplicación (proyectos, terminales, servicios…) y cómo preguntar a la persona antes de lo destructivo. */
+  conectarApp(control: ControlAppOdesk, confirmar: (pregunta: string, cliente?: string) => Promise<boolean>): void {
+    this.appIA = control
+    this.confirmarIA = confirmar
+  }
+
   async iniciarMcp(): Promise<InfoServidorMcp[]> {
     try {
-      return await this.mcp.iniciar(await leerConfigMcp())
+      const config = await leerConfigMcp()
+      return await this.mcp.iniciar({ servidores: await navegadorCompartido(config.servidores, 'nucleo-api') })
     } catch (err) {
       console.error('MCP no iniciado:', err)
       return [{ nombre: 'mcp.json', estado: 'error', herramientas: 0, error: (err as Error).message }]
@@ -582,7 +593,9 @@ export class Nucleo {
       try {
         if (anterior) await esperarTurnoAnterior(anterior, ctl.signal)
         // Playwright de serie y los servidores de mcp.json también llegan al CLI (antes solo existían en modo API).
-        const externos = servidoresExternos((await leerConfigMcp().catch(() => ({ servidores: {} }))).servidores)
+        // Playwright y Chrome DevTools comparten el navegador de esta conversación (puerto CDP estable por conversación).
+        const sueltos = servidoresExternos((await leerConfigMcp().catch(() => ({ servidores: {} }))).servidores)
+        const externos = await navegadorCompartido(sueltos, sesionId).catch(() => sueltos)
         const mcpTareas = await archivoMcpTareas(proyecto?.id, externos).catch(() => undefined)
         const { dir: pluginProyecto, recursos } = await pluginAgentesAsistente(proyecto?.id, proyecto?.ruta)
         const pluginDirs = [pluginProyecto, await pluginCavemanLigero(), await pluginGuardia()].filter((d): d is string => Boolean(d))
@@ -591,7 +604,7 @@ export class Nucleo {
         const extraGrupo = hermanas.length
           ? `Este proyecto pertenece a un grupo. Tienes acceso completo (leer, crear y modificar archivos) a las carpetas de los demás proyectos del grupo:\n${hermanas.map((h) => `- ${h.nombre}: ${h.ruta}`).join('\n')}`
           : ''
-        const sistema = [sistemaExtra, guiaRecursos(recursos), extraGrupo].filter(Boolean).join('\n\n')
+        const sistema = [sistemaExtra, guiaRecursos(recursos), guiaNavegador(mcpTareas ? Object.keys(externos) : []), extraGrupo].filter(Boolean).join('\n\n')
         // Permisos y preguntas del CLI: salen como confirmaciones del modal (antes, en `-p`, lo no permitido se denegaba sin avisar).
         const alPermiso = crearPermisoCli({
           puerta: this.puerta,

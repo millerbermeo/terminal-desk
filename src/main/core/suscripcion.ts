@@ -8,6 +8,7 @@ import { HERRAMIENTAS_ODESK, PREFIJO_MCP } from '@shared/herramientas-odesk'
 import type { CuentaSuscripcion, EstadoCuenta, ProveedorModelo } from '@shared/core/cuenta'
 import type { ModoAutonomia } from '@shared/core/permisos'
 import { aAcumulado, diferenciaUso, type AcumuladoModelo } from './consumo'
+import { confiarCarpeta } from './confianza'
 
 /**
  * Modo «suscripción»: el modelo lo pone el CLI `claude` con la sesión de la cuenta de Claude (la misma que usa VSCode).
@@ -846,6 +847,7 @@ export async function rebobinarArchivos(o: { claudeId: string; mensajeId: string
 export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<SalidaEjecucion> {
   const bin = await rutaClaude()
   if (!bin) throw new Error('No encuentro el CLI «claude».')
+  await confiarCarpeta(o.carpetaCuenta, o.cwd)
   const args = argumentosCli(o, Boolean(o.alPermiso))
   const hijo = spawn(bin, args, { cwd: o.cwd, env: entornoEjecucion(o.carpetaCuenta), stdio: ['pipe', 'pipe', 'pipe'], ...(WINDOWS ? { shell: true } : {}) })
   const abortar = (): void => void hijo.kill()

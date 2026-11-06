@@ -549,6 +549,7 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
 .ag-opciones .corto { display: none; }
 .ag-compositor { flex: none; }
 .ag-hilo { min-height: 80px; }
+.ag-ir-abajo { position: sticky; bottom: 8px; align-self: center; margin-top: -12px; width: 34px; height: 34px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: var(--bg-elevado); border: 1px solid var(--borde-fuerte); box-shadow: var(--sombra-1); color: var(--acento); z-index: 2; flex-shrink: 0; }
 .ag-historial { max-height: calc(100% - 150px); }
 @container chat (max-width: 640px) {
   .ag-hilo { padding: 10px 14px; }

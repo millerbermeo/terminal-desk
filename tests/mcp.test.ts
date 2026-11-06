@@ -48,7 +48,7 @@ describe('servidores de serie', () => {
   it('lo declarado por el usuario con el mismo nombre manda (p. ej. apagarlo)', () => {
     const c = conServidoresDeSerie(analizarConfigMcp({ servidores: { playwright: { comando: 'npx', deshabilitado: true }, otro: { comando: 'x' } } }))
     expect(c.servidores.playwright?.deshabilitado).toBe(true)
-    expect(Object.keys(c.servidores).sort()).toEqual(['otro', 'playwright'])
+    expect(Object.keys(c.servidores).sort()).toEqual(['chrome-devtools', 'otro', 'playwright'])
   })
 })
 
@@ -61,7 +61,7 @@ describe('MCP externos en suscripción (claude -p)', () => {
     const { join } = await import('node:path')
     const c = conServidoresDeSerie(analizarConfigMcp({ servidores: { otro: { comando: 'x', deshabilitado: true }, odesk: { comando: 'y' } } }))
     const ext = servidoresExternos(c.servidores)
-    expect(Object.keys(ext)).toEqual(['playwright']) // deshabilitado y nombre reservado fuera
+    expect(Object.keys(ext)).toEqual(['playwright', 'chrome-devtools']) // deshabilitado y nombre reservado fuera
     const dir = await mkdtemp(join(tmpdir(), 'mcp-ext-'))
     configurarMcpTareas({ raizApp: dir, dirDatos: dir })
     const archivo = (await archivoMcpTareas('p1', ext))!

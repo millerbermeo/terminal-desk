@@ -36,7 +36,7 @@ import { FuenteArchivos, FuenteTareas, SincronizadorCuenta } from './servidor/sy
 import { DIR, MIGRACION_DATOS, rutasLocales, agregarProyectos, carpetaDeProyecto, cambiarCarpetaProyecto, enlazarCarpetaExistente, eliminarGrupo, eliminarProyecto, leerProyectos, proyectosSinCarpeta, sugerirRutas, validarRuta } from './proyectos'
 import { configurarMcpTareas } from './core/tareas/mcp-config'
 import { ejecutarOperacionGit } from './core/git/operaciones'
-import { writeFile } from 'node:fs/promises'
+import { appendFile, readFile, writeFile } from 'node:fs/promises'
 import { AlmacenJson } from './core/memory/almacen'
 import { ServicioApi } from './api/servicio'
 import { ejecutarOperacionApi } from './api/operaciones'
@@ -47,6 +47,11 @@ import { esPaginaDeLaApp } from './navegacion'
 import { cerrarProceso, duenoDePuerto, puertoAbierto, servidoresLocales } from './puertos'
 import { ArranqueNube } from './arranque/nube'
 import { ejecutarOperacionArranque } from './arranque/operaciones'
+import { ControlApp, type MetaTerminal } from './control-app'
+import { existsSync } from 'node:fs'
+import type { NombreOperacionArranque, OperacionesArranque } from '@shared/arranque'
+import { estadoMcpExterno, instalarMcpExterno, refrescarMcpExterno } from './mcp-externo'
+import type { ClienteMcpExterno } from '@shared/control-app'
 import { ServicioArranque } from './arranque/servicio'
 import { HistorialComandos } from './historial-comandos'
 import { Registro } from './registro'
@@ -181,6 +186,7 @@ const terminales = new GestorTerminales({
   onSalida: (id, codigo) => {
     enviarA(id, Canales.terminalSalida, { id, codigo })
     duenos.delete(id)
+    metaTerminales.delete(id)
     arranque.alSalir(id)
   }
 })
@@ -330,6 +336,83 @@ const historial = new ServicioHistorial({
   }
 })
 depsEquipos.historial = (proyectoId) => historial.resumen(proyectoId)
+
+/**
+ * Control de la propia app desde cualquier asistente (Asistente de Odesk, Claude Code en terminales ✦, clientes MCP externos) por el
+ * servidor MCP «odesk». Lo que cierra, para, quita o restaura se pregunta aquí, en un diálogo de Odesk, venga de donde venga.
+ */
+const metaTerminales = new Map<string, MetaTerminal>()
+let colaConfirmar: Promise<unknown> = Promise.resolve()
+const confirmarEnOdesk = (pregunta: string, cliente?: string): Promise<boolean> => {
+  const p = colaConfirmar.then(async () => {
+    // Solo en desarrollo (pruebas e2e): la respuesta sale de un archivo y la pregunta se anota, porque un diálogo nativo no se pulsa por CDP.
+    const e2e = !app.isPackaged ? process.env.ODESK_E2E_CONFIRMAR : undefined
+    if (e2e) {
+      await appendFile(`${e2e}.log`, JSON.stringify({ pregunta, cliente }) + '\n')
+      return (await readFile(e2e, 'utf8').catch(() => '')).trim() === 'permitir'
+    }
+    const v = principal
+    if (!v || v.isDestroyed()) return false
+    if (v.isMinimized()) v.restore()
+    v.flashFrame(true)
+    const r = await dialog.showMessageBox(v, {
+      type: 'warning',
+      title: 'Odesk Agent · Confirmar',
+      message: `${cliente ? `«${cliente}»` : 'Un asistente'} quiere hacer esto en Odesk:`,
+      detail: pregunta,
+      buttons: ['Rechazar', 'Permitir'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true
+    })
+    v.flashFrame(false)
+    return r.response === 1
+  })
+  colaConfirmar = p.catch(() => undefined)
+  return p
+}
+const operarArranque = <K extends NombreOperacionArranque>(op: K, entrada: OperacionesArranque[K]['entrada']): Promise<OperacionesArranque[K]['salida']> =>
+  ejecutarOperacionArranque(arranque, op, entrada)
+const controlApp = new ControlApp({
+  proyectos: () => leerProyectos(),
+  pendientes: () => proyectosSinCarpeta(),
+  quitarProyecto: async (id) => {
+    await eliminarProyecto(id)
+    await nucleo.tareas.desvincular({ proyectoId: id })
+  },
+  clonar: ({ proyectoId, carpetaPadre }) => equipos.clonarPendiente({ proyectoId, carpetaPadre: carpetaPadre ?? (existsSync(join(homedir(), 'dev')) ? join(homedir(), 'dev') : homedir()) }),
+  terminales: {
+    vivas: () => terminales.ids(),
+    meta: (id) => metaTerminales.get(id),
+    historial: (id) => terminales.historialDe(id).texto,
+    enShell: (id) => terminales.enShell(id),
+    escribir: (id, datos) => terminales.escribir(id, datos),
+    cerrar: (id) => terminales.cerrar(id),
+    crear: async ({ cwd, proyectoId, claude, titulo }) => {
+      const prov = claude ? await obtenerProveedor('claude') : undefined
+      if (claude && !prov) throw new Error('No hay un proveedor «claude» configurado en Odesk.')
+      const comando = prov ? await comandoConAgentes(prov.comando, proyectoId) : undefined
+      const id = terminales.crear({ cwd, cols: 120, rows: 32 }, prov && { comando: comando!, env: prov.env })
+      metaTerminales.set(id, { proyectoId, titulo, claude, ia: true, creada: Date.now() })
+      if (principal && !principal.isDestroyed()) duenos.set(id, principal.webContents.id)
+      return id
+    }
+  },
+  arranque: {
+    listar: (proyectoId) => operarArranque('listar', { proyectoId }),
+    estados: (proyectoId) => operarArranque('estados', { proyectoId }),
+    revisar: (proyectoId, ids) => operarArranque('revisar', { proyectoId, ...(ids ? { ids } : {}) }),
+    arrancar: (proyectoId, ids) => operarArranque('arrancar', { proyectoId, ...(ids ? { ids } : {}) }),
+    detener: (proyectoId, ids) => operarArranque('detener', { proyectoId, ...(ids ? { ids } : {}) })
+  },
+  sesiones: { listar: (proyectoId) => nucleo.sesiones.listar(proyectoId), transcripcion: (id) => nucleo.sesiones.transcripcion(id) },
+  ajustes: { leer: (clave) => leerAjustes(clave), fijar: (clave, cambios) => fijarAjustes(clave, cambios) },
+  cuentas: { estado: () => nucleo.cuentaEstado(), activar: (id) => nucleo.cuentaActivar(id) },
+  consumo: () => nucleo.medidor.resumen(),
+  historial: (op, entrada) => ejecutarOperacionHistorial(historial, op, entrada),
+  interfaz: (a) => avisarPrincipal(Canales.iaAccion, a)
+})
+nucleo.conectarApp(controlApp, confirmarEnOdesk)
 nucleo.alEscribirIA = (momento, proyectoId, ruta, meta) => {
   const hecho = momento === 'antes' ? historial.antesDeEscribir(proyectoId, ruta) : historial.despuesDeEscribir(proyectoId, ruta, 'ia', meta)
   void hecho.catch(() => undefined)
@@ -482,6 +565,11 @@ function registrarIpc(): void {
   registrarIpcArchivos(historial)
   ipcMain.handle(Canales.gitOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGit(carpetaDeProyecto, op, entrada, nucleo.github.credencialesPara))
   ipcMain.handle(Canales.githubOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionGitHub(nucleo.github, op, entrada))
+  ipcMain.handle(Canales.mcpExterno, (_e, op: string, cliente?: string) => {
+    if (op === 'estado') return estadoMcpExterno()
+    if ((op === 'instalar' || op === 'quitar') && typeof cliente === 'string') return instalarMcpExterno(cliente as ClienteMcpExterno, op === 'instalar')
+    throw new Error('Operación no válida')
+  })
   ipcMain.handle(Canales.historialOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionHistorial(historial, op, entrada))
   const voz = new ServicioVoz(servidor)
   ipcMain.handle(Canales.vozEstado, () => voz.estado())
@@ -561,6 +649,7 @@ function registrarIpc(): void {
     const comando = prov ? await comandoConAgentes(prov.comando, op.proyectoId) : undefined
     const id = terminales.crear(op, prov && { comando: comando!, env: prov.env })
     duenos.set(id, e.sender.id)
+    metaTerminales.set(id, { ...(op.proyectoId ? { proyectoId: op.proyectoId } : {}), ...(prov && /(^|[\\/\s])claude(\s|$)/.test(prov.comando) ? { claude: true } : {}), creada: Date.now() })
     return id
   })
   // La ventana que adjunta pasa a ser la dueña; se le devuelve lo ya mostrado para repintarlo.
@@ -657,6 +746,7 @@ app.whenReady().then(() => {
   // Socket local para que la IA (servidor MCP, en otro proceso) use las tareas; solo este proceso las escribe.
   void sincronizarHistorial()
   setInterval(() => void sincronizarHistorial(), 15_000).unref() // proyectos nuevos o quitados
+  void refrescarMcpExterno() // los clientes externos que ya lo tenían apuntan a las rutas de esta versión de la app
   void iniciarServidorTareas(DIR, nucleo.ejecutarHerramienta, async (p, proyectoId) => {
     // Claude Code escribió (o va a escribir) un archivo en una terminal: el gancho del plugin avisa por aquí.
     await (p.momento === 'antes'

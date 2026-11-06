@@ -1,3 +1,4 @@
+import type { AccionIa, ClienteMcpExterno, EstadoMcpExterno } from './control-app'
 import type { DecisionHumana, EjecucionIniciada, EventoAgente, InfoServidorMcp, InfoWorktree, ResultadoPublicar, SolicitudAgente } from './core/agente'
 import type { InfoSuite, InformeEval, ResultadoEvals } from './core/evals'
 import type { ResumenTraza, Traza } from './core/traza'
@@ -98,6 +99,9 @@ export const Canales = {
   vozTranscribir: 'voz:transcribir',
   arranqueEstado: 'arranque:estado',
   arranqueTerminal: 'arranque:terminal',
+  /** main → interfaz: un asistente maneja Odesk por MCP (abrir proyecto, mostrar terminal, mandar mensaje al Asistente…). */
+  iaAccion: 'ia:accion',
+  mcpExterno: 'mcp:externo',
   historialOperar: 'historial:operar',
   navegadorAbrir: 'navegador:abrir',
   navegadorAccion: 'navegador:accion',
@@ -368,6 +372,11 @@ export interface ApiCentro {
     /** ¿Está configurado el dictado en el servidor? (clave de Groq presente y válida). */
     estado(): Promise<EstadoVoz>
     transcribir(audio: Uint8Array, mime: string, duracionMs: number, mejorar: boolean): Promise<ResultadoVoz>
+  }
+  /** Un asistente maneja Odesk por MCP: main pide a la interfaz abrir, mostrar o mandar cosas. Y la instalación del MCP «odesk» en clientes externos. */
+  ia: {
+    onAccion(cb: (a: AccionIa) => void): () => void
+    mcpExterno(op: 'estado' | 'instalar' | 'quitar', cliente?: ClienteMcpExterno): Promise<EstadoMcpExterno>
   }
   /** Comandos de arranque de cada proyecto: se lanzan en orden, esperando a que cada uno esté listo, y vigilando los puertos. */
   arranque: {

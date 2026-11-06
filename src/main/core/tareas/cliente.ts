@@ -23,6 +23,8 @@ export interface PeticionTareas {
   herramienta: string
   entrada: unknown
   proyectoId?: string
+  /** Nombre del cliente MCP que llama (para la pregunta de confirmación en Odesk). */
+  cliente?: string
 }
 
 export type RespuestaTareas = { id: string } & ResultadoHerramienta
@@ -31,12 +33,12 @@ export type RespuestaTareas = { id: string } & ResultadoHerramienta
  * Llama a una herramienta de tareas en la app que está abierta. Es lo que hace el servidor MCP (otro proceso, lanzado por el CLI
  * de Claude): no toca los datos, se los pide a la app. Si la app no está abierta, devuelve un error legible.
  */
-export async function llamarTareas(dir: string, herramienta: string, entrada: unknown, proyectoId?: string, esperaMs = 60_000): Promise<ResultadoHerramienta> {
+export async function llamarTareas(dir: string, herramienta: string, entrada: unknown, proyectoId?: string, esperaMs = 60_000, cliente?: string): Promise<ResultadoHerramienta> {
   let token: string
   try {
     token = (await readFile(archivoTokenTareas(dir), 'utf8')).trim()
   } catch {
-    return { texto: 'Odesk Agent no está abierto: las tareas solo se pueden consultar o cambiar con la aplicación en marcha.', error: true }
+    return { texto: 'Odesk Agent no está abierto: sus herramientas (tareas, proyectos, terminales, servicios…) solo funcionan con la aplicación en marcha.', error: true }
   }
   const id = randomBytes(6).toString('hex')
   return new Promise((resolver) => {
@@ -51,10 +53,10 @@ export async function llamarTareas(dir: string, herramienta: string, entrada: un
       resolver(r)
     }
     const timer = setTimeout(() => terminar({ texto: 'Odesk Agent no respondió a tiempo.', error: true }), esperaMs)
-    socket.on('error', () => terminar({ texto: 'Odesk Agent no está abierto: las tareas solo se pueden consultar o cambiar con la aplicación en marcha.', error: true }))
+    socket.on('error', () => terminar({ texto: 'Odesk Agent no está abierto: sus herramientas (tareas, proyectos, terminales, servicios…) solo funcionan con la aplicación en marcha.', error: true }))
     socket.on('close', () => terminar({ texto: 'Odesk Agent cerró la conexión sin responder.', error: true }))
     socket.on('connect', () => {
-      const p: PeticionTareas = { id, token, herramienta, entrada, ...(proyectoId ? { proyectoId } : {}) }
+      const p: PeticionTareas = { id, token, herramienta, entrada, ...(proyectoId ? { proyectoId } : {}), ...(cliente ? { cliente } : {}) }
       socket.write(JSON.stringify(p) + '\n')
     })
     socket.on('data', (d) => {
