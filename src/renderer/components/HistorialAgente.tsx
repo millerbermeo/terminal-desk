@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ResumenSesion } from '@shared/core/sesion'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoReloj } from './Iconos'
+import { IconoReloj, IconoCerrar } from './Iconos'
 import { confirmar } from '../confirmar'
+import { Esqueletos } from './Cargando'
 
 interface Props {
   proyectoId?: string // sin proyecto: conversaciones de todos
@@ -37,9 +38,9 @@ export function HistorialAgente({ proyectoId, activaId, deshabilitado, onAbrir, 
     <div className="ag-historial" role="dialog" aria-label="Historial de conversaciones">
       <div className="ag-historial-cab">
         <strong>Historial{proyectoId ? ' de este proyecto' : ''}</strong>
-        <button className="icono" onClick={onCerrar} title="Cerrar (Esc)">✕</button>
+        <button className="icono" onClick={onCerrar} title="Cerrar (Esc)"><IconoCerrar /></button>
       </div>
-      {lista === null && <p className="cfg-vacio">Cargando…</p>}
+      {lista === null && <Esqueletos cuantos={5} />}
       {lista?.length === 0 && <EstadoVacio variante="compacto" icono={<IconoReloj />} titulo="Aún no hay conversaciones" texto="Se guardan solas al terminar cada respuesta." />}
       <ul>
         {lista?.map((s) => (
@@ -63,7 +64,7 @@ export function HistorialAgente({ proyectoId, activaId, deshabilitado, onAbrir, 
                 })
               }
             >
-              ✕
+              <IconoCerrar />
             </button>
           </li>
         ))}

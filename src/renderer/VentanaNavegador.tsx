@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AccionNavegador, EstadoNavegador } from '@shared/navegador'
-import { IconoReiniciar } from './components/Iconos'
+import { IconoReiniciar, IconoAgente, IconoCerrar } from './components/Iconos'
 import { mensajeDe } from './tareas/useTareas'
 
 /**
@@ -56,7 +56,7 @@ export function VentanaNavegador({ id }: { id: number }) {
       </button>
       {estado?.cargando ? (
         <button className="icono" onClick={() => void accion({ tipo: 'detener' })} title="Detener" aria-label="Detener">
-          ✕
+          <IconoCerrar />
         </button>
       ) : (
         <button className="icono" onClick={() => void accion({ tipo: 'recargar' })} title="Recargar (F5)" aria-label="Recargar">
@@ -85,7 +85,7 @@ export function VentanaNavegador({ id }: { id: number }) {
       </form>
       {estado?.ia && (
         <span className="chip nav-ia" title={`La IA controla esta ventana. Última acción: ${estado.ia}`}>
-          🤖 {estado.ia}
+          <IconoAgente /> {estado.ia}
         </span>
       )}
       {(error || estado?.error) && (

@@ -4,6 +4,7 @@ import { fechaRelativa } from '@shared/versiones'
 import { confirmar } from '../confirmar'
 import { mensajeDe } from '../tareas/useTareas'
 import { VisorDiff } from './VisorDiff'
+import { Esqueletos } from './Cargando'
 
 const api = window.api.historial.operar
 
@@ -178,7 +179,7 @@ export function HistorialArchivo({ proyectoId, ruta, onCambio, avisar, tick = 0 
     }
   }
 
-  if (!versiones) return error ? <p className="vc-nota error" style={{ padding: 16 }}>{error}</p> : <p className="tareas-vacio">Cargando historial…</p>
+  if (!versiones) return error ? <p className="vc-nota error" style={{ padding: 16 }}>{error}</p> : <Esqueletos cuantos={6} texto="Cargando historial…" />
 
   return (
     <div className="hv">

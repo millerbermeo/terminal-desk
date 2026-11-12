@@ -4,8 +4,9 @@ import { fechaRelativa } from '@shared/versiones'
 import { mensajeDe } from '../tareas/useTareas'
 import type { ContextoGit } from '../versiones/useGit'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoMonitor, IconoReiniciar } from './Iconos'
+import { IconoMonitor, IconoReiniciar, IconoCerrar } from './Iconos'
 import { ModalConfirmar } from './ModalConfirmar'
+import { Esqueletos } from './Cargando'
 
 const eq = window.api.equipos.operar
 
@@ -141,7 +142,7 @@ export function VersionesEquipos({ c }: { c: ContextoGit }) {
     }
   }
 
-  if (!datos) return fallo ? <p className="vc-nota error" style={{ padding: 24 }}>{fallo}</p> : <p className="tareas-vacio">Cargando…</p>
+  if (!datos) return fallo ? <p className="vc-nota error" style={{ padding: 24 }}>{fallo}</p> : <Esqueletos forma="tarjetas" cuantos={3} />
 
   return (
     <div className="vc-pagina">
@@ -229,7 +230,7 @@ export function VersionesEquipos({ c }: { c: ContextoGit }) {
               </div>
               {!e.esteEquipo && (
                 <button className="peligro icono" onClick={() => setOlvidar(e)} title="Quitar de la lista" aria-label={`Quitar ${e.nombre} de la lista`}>
-                  ✕
+                  <IconoCerrar />
                 </button>
               )}
             </li>

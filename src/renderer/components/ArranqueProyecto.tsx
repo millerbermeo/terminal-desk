@@ -14,7 +14,7 @@ import {
 } from '@shared/arranque'
 import type { Proyecto } from '@shared/modelos'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoAbrirTodas, IconoBasura, IconoDetener, IconoLapiz, IconoReiniciar, IconoRayo } from './Iconos'
+import { IconoAbrirTodas, IconoBasura, IconoDetener, IconoLapiz, IconoReiniciar, IconoRayo, IconoCerrar } from './Iconos'
 
 interface Props {
   proyecto: Proyecto
@@ -177,7 +177,7 @@ export function ArranqueProyecto({ proyecto, onCerrar, onVer }: Props) {
           <h3>Comandos de arranque · {proyecto.nombre}</h3>
           <div className="arr-barra">
             <button onClick={onVer} title="Ir a la sección Servicios, donde están las terminales">Ver servicios</button>
-            <button className="icono" onClick={onCerrar} title="Cerrar (Esc)">✕</button>
+            <button className="icono" onClick={onCerrar} title="Cerrar (Esc)"><IconoCerrar /></button>
           </div>
         </div>
         <p className="cfg-intro arr-intro">

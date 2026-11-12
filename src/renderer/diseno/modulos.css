@@ -1,0 +1,119 @@
+/* ===== Módulos: una misma estructura en todas las pantallas =====
+   1. Barra del módulo: misma altura, material y separación (terminales, servicios, asistente, tareas, versiones, API).
+   2. Pestañas de sección: un único lenguaje («píldora» sobre fondo limpio) para cambiar de sección dentro de un módulo.
+   3. Control segmentado: solo para alternar entre 2–4 modos de una misma vista.
+   4. Paneles, avisos y listas con los mismos bordes, radios y estados. */
+
+/* ---------- 1. barra del módulo ---------- */
+.barra, .tareas-barra, .ag-pestanas, .api-tabs, .api-entorno, .nav-barra {
+  min-height: var(--alto-barra); padding-block: 0; padding-inline: var(--e4);
+  align-items: center; gap: var(--e2);
+  background: var(--material-medio); backdrop-filter: var(--desenfoque-medio);
+  border-bottom: 1px solid var(--borde-tenue); box-shadow: none;
+}
+.tareas-barra { padding-block: 10px; } /* puede partirse en dos líneas en ventanas estrechas */
+.barra-info { font-size: 12.5px; }
+.ventanas { min-height: 44px; padding: 6px var(--e3) 0; background: var(--material-medio); backdrop-filter: var(--desenfoque-medio); border-bottom-color: var(--borde-tenue); box-shadow: none; }
+.ventana-tab { height: 37px; padding-block: 0; border-radius: var(--radio) var(--radio) 0 0; font-size: 12.5px; }
+.ventana-tab.activa { padding-bottom: 1px; background: var(--bg); border-color: var(--borde); }
+.ventana-tab.activa::after { left: 12px; right: 12px; height: 2px; box-shadow: none; opacity: 0.9; }
+
+/* ---------- 2. pestañas de sección ---------- */
+.ag-pestanas { gap: 2px; align-items: center; }
+.ag-pestanas button, .vc-tabs .segmentado button, .api-sub .segmentado button {
+  height: 30px; padding: 0 12px; border: 0; border-radius: var(--radio);
+  background: transparent; box-shadow: none; color: var(--texto-suave); font-weight: 500; font-size: 13px;
+  transition: background var(--rapido) ease-out, color var(--rapido) ease-out;
+}
+.ag-pestanas button:hover:not(:disabled), .vc-tabs .segmentado button:hover:not(:disabled), .api-sub .segmentado button:hover:not(:disabled) {
+  background: var(--bg-hover); color: var(--texto);
+}
+.ag-pestanas button.on, .vc-tabs .segmentado button.on, .api-sub .segmentado button.on {
+  background: var(--acento-suave); color: var(--acento-claro); font-weight: 580; border: 0; box-shadow: none;
+}
+.vc-tabs { min-height: 46px; padding: 0 var(--e4); border-bottom-color: var(--borde-tenue); background: transparent; backdrop-filter: none; }
+.vc-tabs .segmentado, .api-sub .segmentado { height: auto; padding: 0; gap: 2px; background: none; border: 0; border-radius: 0; box-shadow: none; overflow-x: auto; scrollbar-width: none; }
+.vc-tabs .segmentado .contador, .ag-pestanas .contador { background: var(--bg-hover); }
+.api-sub { min-height: 42px; padding: 0 var(--e4); }
+
+/* ---------- 3. control segmentado ---------- */
+.segmentado { height: var(--alto-control); padding: 2px; gap: 2px; border-radius: var(--radio); background: var(--bg-hundido); border-color: var(--borde-tenue); box-shadow: none; }
+.segmentado button { height: 100%; padding: 0 11px; border-radius: 7px; font-size: 12.5px; }
+.segmentado button.on { background: var(--bg-elevado); border-color: var(--borde); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), var(--brillo); }
+.ag-opciones .segmentado { height: 28px; border-radius: var(--radio-pildora); }
+.ag-opciones .segmentado button { padding: 0 12px; border-radius: var(--radio-pildora); }
+
+/* ---------- 4. rejilla de terminales ---------- */
+.panel { border-color: var(--borde); border-radius: var(--radio-lg); }
+.panel-barra { min-height: 34px; background: var(--bg-sidebar); border-bottom-color: var(--borde-tenue); }
+.panel-vista { padding: 4px 8px; gap: 2px; background: transparent; border-bottom-color: var(--borde-tenue); }
+.panel-vista button { height: 24px; padding: 0 9px; border-radius: var(--radio-sm); font-size: 11.5px; }
+.panel-vista button.on, .panel-vista .pestana-extra.on { background: var(--acento-suave); color: var(--acento-claro); box-shadow: none; }
+
+/* ---------- Asistente ---------- */
+.ag-cuenta { min-height: 36px; padding: 6px var(--e4); border-bottom-color: var(--borde-tenue); font-size: 12px; }
+.ag-cuenta.sin-sesion { background: var(--aviso-suave); color: var(--aviso); }
+.ag-entrada { border-radius: var(--radio-xl); border-color: var(--borde-fuerte); background: var(--bg-elevado); }
+.ag-opciones select { height: 28px; background-color: var(--bg-sutil); border-color: var(--borde); }
+.ag-usuario { color: var(--texto); }
+.ag-estado-barra { font-size: var(--t-nota); }
+
+/* ---------- Tareas ---------- */
+.tareas-barra { padding-inline: var(--e4); }
+.tareas-rapida { min-height: 48px; padding: 0 var(--e4); border-bottom-color: var(--borde-tenue); }
+.tareas-rapida input { background: transparent; border-color: transparent; padding-left: 0; box-shadow: none; }
+.tareas-rapida input:hover { border-color: transparent; }
+.tareas-rapida input:focus { background: transparent; border-color: transparent; box-shadow: none; }
+.tareas-rapida:focus-within { box-shadow: inset 0 -1px 0 var(--acento); color: var(--acento); }
+.tareas-buscar { border-radius: var(--radio-pildora); }
+.columna { background: var(--bg-sutil); border-color: var(--borde-tenue); }
+.tarea-tarjeta { background: var(--bg-elevado); border-color: var(--borde); }
+
+/* ---------- Versiones ---------- */
+.vc-barra { padding-block: 0; }
+.vc-rama { height: 26px; padding: 0 10px; background: var(--acento-suave); border-color: transparent; color: var(--acento-claro); font-size: 12px; }
+.vc-banner { margin: var(--e3) var(--e4) 0; padding: 10px 14px; border-radius: var(--radio-lg); border-color: var(--borde); }
+.vc-banner.info { background: var(--acento-suave); border-color: var(--acento-borde); }
+.vc-banner.aviso { background: var(--aviso-suave); border-color: rgba(251, 191, 36, 0.28); }
+.vc-banner.error { background: var(--error-suave); border-color: rgba(248, 113, 113, 0.3); }
+.vc-banner.ok { background: var(--ok-suave); border-color: rgba(52, 211, 153, 0.28); }
+.vc-lista { border-right-color: var(--borde-tenue); }
+.vc-commit textarea { border-radius: var(--radio-lg); }
+
+/* ---------- Cliente API ---------- */
+.api-lateral { border-right-color: var(--borde-tenue); }
+.api-entorno { padding-inline: var(--e3); }
+.api-lateral-acciones { flex-direction: row; padding: var(--e3) var(--e3) 0; gap: 6px; }
+.api-lateral-acciones button { flex: 1; min-width: 0; }
+.api-lateral-tabs { margin: var(--e3) var(--e3) var(--e2); }
+.api-tabs { align-items: flex-end; padding-block: 0; }
+.api-tab { height: 37px; padding-block: 0; border-radius: var(--radio) var(--radio) 0 0; font-size: 12.5px; }
+.api-tab.activa { padding-bottom: 1px; }
+.api-tabs > button.icono { align-self: center; }
+.api-linea { padding: var(--e3) var(--e4) var(--e2); }
+.api-linea .api-metodo, .api-linea .api-url, .api-linea > button { height: 34px; }
+.api-linea .api-url { font-family: var(--fuente-mono); font-size: 12.5px; }
+
+/* ---------- pantallas de ajustes ---------- */
+.cfg-grupo { border-radius: var(--radio-lg); overflow: hidden; }
+.cfg-grupo-cab { min-height: 44px; border-bottom-color: var(--borde-tenue); }
+.cfg-grupo-cab h3 { font-size: 13px; font-weight: 600; }
+
+/* ---------- responsive: las barras se parten antes de desbordar ---------- */
+@media (max-width: 900px) {
+  .barra, .tareas-barra, .ag-pestanas, .api-tabs, .api-entorno, .vc-tabs, .api-sub, .tareas-rapida { padding-inline: var(--e3); }
+  .config { padding: var(--e5) var(--e4) var(--e6); }
+  .vc-banner { margin-inline: var(--e3); }
+}
+@media (max-width: 640px) {
+  :root { --alto-barra: 46px; --t-pagina: 20px; }
+  .config { padding: var(--e4) var(--e3) var(--e5); }
+  .cfg-cab { flex-wrap: wrap; }
+  .ag-pestanas, .vc-tabs .segmentado { overflow-x: auto; scrollbar-width: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .barra, .tareas-barra, .ag-pestanas, .api-tabs, .api-entorno, .nav-barra, .ventanas { background: var(--bg-sidebar); backdrop-filter: none; }
+}
+@media (prefers-contrast: more) {
+  .barra, .tareas-barra, .ag-pestanas, .api-tabs, .api-entorno, .nav-barra, .ventanas, .vc-tabs { border-bottom-color: var(--borde-fuerte); backdrop-filter: none; background: var(--bg-sidebar); }
+}

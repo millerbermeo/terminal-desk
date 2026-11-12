@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { analizarDiff } from '@shared/versiones'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoArchivo } from './Iconos'
+import { Esqueletos } from './Cargando'
 
 interface Props {
   titulo?: string
@@ -23,7 +24,7 @@ export function DiffVista({ titulo, texto, binario, truncado, cargando, vacio = 
   const lineas = d.lineas.filter((l) => l.tipo !== 'meta')
   const recortado = lineas.length > MAX_LINEAS
 
-  if (cargando) return <div className="vc-diff"><p className="tareas-vacio">Cargando diferencias…</p></div>
+  if (cargando) return <div className="vc-diff"><Esqueletos forma="lineas" cuantos={10} texto="Cargando diferencias…" /></div>
   if (binario) return <div className="vc-diff"><EstadoVacio variante="compacto" icono={<IconoArchivo />} titulo="Archivo binario" texto="No se puede mostrar la diferencia de un archivo binario." /></div>
   if (!texto.trim()) return <div className="vc-diff"><EstadoVacio variante="compacto" icono={<IconoArchivo />} titulo={vacio} /></div>
 

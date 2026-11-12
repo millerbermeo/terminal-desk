@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { CambioArchivo, EntradaArchivo, MarcaGit } from '@shared/archivos'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { ModalHistorialArchivo } from '../components/ModalHistorialArchivo'
-import { IconoArchivo, IconoArchivoNuevo, IconoCarpetaNueva, IconoPlegar, IconoReiniciar, IconoReloj } from '../components/Iconos'
+import { IconoArchivo, IconoArchivoNuevo, IconoCarpetaNueva, IconoPlegar, IconoReiniciar, IconoReloj, IconoCerrar } from '../components/Iconos'
 import { ArbolArchivos, type CreandoEn } from './ArbolArchivos'
 import { BuscadorArchivos } from './BuscadorArchivos'
 import { buscarArchivos } from './busqueda'
@@ -642,7 +642,7 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
             >
               <span className="ed-pestana-nombre">{base(a.ruta)}</span>
               {a.externo || a.estado === 'conflicto' ? <span className="ed-sucio aviso" title="Cambió en disco">⚠</span> : a.sucio ? <span className="ed-sucio" title="Sin guardar">●</span> : null}
-              <button className="icono" aria-label={`Cerrar ${base(a.ruta)}`} onClick={(e) => (e.stopPropagation(), void cerrar(a.ruta))}>✕</button>
+              <button className="icono" aria-label={`Cerrar ${base(a.ruta)}`} onClick={(e) => (e.stopPropagation(), void cerrar(a.ruta))}><IconoCerrar /></button>
             </div>
           ))}
           <span className="ag-espacio" />

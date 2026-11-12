@@ -214,7 +214,13 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   }, [vista, refrescarDatos])
 
   const cambiar = useCallback((id: string, f: (v: Ventana) => Ventana): void => {
-    setVentanas((vs) => vs.map((v) => (v.id === id ? f(v) : v)))
+    // si `f` devuelve la misma pestaña no hay cambio: se conserva la lista para no volver a pintar toda la app
+    setVentanas((vs) => {
+      const i = vs.findIndex((v) => v.id === id)
+      if (i < 0) return vs
+      const nueva = f(vs[i])
+      return nueva === vs[i] ? vs : vs.map((v, j) => (j === i ? nueva : v))
+    })
   }, [])
 
   /** Añade terminales a la pestaña `id` (la crea si no existe) y la muestra. */

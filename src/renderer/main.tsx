@@ -11,9 +11,15 @@ import { VentanaSeparada } from './VentanaSeparada'
 import { LimiteErrores } from './components/LimiteErrores'
 import { IndicadorZoom } from './components/IndicadorZoom'
 import { capturarErroresGlobales, vigilarVistaVacia } from './vigilancia'
+import { fuentesListas } from './diseno/fuentes'
+import './diseno/tokens.css'
 import './estilos.css'
 import './estilos-mejoras.css'
 import './estilos-apple.css'
+import './diseno/sistema.css'
+import './diseno/barra-lateral.css'
+import './diseno/modulos.css'
+import { Cargando } from './components/Cargando'
 
 // ?ventana=<token> => ventana separada (solo terminales); sin parámetro => ventana principal
 const parametros = new URLSearchParams(location.search)
@@ -63,9 +69,7 @@ function Raiz() {
         </span>
       </div>
     ) : (
-      <div className="cargando-app" aria-live="polite">
-        Cargando…
-      </div>
+      <Cargando variante="pantalla" />
     )
   }
   if (!sesion.activa) return <Acceso servidor={sesion.servidor} onEntrar={setSesion} onServidor={setSesion} />
@@ -80,11 +84,14 @@ function Raiz() {
 }
 
 capturarErroresGlobales()
-createRoot(document.getElementById('root')!).render(
-  <>
-    <LimiteErrores zona="ventana">{navegador > 0 ? <VentanaNavegador id={navegador} /> : token ? <VentanaSeparada token={token} /> : <Raiz />}</LimiteErrores>
-    <AnfitrionConfirmar />
-    <IndicadorZoom />
-  </>
-)
-vigilarVistaVacia()
+// las terminales miden la letra al abrirse: se pinta con las fuentes ya cargadas
+void fuentesListas().then(() => {
+  createRoot(document.getElementById('root')!).render(
+    <>
+      <LimiteErrores zona="ventana">{navegador > 0 ? <VentanaNavegador id={navegador} /> : token ? <VentanaSeparada token={token} /> : <Raiz />}</LimiteErrores>
+      <AnfitrionConfirmar />
+      <IndicadorZoom />
+    </>
+  )
+  vigilarVistaVacia()
+})

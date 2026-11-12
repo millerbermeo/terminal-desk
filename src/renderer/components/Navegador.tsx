@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { normalizarUrl, type ServidorLocal } from '@shared/navegador'
 import { mensajeDe } from '../tareas/useTareas'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoGlobo, IconoReiniciar } from './Iconos'
+import { IconoGlobo, IconoReiniciar, IconoEstrella } from './Iconos'
 
 const CLAVE_RECIENTES = 'navegador:recientes'
 const CLAVE_FAVORITOS = 'navegador:favoritos'
@@ -83,7 +83,7 @@ export function Navegador({ visible }: { visible: boolean }) {
       {extra}
       <span className="vc-acciones visibles">
         <button className="icono" onClick={() => alternarFavorito(url)} title={favoritos.includes(url) ? 'Quitar de favoritos' : 'Añadir a favoritos'} aria-label="Favorito">
-          {favoritos.includes(url) ? '★' : '☆'}
+          <IconoEstrella llena={favoritos.includes(url)} />
         </button>
         <button onClick={() => void abrir(url, true)} title="Abrir en el navegador del sistema">
           En el sistema

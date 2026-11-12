@@ -17,7 +17,7 @@ import { BarraUso } from './BarraUso'
 import { GestionProyecto } from './GestionProyecto'
 import { EstadoVacio } from './EstadoVacio'
 import { HistorialAgente } from './HistorialAgente'
-import { IconoArchivo, IconoCarpeta, IconoChispa } from './Iconos'
+import { IconoArchivo, IconoCarpeta, IconoChispa, IconoCerrar, IconoClip, IconoMas, IconoReloj, IconoTareas } from './Iconos'
 import { aplicarMencion, detectarMencion, opcionesMencion } from '../agente/menciones'
 import { aplicarMencionTarea, detectarMencionTarea, opcionesTarea, pedirImplementar } from '../agente/tareas-chat'
 import { NOMBRE_PRIORIDAD } from './Tareas'
@@ -25,6 +25,7 @@ import { SolicitudesChat } from './ModalSolicitud'
 import { useGrabadora, type TextoDictado } from '../agente/grabadora'
 import { BarraGrabacion, BotonMicrofono } from './GrabadorVoz'
 import { alExterno, tomarExternos } from '../agente/externos'
+import { Cargando } from './Cargando'
 
 interface Props {
   agente: Agente
@@ -890,18 +891,18 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           <span className="ag-espacio" />
           {proyecto && (
             <button className="ag-icono" onClick={() => setVerTareas((v) => !v)} aria-expanded={verTareas} aria-label="Tareas" title="Tareas del proyecto y su grupo: menciónalas o pide que el Asistente implemente una (también escribiendo «#»)">
-              ☑
+              <IconoTareas />
             </button>
           )}
           <BotonMicrofono voz={voz} />
           <button className="ag-icono" onClick={() => selector.current?.click()} disabled={pendientes.length >= LIMITES_ADJUNTOS.porMensaje} title="Adjuntar imágenes, PDF o archivos de texto (también puedes pegarlos o arrastrarlos)" aria-label="Adjuntar archivos">
-            📎
+            <IconoClip />
           </button>
           <button className="ag-icono" onClick={() => setVerHistorial((v) => !v)} aria-expanded={verHistorial} aria-label="Historial" title="Historial: conversaciones guardadas">
-            🕘
+            <IconoReloj />
           </button>
           <button className="ag-icono" onClick={() => void pedirNuevaConversacion()} disabled={agente.enCurso || agente.turnos.length === 0} aria-label="Nueva conversación" title="Nueva conversación: la actual queda guardada en el historial">
-            ＋
+            <IconoMas />
           </button>
           <input
             ref={selector}
@@ -926,7 +927,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               Usar lo que dije
             </button>
             <button className="icono" onClick={() => setDictado(null)} aria-label="Cerrar aviso">
-              ✕
+              <IconoCerrar />
             </button>
           </div>
         )}
@@ -979,7 +980,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           {verTareas && sugerencias.length === 0 && !mencionTarea && (
             <div className="ag-sugerencias ag-tareas" role="dialog" aria-label="Tareas para el Asistente">
               {tareasChat === null ? (
-                <div className="ag-sug-vacio">Cargando tareas…</div>
+                <div className="ag-sug-vacio"><Cargando variante="enLinea" texto="Cargando tareas…" /></div>
               ) : tareasChat.length === 0 ? (
                 <div className="ag-sug-vacio">No hay tareas abiertas en este proyecto ni en su grupo.</div>
               ) : (

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AccionRegla, ReglaPermiso } from '@shared/core/permisos'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoEscudo } from './Iconos'
+import { IconoEscudo, IconoCerrar } from './Iconos'
 
 const limpiar = (m: string): string => m.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
@@ -19,7 +19,7 @@ function Lista({ reglas, onEliminar }: { reglas: ReglaPermiso[]; onEliminar: (r:
           <span className={`chip ${r.accion === 'permitir' ? 'chip-ok' : 'chip-aviso'}`}>{r.accion}</span>
           <span className="chip">{r.tipo}</span>
           <code title={r.patron}>{r.patron}</code>
-          <button className="peligro" style={{ opacity: 1 }} title="Eliminar regla" onClick={() => onEliminar(r)}>✕</button>
+          <button className="peligro" style={{ opacity: 1 }} title="Eliminar regla" onClick={() => onEliminar(r)}><IconoCerrar /></button>
         </div>
       ))}
     </>

@@ -1,0 +1,104 @@
+/* ===== Barra lateral =====
+   Región estructural: el material más pesado. De arriba abajo: marca, acción principal,
+   proyectos (lo único que crece y se desplaza) y navegación plegable con la cuenta al pie.
+   Todo va bajo `.sidebar` para no depender del orden de las capas históricas. */
+
+.sidebar { width: 256px; background: var(--material-grueso); backdrop-filter: var(--desenfoque-grueso); border-right-color: var(--borde-tenue); }
+.sidebar::after { display: none; }
+
+/* marca: sin brillos ni texto en degradado */
+.sidebar .marca { height: var(--alto-barra); padding: 0 10px 0 14px; gap: 9px; }
+.sidebar .marca .logo { width: 24px; height: 24px; border-radius: 7px; box-shadow: 0 0 0 1px var(--borde-fuerte); }
+.sidebar .marca h1 { font-size: 13.5px; font-weight: 620; letter-spacing: -0.012em; background: none; color: var(--texto); -webkit-text-fill-color: currentColor; }
+.sidebar .sidebar-toggle { opacity: 1; color: var(--texto-tenue); }
+.sidebar .sidebar-toggle:hover:not(:disabled) { color: var(--texto); }
+
+/* acción principal + multiproyecto, en una fila */
+.sidebar .acciones { display: flex; gap: 6px; padding: 2px 10px 10px; }
+.sidebar .btn-nueva { flex: 1; min-width: 0; height: 32px; padding: 0 12px; border-radius: var(--radio); font-size: 12.5px; }
+.sidebar .accion-icono { flex: none; width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: var(--radio); background: var(--bg-sutil); border-color: var(--borde); color: var(--texto-suave); }
+.sidebar .accion-icono:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--borde-fuerte); color: var(--texto); }
+
+/* cabecera de «Proyectos»: el título y, a su derecha, cómo añadir uno */
+.sidebar .proyectos-cab { display: flex; align-items: center; gap: 2px; padding: 4px 8px 2px 8px; }
+.sidebar .proyectos-cab .nav-etiqueta { flex: 1; padding: 0 10px; }
+.sidebar .proyectos-cab button.icono { color: var(--texto-tenue); }
+.sidebar .proyectos-cab button.icono:hover:not(:disabled) { color: var(--texto); }
+.sidebar .proyectos-cab svg { width: 14px; height: 14px; }
+
+.sidebar .buscar { padding: 4px 10px 6px; }
+.sidebar .buscar > svg { left: 20px; top: calc(50% - 1px); transform: translateY(-50%); width: 13px; height: 13px; }
+.sidebar .buscar input { min-height: 28px; height: 28px; padding: 0 8px 0 29px; font-size: 12px; border-radius: var(--radio); background: var(--bg-hundido); border-color: var(--borde-tenue); }
+
+/* lista de proyectos */
+.sidebar .lista { padding: 0 8px 10px; scrollbar-gutter: stable; }
+.sidebar .lista section { margin-top: 2px; }
+.sidebar .lista section + section { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--borde-tenue); }
+.sidebar .seccion-toggle { min-height: 26px; padding: 0 6px; gap: 5px; font-size: var(--t-micro); font-weight: 650; letter-spacing: var(--tr-micro); color: var(--texto-tenue); }
+.sidebar .seccion-toggle:hover:not(:disabled) { color: var(--texto-suave); }
+.sidebar .contador { min-width: 18px; padding: 0 5px; text-align: center; font-size: 10px; font-weight: 600; line-height: 16px; background: transparent; color: var(--texto-tenue); }
+.sidebar .punto-abierto { width: 5px; height: 5px; }
+.sidebar .abrir-todas, .sidebar .abrir-ia, .sidebar .abrir-arranque { width: 24px; min-width: 24px; height: 24px; }
+.sidebar .lista .item { min-height: var(--alto-fila); padding: 0 8px; gap: 9px; border-radius: var(--radio-sm); font-size: 13px; font-weight: 450; color: var(--texto-suave); }
+.sidebar .lista .item svg { width: 15px; height: 15px; color: var(--texto-tenue); }
+.sidebar .lista .item:hover:not(:disabled) { background: var(--bg-hover); color: var(--texto); }
+.sidebar .fila-proyecto .item:has(.insignia) { color: var(--texto); }
+.sidebar .fila-proyecto .item:has(.insignia) svg { color: var(--ok); }
+/* terminales abiertas: cifra discreta, sin resplandor */
+.sidebar .insignia { min-width: 17px; height: 17px; padding: 0 5px; border-radius: var(--radio-pildora); font-size: 10.5px; font-weight: 650; color: var(--ok); background: var(--ok-suave); box-shadow: none; }
+
+/* navegación: iconos sin caja; la fila activa lleva el acento */
+.sidebar footer { max-height: 58%; gap: 2px; padding: 6px 8px 0; background: none; border-top-color: var(--borde-tenue); scrollbar-width: none; }
+.sidebar footer::-webkit-scrollbar { display: none; }
+.sidebar .nav-grupo { gap: 0; }
+.sidebar .nav-etiqueta { display: flex; align-items: center; gap: 5px; font-size: var(--t-micro); font-weight: 650; letter-spacing: var(--tr-micro); text-transform: uppercase; color: var(--texto-tenue); }
+.sidebar button.nav-etiqueta { width: 100%; min-height: 26px; padding: 0 6px; justify-content: flex-start; background: transparent; border-color: transparent; border-radius: var(--radio-sm); }
+.sidebar button.nav-etiqueta:hover:not(:disabled) { background: transparent; border-color: transparent; color: var(--texto-suave); }
+.sidebar .nav-etiqueta .chevron { display: inline-flex; transition: transform var(--medio) var(--muelle); }
+.sidebar .nav-etiqueta .chevron svg { width: 11px; height: 11px; }
+.sidebar .nav-grupo.cerrado .nav-etiqueta .chevron { transform: rotate(-90deg); }
+/* plegado: la altura se anima hasta un tope holgado (los grupos tienen pocas filas) */
+.sidebar .nav-items { display: flex; flex-direction: column; overflow: hidden; max-height: 400px; transition: max-height var(--muelle-t) var(--muelle), opacity var(--medio) ease-out, visibility 0s; }
+.sidebar .nav-grupo.cerrado .nav-items { max-height: 0; opacity: 0; visibility: hidden; transition: max-height var(--medio) ease-out, opacity var(--rapido) ease-out, visibility 0s var(--medio); }
+
+.sidebar .item-config { min-height: var(--alto-fila); height: var(--alto-fila); padding: 0 8px; gap: 10px; border-radius: var(--radio-sm); font-weight: 450; color: var(--texto-suave); }
+.sidebar .item-config .item-icono { width: 16px; height: 16px; background: none; border: 0; border-radius: 0; box-shadow: none; }
+.sidebar .item-config .item-icono svg { width: 16px; height: 16px; color: var(--texto-tenue); }
+.sidebar .item-config:hover:not(:disabled) { background: var(--bg-hover); color: var(--texto); }
+.sidebar .item-config:hover:not(:disabled) .item-icono { background: none; border: 0; }
+.sidebar .item-config:hover .item-icono svg { color: var(--texto-suave); }
+.sidebar .item-config.activo { background: var(--acento-suave); box-shadow: none; color: var(--texto); font-weight: 550; }
+.sidebar .item-config.activo::before { display: none; }
+.sidebar .item-config.activo .item-icono { background: none; border: 0; box-shadow: none; }
+.sidebar .item-config.activo .item-icono svg { color: var(--acento); }
+
+/* cuenta */
+.sidebar .cuenta-tarjeta { min-height: 44px; margin-top: 6px; margin-bottom: 8px; padding: 6px 8px; gap: 9px; border-radius: var(--radio); background: var(--material-grueso); border-color: transparent; box-shadow: none; }
+.sidebar .cuenta-tarjeta:hover:not(:disabled) { background: var(--bg-hover); border-color: transparent; }
+.sidebar .cuenta-tarjeta .avatar { width: 26px; height: 26px; font-size: 11.5px; box-shadow: none; }
+.sidebar .cuenta-datos strong { font-size: 12.5px; font-weight: 580; }
+.sidebar .cuenta-datos small { font-size: 11px; color: var(--texto-tenue); }
+
+/* ---------- compacta (solo iconos): a mano o con la ventana estrecha ---------- */
+.sidebar.compacta { width: 56px; }
+.sidebar.compacta .marca { height: auto; flex-direction: column; gap: 8px; padding: 12px 0 8px; }
+.sidebar.compacta .acciones { flex-direction: column; align-items: center; padding: 2px 0 8px; }
+.sidebar.compacta .btn-nueva { flex: none; width: 32px; padding: 0; }
+.sidebar.compacta .proyectos-cab { flex-direction: column; padding: 0 0 4px; }
+.sidebar.compacta .proyectos-cab .nav-etiqueta, .sidebar.compacta button.nav-etiqueta { display: none; }
+.sidebar.compacta .lista { padding: 0 8px 8px; scrollbar-gutter: auto; scrollbar-width: none; }
+.sidebar.compacta .lista .item, .sidebar.compacta .item-config { justify-content: center; padding: 0; }
+.sidebar.compacta .nav-grupo.cerrado .nav-items { max-height: 400px; opacity: 1; visibility: visible; }
+.sidebar.compacta .nav-grupo + .nav-grupo { border-top: 1px solid var(--borde-tenue); margin-top: 4px; padding-top: 4px; }
+.sidebar.compacta footer { padding: 6px 8px 0; }
+.sidebar.compacta .cuenta-tarjeta { justify-content: center; padding: 6px 0; background: none; }
+
+/* ---------- ventana estrecha o baja ---------- */
+@media (max-width: 900px) { .sidebar:not(.compacta) { width: 216px; } }
+@media (max-height: 620px) {
+  .sidebar footer { max-height: 50%; }
+  .sidebar .marca { height: 44px; }
+}
+@media (prefers-reduced-transparency: reduce) { .sidebar, .sidebar .cuenta-tarjeta { background: var(--bg-sidebar); backdrop-filter: none; } }
+@media (prefers-contrast: more) { .sidebar { background: var(--bg-sidebar); backdrop-filter: none; border-right-color: var(--borde-fuerte); } }
+@media (prefers-reduced-motion: reduce) { .sidebar .nav-items, .sidebar .nav-etiqueta .chevron { transition: none; } }

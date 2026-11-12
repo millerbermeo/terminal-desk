@@ -6,6 +6,7 @@ import { basicSetup } from 'codemirror'
 import { openSearchPanel, search, searchPanelOpen } from '@codemirror/search'
 import { BuscarEnArchivo } from './BuscarEnArchivo'
 import { semillaDeSeleccion } from './busquedaArchivo'
+import { FUENTE_MONO } from '../diseno/fuentes'
 import { lenguajeDe } from './lenguajes'
 
 /** Marca los cambios que vienen del disco (no son del usuario: no ensucian el archivo ni entran en el historial de deshacer). */
@@ -14,7 +15,7 @@ const externa = Annotation.define<boolean>()
 const tema = EditorView.theme(
   {
     '&': { height: '100%', backgroundColor: 'var(--bg)', fontSize: '13px' },
-    '.cm-scroller': { fontFamily: "'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', Menlo, Consolas, monospace", lineHeight: '1.55' },
+    '.cm-scroller': { fontFamily: FUENTE_MONO, lineHeight: '1.55' },
     '.cm-gutters': { backgroundColor: 'var(--bg)', borderRight: '1px solid var(--borde)', color: '#6e6e7c' },
     '.cm-activeLine': { backgroundColor: 'rgba(129, 140, 248, 0.07)' },
     '.cm-activeLineGutter': { backgroundColor: 'rgba(129, 140, 248, 0.12)' },

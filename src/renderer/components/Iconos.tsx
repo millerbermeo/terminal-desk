@@ -156,3 +156,12 @@ export const IconoCarpetaNueva = () => (
 export const IconoPlegar = () => (
   <Icono><path d="m7 20 5-5 5 5M7 4l5 5 5-5" /></Icono>
 )
+export const IconoClip = () => (
+  <Icono><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.4a1.7 1.7 0 0 1-2.4-2.4L15.5 8" /></Icono>
+)
+export const IconoImagen = () => (
+  <Icono><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m21 16-4.5-4.5L8 20" /></Icono>
+)
+export const IconoEstrella = ({ llena = false }: { llena?: boolean }) => (
+  <Icono fill={llena ? 'currentColor' : 'none'}><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" /></Icono>
+)

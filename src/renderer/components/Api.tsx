@@ -7,7 +7,7 @@ import { ApiEntornos } from './ApiEntornos'
 import { ApiPeticion } from './ApiPeticion'
 import { ApiRespuesta } from './ApiRespuesta'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoApi, IconoMas } from './Iconos'
+import { IconoApi, IconoMas, IconoBasura, IconoCerrar, IconoLapiz } from './Iconos'
 import { ModalConfirmar } from './ModalConfirmar'
 import { ModalFormulario } from './ModalFormulario'
 
@@ -170,8 +170,8 @@ export function Api({ visible }: { visible: boolean }) {
                         <span className="chip">{c.peticiones.length}</span>
                       </button>
                       <span className="vc-acciones">
-                        <button className="icono" onClick={() => setDialogo({ tipo: 'coleccion', coleccion: c })} title="Renombrar" aria-label={`Renombrar ${c.nombre}`}>✎</button>
-                        <button className="icono" onClick={() => setDialogo({ tipo: 'eliminarColeccion', coleccion: c })} title="Eliminar colección" aria-label={`Eliminar ${c.nombre}`}>🗑</button>
+                        <button className="icono" onClick={() => setDialogo({ tipo: 'coleccion', coleccion: c })} title="Renombrar" aria-label={`Renombrar ${c.nombre}`}><IconoLapiz /></button>
+                        <button className="icono" onClick={() => setDialogo({ tipo: 'eliminarColeccion', coleccion: c })} title="Eliminar colección" aria-label={`Eliminar ${c.nombre}`}><IconoBasura /></button>
                       </span>
                     </header>
                     {abierta && (
@@ -183,8 +183,8 @@ export function Api({ visible }: { visible: boolean }) {
                               <span className="api-pet-nombre">{p.nombre}</span>
                             </button>
                             <span className="vc-acciones">
-                              <button className="icono" onClick={() => setDialogo({ tipo: 'renombrar', coleccion: c, peticion: p })} title="Renombrar" aria-label={`Renombrar ${p.nombre}`}>✎</button>
-                              <button className="icono" onClick={() => setDialogo({ tipo: 'eliminarPeticion', coleccion: c, peticion: p })} title="Eliminar" aria-label={`Eliminar ${p.nombre}`}>🗑</button>
+                              <button className="icono" onClick={() => setDialogo({ tipo: 'renombrar', coleccion: c, peticion: p })} title="Renombrar" aria-label={`Renombrar ${p.nombre}`}><IconoLapiz /></button>
+                              <button className="icono" onClick={() => setDialogo({ tipo: 'eliminarPeticion', coleccion: c, peticion: p })} title="Eliminar" aria-label={`Eliminar ${p.nombre}`}><IconoBasura /></button>
                             </span>
                           </li>
                         ))}
@@ -229,7 +229,7 @@ export function Api({ visible }: { visible: boolean }) {
               <span className={`api-met api-m-${b.peticion.metodo}`}>{b.peticion.metodo}</span>
               <span className="api-tab-titulo">{tituloDe(b)}</span>
               {b.sucio && <span className="api-sucio" title="Cambios sin guardar" />}
-              <button className="icono" onClick={(e) => { e.stopPropagation(); b.sucio && b.peticion.url.trim() ? setDialogo({ tipo: 'cerrar', borrador: b }) : cerrar(b) }} aria-label="Cerrar pestaña" title="Cerrar">✕</button>
+              <button className="icono" onClick={(e) => { e.stopPropagation(); b.sucio && b.peticion.url.trim() ? setDialogo({ tipo: 'cerrar', borrador: b }) : cerrar(b) }} aria-label="Cerrar pestaña" title="Cerrar"><IconoCerrar /></button>
             </div>
           ))}
           <button className="icono" onClick={nueva} title="Petición nueva" aria-label="Petición nueva">
@@ -241,7 +241,7 @@ export function Api({ visible }: { visible: boolean }) {
             <span className="vc-error-texto">{error || aviso}</span>
             {error && (
               <button className="icono" onClick={() => setError('')} aria-label="Cerrar aviso">
-                ✕
+                <IconoCerrar />
               </button>
             )}
           </div>
@@ -399,7 +399,7 @@ function GuardarPeticion({ colecciones, nombre: inicial, onGuardar, onCerrar }: 
       >
         <div className="modal-cab">
           <h3>Guardar petición</h3>
-          <button type="button" className="icono" onClick={onCerrar} aria-label="Cerrar">✕</button>
+          <button type="button" className="icono" onClick={onCerrar} aria-label="Cerrar"><IconoCerrar /></button>
         </div>
         <label style={{ maxWidth: 'none' }}>
           Nombre
