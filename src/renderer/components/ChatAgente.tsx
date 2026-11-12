@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EventoAgente } from '@shared/core/agente'
 import { LIMITES_ADJUNTOS, type Adjunto } from '@shared/core/adjuntos'
 import { COMANDOS_CLAUDE, COMANDOS_INCLUIDOS, NOMBRES_CLAUDE_CODE, PLANTILLAS_INCLUIDAS, expandirPlantilla, type ComandoUsuario } from '@shared/core/comandos'
@@ -66,6 +66,49 @@ const resumirEntrada = (e: Record<string, unknown>): string => {
   return t.length > 120 ? t.slice(0, 120) + '…' : t
 }
 
+interface Etapa {
+  texto: string
+  estado: 'pending' | 'in_progress' | 'completed'
+}
+
+/** Etapas de una llamada a `TodoWrite` (la entrada viene del modelo: se lee con cuidado). */
+function etapasDe(entrada: Record<string, unknown>): Etapa[] {
+  const lista = Array.isArray(entrada.todos) ? entrada.todos : []
+  return lista.flatMap((t): Etapa[] => {
+    if (!t || typeof t !== 'object') return []
+    const o = t as Record<string, unknown>
+    const estado = o.status === 'completed' || o.status === 'in_progress' ? o.status : 'pending'
+    const texto = String((estado === 'in_progress' && o.activeForm) || o.content || '').trim()
+    return texto ? [{ texto, estado }] : []
+  })
+}
+
+/** Plan de la tarea: etapas hechas, la que está en curso y las pendientes. */
+function PlanVista({ etapas }: { etapas: Etapa[] }) {
+  const hechas = etapas.filter((x) => x.estado === 'completed').length
+  return (
+    <div className="ag-plan" role="group" aria-label="Plan de la tarea">
+      <div className="ag-plan-cab">
+        <strong>Plan</strong>
+        <span className="chip">
+          {hechas} de {etapas.length}
+        </span>
+        <progress value={hechas} max={etapas.length} aria-label="Progreso del plan" />
+      </div>
+      <ol>
+        {etapas.map((x, i) => (
+          <li key={i} className={x.estado}>
+            <span className="ag-plan-marca" aria-hidden="true">
+              {x.estado === 'completed' ? '✓' : x.estado === 'in_progress' ? '▸' : '○'}
+            </span>
+            <span>{x.texto}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
 /** Convierte los eventos de un turno en elementos visibles (une el inicio y el fin de cada herramienta). */
 function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
   const sangria = { marginLeft: Math.min(e.profundidad, 3) * 14 }
@@ -89,6 +132,12 @@ function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
         </div>
       )
     case 'herramienta_inicio': {
+      if (e.llamada.nombre === 'TodoWrite') {
+        // El plan se pinta una vez por turno, con su estado más reciente (cada llamada trae la lista completa).
+        const ultimo = todos.filter((x) => x.tipo === 'herramienta_inicio' && x.llamada.nombre === 'TodoWrite').at(-1)
+        const etapas = ultimo === e ? etapasDe(e.llamada.entrada) : []
+        return etapas.length ? <PlanVista etapas={etapas} /> : null
+      }
       const fin = todos.find((x): x is Extract<EventoAgente, { tipo: 'herramienta_fin' }> => x.tipo === 'herramienta_fin' && x.llamada.id === e.llamada.id)
       return (
         <details className={`ag-herramienta${fin?.resultado.error ? ' error' : ''}`} style={sangria}>
@@ -177,7 +226,22 @@ function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
 
 const HERRAMIENTAS_QUE_EDITAN = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 
-function TurnoVista({ t, onCancelar, onDeshacer }: { t: Turno; onCancelar: () => void; onDeshacer: () => void }) {
+/**
+ * Lo ya ocurrido en un turno. Memoizado: mientras el modelo escribe, cada trozo de texto cambia solo `parcial` (la lista
+ * `eventos` es la misma), así que no se vuelven a pintar las herramientas y burbujas anteriores.
+ */
+const EventosTurno = memo(function EventosTurno({ eventos }: { eventos: EventoAgente[] }) {
+  return (
+    <>
+      {eventos.map((e, i) => (
+        <Linea key={i} e={e} todos={eventos} />
+      ))}
+    </>
+  )
+})
+
+/** Memoizado: un turno terminado no se repinta cuando otro recibe texto (los manejadores son estables y reciben el turno). */
+const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer }: { t: Turno; onCancelar: (t: Turno) => void; onDeshacer: (t: Turno) => void }) {
   const editoArchivos = t.estado !== 'en_curso' && !t.lateral && Boolean(t.mensajeId) && t.eventos.some((e) => e.tipo === 'herramienta_inicio' && HERRAMIENTAS_QUE_EDITAN.has(e.llamada.nombre))
   return (
     <article className="ag-turno">
@@ -189,9 +253,7 @@ function TurnoVista({ t, onCancelar, onDeshacer }: { t: Turno; onCancelar: () =>
         <div className="ag-texto">{t.prompt}</div>
         {t.adjuntos && <AdjuntosAgente adjuntos={t.adjuntos} />}
       </div>
-      {t.eventos.map((e, i) => (
-        <Linea key={i} e={e} todos={t.eventos} />
-      ))}
+      <EventosTurno eventos={t.eventos} />
       {t.parcial && (
         <div className="ag-burbuja parcial">
           <div className="ag-quien">{t.raiz}</div>
@@ -202,19 +264,19 @@ function TurnoVista({ t, onCancelar, onDeshacer }: { t: Turno; onCancelar: () =>
       <div className="ag-pie">
         <span className={`chip estado-${t.estado}`}>{ESTADO[t.estado]}</span>
         {t.estado === 'en_curso' && (
-          <button onClick={onCancelar} disabled={!t.ejecucionId}>
+          <button onClick={() => onCancelar(t)} disabled={!t.ejecucionId}>
             Cancelar
           </button>
         )}
         {editoArchivos && (
-          <button onClick={onDeshacer} title="Devuelve los archivos a como estaban antes de este mensaje (y deshace lo de los siguientes)">
+          <button onClick={() => onDeshacer(t)} title="Devuelve los archivos a como estaban antes de este mensaje (y deshace lo de los siguientes)">
             ↩ Deshacer cambios
           </button>
         )}
       </div>
     </article>
   )
-}
+})
 
 export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [destino, setDestino] = useState('')
@@ -325,6 +387,13 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
       agente.avisar('Deshacer cambios', (err as Error).message, t.destino)
     }
   }
+  // Manejadores estables para `TurnoVista` (memoizado): siempre llaman a la versión más reciente.
+  const accionesTurno = useRef({ cancelar: (t: Turno): void => void agente.cancelar(t), deshacer })
+  useEffect(() => {
+    accionesTurno.current = { cancelar: (t) => void agente.cancelar(t), deshacer }
+  })
+  const cancelarTurno = useCallback((t: Turno): void => accionesTurno.current.cancelar(t), [])
+  const deshacerTurno = useCallback((t: Turno): void => void accionesTurno.current.deshacer(t), [])
   const fin = useRef<HTMLDivElement>(null)
 
   const grupoSeleccionado = !proyectoFijo && destino.startsWith('g:')
@@ -736,7 +805,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           />
         )}
         {agente.turnos.map((t) => (
-          <TurnoVista key={t.clave} t={t} onCancelar={() => agente.cancelar(t)} onDeshacer={() => void deshacer(t)} />
+          <TurnoVista key={t.clave} t={t} onCancelar={cancelarTurno} onDeshacer={deshacerTurno} />
         ))}
         <div ref={fin} />
         {verBajar && (

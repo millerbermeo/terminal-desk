@@ -201,13 +201,56 @@ export class ControlApp {
           if (motivo) throw new Error(`Bloqueado: ${motivo}. Si de verdad hace falta, que lo ejecute la persona.`)
         }
         d.terminales.escribir(id, texto.replace(/\r?\n/g, '\r') + (e.enter === false ? '' : '\r'))
-        return 'Escrito. Usa terminal_leer para ver la salida.'
+        return 'Escrito. Usa terminal_esperar para esperar a que termine y ver la salida (o terminal_leer para mirar sin esperar).'
       }
       case 'terminal_leer': {
         const id = this.terminal(e)
         const espera = Math.min(Math.max(Math.trunc(Number(e.esperar_ms)) || 0, 0), 30_000)
         if (espera) await (d.esperar ?? ((ms) => new Promise((r) => setTimeout(r, ms))))(espera)
         return textoTerminal(d.terminales.historial(id), acotar(e.lineas, 80, 1000)) || '(sin salida todavía)'
+      }
+      case 'terminal_esperar': {
+        const id = this.terminal(e)
+        const dormir = d.esperar ?? ((ms: number) => new Promise<void>((res) => setTimeout(res, ms)))
+        const PASO = 250
+        const pasos = Math.ceil((acotar(e.max_s, 60, 300) * 1000) / PASO)
+        const buscado = typeof e.texto === 'string' && e.texto.trim() ? e.texto.trim().toLowerCase() : undefined
+        const inicial = d.terminales.historial(id)
+        // Salida producida desde que se llamó (el historial es una ventana que se desplaza: si ya no encaja, vale todo lo que hay).
+        const nuevo = (h: string): string => (h.length >= inicial.length && h.startsWith(inicial) ? h.slice(inicial.length) : h)
+        let motivo = 'tiempo'
+        let previo = inicial
+        let quieta = 0
+        for (let i = 0; i < pasos; i++) {
+          await dormir(PASO)
+          if (!d.terminales.vivas().includes(id)) {
+            motivo = 'cerrada'
+            break
+          }
+          const h = d.terminales.historial(id)
+          if (buscado) {
+            if (textoTerminal(nuevo(h), 1000).toLowerCase().includes(buscado)) {
+              motivo = 'texto'
+              break
+            }
+          } else {
+            // Terminó = de vuelta en el shell y sin salida nueva durante dos sondeos seguidos (un comando recién escrito tarda en arrancar).
+            quieta = d.terminales.enShell(id) && h === previo ? quieta + 1 : 0
+            if (quieta >= 2) {
+              motivo = 'shell'
+              break
+            }
+          }
+          previo = h
+        }
+        if (motivo === 'cerrada') return { estado: 'la terminal se cerró', salida: textoTerminal(previo, acotar(e.lineas, 60, 1000)) }
+        const estado =
+          motivo === 'shell'
+            ? 'terminó (la terminal está en el shell)'
+            : motivo === 'texto'
+              ? `apareció «${String(e.texto).trim()}»`
+              : `tiempo agotado: ${buscado ? 'el texto no apareció' : 'sigue ejecutándose'}. Vuelve a llamar a terminal_esperar para seguir esperando, o terminal_escribir con tecla ctrl+c para pararlo.`
+        return { estado, salida: textoTerminal(d.terminales.historial(id), acotar(e.lineas, 60, 1000)) || '(sin salida)' }
       }
       case 'terminal_cerrar': {
         const id = this.terminal(e)

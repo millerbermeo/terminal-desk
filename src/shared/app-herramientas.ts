@@ -50,7 +50,7 @@ export const HERRAMIENTAS_APP: readonly DefHerramientaTareas[] = [
   {
     nombre: 'terminal_abrir',
     descripcion:
-      'Abre una terminal NUEVA en la celda del proyecto (visible para el usuario). Con claude: true arranca Claude Code con los agentes y skills del proyecto. Devuelve su id; para ejecutar algo usa terminal_escribir y para ver la salida terminal_leer.',
+      'Abre una terminal NUEVA en la celda del proyecto (visible para el usuario). Con claude: true arranca Claude Code con los agentes y skills del proyecto. Devuelve su id; para ejecutar algo usa terminal_escribir y para ver el resultado terminal_esperar (espera a que termine) o terminal_leer.',
     esquema: { type: 'object', properties: { proyecto_id: PROYECTO, claude: b('Arrancar Claude Code en ella'), titulo: t('Título de la pestaña (opcional)') } },
     riesgo: 'escritura'
   },
@@ -74,6 +74,22 @@ export const HERRAMIENTAS_APP: readonly DefHerramientaTareas[] = [
     nombre: 'terminal_leer',
     descripcion: 'Lee lo último que muestra una terminal de Odesk (texto plano, sin colores). Úsalo tras terminal_escribir para ver el resultado; espera unos segundos si el comando tarda.',
     esquema: { type: 'object', properties: { terminal: TERMINAL, lineas: n('Cuántas líneas del final (por defecto 80, máx. 1000)'), esperar_ms: n('Esperar antes de leer, en ms (máx. 30000)') }, required: ['terminal'] },
+    riesgo: 'lectura'
+  },
+  {
+    nombre: 'terminal_esperar',
+    descripcion:
+      'Espera a que termine lo que corre en una terminal de Odesk y devuelve su salida, sin tener que sondear con terminal_leer. Por defecto espera a que la terminal vuelva al shell (el comando terminó). Con texto, espera a que aparezca ese texto en la salida nueva (p. ej. «ready», «listening», «error»): útil para servidores y procesos que no terminan. Si se agota el tiempo devuelve lo que haya y lo dice: el proceso sigue corriendo.',
+    esquema: {
+      type: 'object',
+      properties: {
+        terminal: TERMINAL,
+        texto: t('Esperar a que la salida nueva contenga este texto (sin distinguir mayúsculas) en vez de a que termine'),
+        max_s: n('Tiempo máximo de espera en segundos (por defecto 60, máx. 300)'),
+        lineas: n('Cuántas líneas del final devolver (por defecto 60, máx. 1000)')
+      },
+      required: ['terminal']
+    },
     riesgo: 'lectura'
   },
   {
@@ -222,4 +238,4 @@ export function confirmacionApp(nombre: string, e: Record<string, unknown>): str
 }
 
 /** Herramientas que pueden quedarse esperando a la persona: el cliente MCP les da más tiempo. */
-export const PUEDEN_CONFIRMAR = new Set(['proyecto_quitar', 'terminal_cerrar', 'servicios_detener', 'servicios_reiniciar', 'historial_restaurar', 'ajustes_fijar', 'servicios_arrancar', 'proyecto_clonar'])
+export const PUEDEN_CONFIRMAR = new Set(['proyecto_quitar', 'terminal_cerrar', 'servicios_detener', 'servicios_reiniciar', 'historial_restaurar', 'ajustes_fijar', 'servicios_arrancar', 'proyecto_clonar', 'terminal_esperar'])

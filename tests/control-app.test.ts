@@ -71,6 +71,49 @@ describe('herramientas de la app por MCP', () => {
     expect((await c.ejecutar('terminal_escribir', { terminal: 'otra', texto: 'ls' }, {})).error).toBe(true)
   })
 
+  it('terminal_esperar vuelve cuando el comando termina, cuando aparece el texto o al agotarse el tiempo', async () => {
+    let salida = '$ pnpm test\r\n'
+    let vueltas = 0
+    const f = falso({
+      esperar: async () => {
+        vueltas++
+        if (vueltas === 3) salida += 'corriendo…\r\n'
+        if (vueltas === 5) {
+          salida += 'Tests 4 passed\r\n$ '
+          f.fijarShell(true)
+        }
+      }
+    })
+    f.d.terminales.historial = () => salida
+    f.fijarShell(false)
+    const c = new ControlApp(f.d)
+    const fin = await c.ejecutar('terminal_esperar', { terminal: 'pty1' }, {})
+    expect(fin.texto).toMatch(/terminó/)
+    expect(fin.texto).toContain('Tests 4 passed')
+    expect(vueltas).toBe(7) // en el shell y sin salida nueva dos sondeos seguidos
+
+    // Un servidor no termina: se espera a un texto de la salida NUEVA (lo que ya estaba no cuenta).
+    f.fijarShell(false)
+    salida = 'ready de antes\r\n'
+    vueltas = 0
+    f.d.esperar = async () => {
+      vueltas++
+      if (vueltas === 2) salida += 'Local: http://localhost:5173 READY\r\n'
+    }
+    const listo = await c.ejecutar('terminal_esperar', { terminal: 'pty1', texto: 'ready' }, {})
+    expect(listo.texto).toMatch(/apareció «ready»/)
+    expect(vueltas).toBe(2)
+
+    vueltas = 0
+    f.d.esperar = async () => void vueltas++
+    const agotado = await c.ejecutar('terminal_esperar', { terminal: 'pty1', max_s: 1 }, {})
+    expect(agotado.texto).toMatch(/tiempo agotado/)
+    expect(agotado.error).toBeUndefined()
+    expect(vueltas).toBe(4)
+    expect((await c.ejecutar('terminal_esperar', { terminal: 'otra' }, {})).error).toBe(true)
+    expect(confirmacionApp('terminal_esperar', {})).toBeUndefined()
+  })
+
   it('terminal_abrir crea el pty y lo muestra en la celda del proyecto de la conversación', async () => {
     const f = falso()
     const r = await new ControlApp(f.d).ejecutar('terminal_abrir', { claude: true }, { proyectoId: 'p1' })
