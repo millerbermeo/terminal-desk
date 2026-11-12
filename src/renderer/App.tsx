@@ -21,6 +21,7 @@ import { ConfigProyectos } from './components/ConfigProyectos'
 import { ModalAgregar } from './components/ModalAgregar'
 import { ModalClonarPendientes } from './components/ModalClonarPendientes'
 import { ModalConfirmar } from './components/ModalConfirmar'
+import { ModalMultiproyecto } from './components/ModalMultiproyecto'
 import { TerminalGrid, type Modo } from './components/TerminalGrid'
 import { transferidas } from './components/TerminalPanel'
 import { encolarExterno } from './agente/externos'
@@ -94,6 +95,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   const [pendientes, setPendientes] = useState<PendienteClonar[]>([])
   const [clonarPend, setClonarPend] = useState<{ inicial?: string } | null>(null)
   const [avisosEquipos, setAvisosEquipos] = useState<AvisoEquipo[]>([])
+  const [modalMulti, setModalMulti] = useState(false)
   const [modalAgregar, setModalAgregar] = useState<{ rutas: string[] } | null>(null)
   const [arranqueDe, setArranqueDe] = useState<Proyecto | null>(null)
   const [estadosArranque, setEstadosArranque] = useState<Record<string, EstadoArranque>>({})
@@ -353,6 +355,16 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     agregar(destino?.id ?? LIBRE, destino?.nombre ?? 'Terminales', [nuevaTerminal('Terminal')])
   }, [agregar, ventanas, ventanaActiva])
 
+  // Pestaña propia con una terminal por proyecto elegido (de cualquier grupo).
+  const abrirMulti = useCallback(
+    (nombre: string, proyectos: Proyecto[]) => {
+      const id = `m${++contador}`
+      agregar(id, nombre, proyectos.map((p) => nuevaTerminal(p.nombre, p.ruta, undefined, p.id)))
+      proyectos.forEach((p) => autoarrancar(p.id))
+    },
+    [agregar, autoarrancar]
+  )
+
   const nuevaPestana = useCallback(() => {
     const id = `v${++contador}`
     agregar(id, 'Terminales', [nuevaTerminal('Terminal')])
@@ -531,6 +543,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
         abiertos={abiertos}
         terminalesPorProyecto={terminalesPorProyecto}
         onNueva={abrirLibre}
+        onMulti={() => setModalMulti(true)}
         onAbrirCarpeta={() => void abrirCarpeta()}
         onAgregarRuta={() => setModalAgregar({ rutas: [] })}
         proveedores={proveedores}
@@ -559,6 +572,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
           }}
         />
       )}
+      {modalMulti && <ModalMultiproyecto datos={datos} onCerrar={() => setModalMulti(false)} onAbrir={abrirMulti} />}
       {modalAgregar && (
         <ModalAgregar
           datos={datos}

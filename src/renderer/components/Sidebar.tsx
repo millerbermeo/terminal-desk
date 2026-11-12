@@ -12,6 +12,7 @@ interface Props {
   abiertos: Set<string> // claves de grupo con pestaña abierta
   terminalesPorProyecto: Record<string, number> // terminales abiertas de cada proyecto
   onNueva: () => void
+  onMulti: () => void
   /** Diálogo nativo para elegir carpetas y agregarlas como proyectos. */
   onAbrirCarpeta: () => void
   /** Formulario para escribir o pegar una ruta. */
@@ -110,7 +111,7 @@ interface MenuIA {
   left: number
 }
 
-export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, onAbrirCarpeta, onAgregarRuta, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente, onAbrirAsistente, onArranque, enMarcha, serviciosActivos, email, onCuenta, pendientes, avisosPorProyecto, onClonarPendientes }: Props) {
+export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, onMulti, onAbrirCarpeta, onAgregarRuta, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente, onAbrirAsistente, onArranque, enMarcha, serviciosActivos, email, onCuenta, pendientes, avisosPorProyecto, onClonarPendientes }: Props) {
   const [cerrados, setCerrados] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<MenuIA | null>(null)
   const [compacta, forzada, alternarCompacta] = useBarraCompacta()
@@ -242,6 +243,9 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
       <div className="acciones">
         <button className="btn-nueva" onClick={onNueva} title="Nueva terminal" aria-label="Nueva terminal">
           <IconoMas /> <span className="txt">Nueva terminal</span>
+        </button>
+        <button onClick={onMulti} title="Abrir una pestaña con terminales de 2 o más proyectos" aria-label="Terminal multiproyecto">
+          <IconoAbrirTodas /> <span className="txt">Multiproyecto</span>
         </button>
         <div className="acciones-proyecto">
           <button onClick={onAbrirCarpeta} title="Elegir una carpeta con el explorador de archivos y agregarla como proyecto">
