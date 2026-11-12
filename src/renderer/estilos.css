@@ -412,6 +412,15 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
 .ag-quien { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--texto-tenue); margin-bottom: 4px; display: flex; gap: 6px; align-items: center; }
 .ag-texto { white-space: pre-wrap; word-break: break-word; }
 .ag-herramienta { background: var(--bg-sutil); border: 1px solid var(--borde); border-radius: var(--radio); padding: 6px 12px; max-width: 880px; font-size: 12px; }
+.ag-plan { background: var(--bg-sutil); border: 1px solid var(--borde); border-radius: var(--radio); padding: 8px 12px; max-width: 880px; font-size: 12.5px; }
+.ag-plan-cab { display: flex; align-items: center; gap: 8px; }
+.ag-plan-cab progress { flex: 1; height: 4px; min-width: 60px; accent-color: var(--acento); }
+.ag-plan ol { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+.ag-plan li { display: flex; gap: 8px; align-items: baseline; }
+.ag-plan li.completed { opacity: 0.55; text-decoration: line-through; }
+.ag-plan li.in_progress { font-weight: 600; }
+.ag-plan li.in_progress .ag-plan-marca { color: var(--acento); }
+.ag-plan-marca { flex: none; width: 1em; text-align: center; text-decoration: none; }
 .ag-herramienta summary { cursor: pointer; display: flex; gap: 8px; align-items: center; list-style: none; min-width: 0; }
 .ag-herramienta summary code { color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .ag-herramienta.error { border-color: rgba(248, 113, 113, 0.4); }

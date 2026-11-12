@@ -4,6 +4,9 @@ import type { ResultadoHerramienta } from '@shared/core/herramientas'
 import { esArchivoSensible } from '@shared/github'
 import { HERRAMIENTAS_APP, confirmacionApp } from '@shared/app-herramientas'
 import { HERRAMIENTAS_CREDENCIALES } from '@shared/credenciales-herramientas'
+import { HERRAMIENTAS_MEMORIA } from '@shared/memoria-herramientas'
+import type { TipoMemoria } from '@shared/core/memoria'
+import type { MemoriaLargoPlazo } from './memory/largo-plazo'
 import { HERRAMIENTAS_GIT } from '@shared/git-herramientas'
 import { HERRAMIENTAS_GITHUB } from '@shared/github-herramientas'
 import { HERRAMIENTAS_ODESK } from '@shared/herramientas-odesk'
@@ -32,6 +35,8 @@ export interface ServiciosOdesk {
   credenciales?: ProveedorCredenciales
   /** Credenciales de prueba locales del proyecto (y su grupo). */
   credencialesPrueba?: (proyectoId: string) => Promise<CredencialEfectiva[]>
+  /** Memoria de largo plazo (herramientas `memoria_*`). */
+  memoria?: MemoriaLargoPlazo
   /** Navegador integrado (solo con la app abierta; en tests o sin ventanas no existe). */
   navegador?: () => ControlNavegador | undefined
   /** Dispositivos Android por USB (adb), herramientas `movil_*`. */
@@ -182,6 +187,26 @@ async function ejecutarCredenciales(s: ServiciosOdesk, nombre: string, entrada: 
   return { texto: aTexto({ nombre: c.nombre, ...(c.notas ? { notas: c.notas } : {}), campos: Object.fromEntries(c.campos.map((f) => [f.clave, f.valor])) }) }
 }
 
+async function ejecutarMemoria(s: ServiciosOdesk, nombre: string, entrada: unknown, ctx: ContextoOdesk): Promise<ResultadoHerramienta> {
+  const def = HERRAMIENTAS_MEMORIA.find((h) => h.nombre === nombre)!
+  const motivo = validarEntrada(def.esquema, entrada ?? {})
+  if (motivo) return { texto: `Entrada inválida para ${nombre}: ${motivo}`, error: true }
+  if (!s.memoria) return { texto: 'La memoria no está disponible.', error: true }
+  const e = (entrada ?? {}) as Entrada
+  const proyectoId = (typeof e.proyecto_id === 'string' && e.proyecto_id ? e.proyecto_id : ctx.proyectoId) || undefined
+  try {
+    if (nombre === 'memoria_buscar') {
+      const r = await s.memoria.buscar(String(e.consulta), proyectoId, 6, e.tipo as TipoMemoria | undefined)
+      return { texto: r.length ? aTexto(r.map(({ entrada: m }) => `[${m.tipo}] ${m.titulo}\n${m.contenido}`).join('\n\n')) : 'Sin resultados en la memoria.' }
+    }
+    const global = e.ambito === 'global' || !proyectoId
+    await s.memoria.guardar({ tipo: e.tipo as TipoMemoria, titulo: String(e.titulo), contenido: String(e.contenido), etiquetas: lista(e.etiquetas) }, global ? undefined : proyectoId)
+    return { texto: `Guardado en la memoria ${global ? 'global' : 'del proyecto'}.` }
+  } catch (err) {
+    return { texto: (err as Error).message, error: true }
+  }
+}
+
 /** Los modelos a veces mandan los números como texto («2»): se aceptan antes de validar. */
 function conNumeros(entrada: unknown, esquema: (typeof HERRAMIENTAS_ODESK)[number]['esquema']): unknown {
   if (!entrada || typeof entrada !== 'object' || Array.isArray(entrada)) return entrada
@@ -247,6 +272,7 @@ export function crearEjecutorOdesk(s: ServiciosOdesk): EjecutorOdesk {
     if (HERRAMIENTAS_APP.some((h) => h.nombre === nombre)) return ejecutarApp(s, nombre, entrada, ctx)
     if (HERRAMIENTAS_TAREAS.some((h) => h.nombre === nombre)) return ejecutarHerramientaTareas(s.tareas, nombre, entrada, ctx)
     if (HERRAMIENTAS_CREDENCIALES.some((h) => h.nombre === nombre)) return ejecutarCredenciales(s, nombre, entrada, ctx)
+    if (HERRAMIENTAS_MEMORIA.some((h) => h.nombre === nombre)) return ejecutarMemoria(s, nombre, entrada, ctx)
     const def = [...HERRAMIENTAS_GIT, ...HERRAMIENTAS_GITHUB].find((h) => h.nombre === nombre)
     if (!def) return { texto: `Herramienta desconocida: ${nombre}`, error: true }
     const motivo = validarEntrada(def.esquema, entrada ?? {})
@@ -265,7 +291,8 @@ export function crearEjecutorOdesk(s: ServiciosOdesk): EjecutorOdesk {
 
 /** Las herramientas de la aplicación para el registro del núcleo (modo API); el riesgo de cada una decide si pide confirmación. */
 export function herramientasOdesk(ejecutor: EjecutorOdesk): Herramienta[] {
-  return HERRAMIENTAS_ODESK.map((def) => ({
+  // La memoria ya está en el registro del núcleo (`herramientasMemoria`): aquí no se repite.
+  return HERRAMIENTAS_ODESK.filter((def) => !HERRAMIENTAS_MEMORIA.includes(def)).map((def) => ({
     nombre: def.nombre,
     descripcion: def.descripcion,
     esquema: def.esquema,

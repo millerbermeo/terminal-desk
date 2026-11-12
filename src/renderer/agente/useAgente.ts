@@ -116,6 +116,7 @@ export function useAgente(opciones: { clave?: string } = {}) {
   const contador = useRef(0)
   const salidasPendientes = useRef<string[]>([]) // salidas de comandos `/`: el agente las ve en el siguiente mensaje
 
+  const pintado = useRef<ReturnType<typeof setTimeout> | undefined>(undefined) // repintado pendiente del texto en streaming
   const actualizar = useCallback((f: (ts: Turno[]) => Turno[]): void => {
     ref.current = f(ref.current)
     setTurnos(ref.current)
@@ -129,10 +130,20 @@ export function useAgente(opciones: { clave?: string } = {}) {
         return
       }
       if (e.tipo === 'comando_salida') salidasPendientes.current.push(`[Salida del comando /${e.nombre} (${e.ok ? 'correcto' : 'falló'}): ${e.linea}]\n${e.salida.slice(0, 4000)}`)
+      if (e.tipo === 'texto_delta') {
+        // El texto llega en decenas de trozos por segundo: se acumula ya en `ref` y se pinta como mucho cada 50 ms.
+        ref.current = ref.current.map((t, j) => (j === i ? aplicar(t, e) : t))
+        pintado.current ??= setTimeout(() => {
+          pintado.current = undefined
+          setTurnos(ref.current)
+        }, 50)
+        return
+      }
       actualizar((ts) => ts.map((t, j) => (j === i ? aplicar(t, e) : t)))
     },
     [actualizar]
   )
+  useEffect(() => () => clearTimeout(pintado.current), [])
 
   useEffect(() => window.api.core.onEvento(procesar), [procesar])
 

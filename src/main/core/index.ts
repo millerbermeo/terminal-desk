@@ -75,7 +75,7 @@ import { ejecutarOperacionTareas } from './tareas/operaciones'
 import { archivoMcpTareas, servidoresExternos } from './tareas/mcp-config'
 import { cerrarSesion, consultarCli, ejecutarSuscripcion, ESFUERZOS, estadoCuenta, estadoSesion, iniciarSesion, listarModelosCli, Preferencias, rebobinarArchivos, SesionesCli, type ControlProceso, type ResultadoRebobinado, type SalidaEjecucion } from './suscripcion'
 import { ejecutarEnProceso, ProcesosCli } from './proceso-cli'
-import { AVISO_SUBAGENTES, guiaNavegador, guiaRecursos } from './avisos'
+import { AVISO_SUBAGENTES, GUIA_TRABAJO, guiaNavegador, guiaRecursos } from './avisos'
 import { registrarIntegradas } from './tools/integradas'
 import { RegistroHerramientas } from './tools/registro'
 
@@ -225,6 +225,7 @@ export class Nucleo {
       carpetaDe: carpetaDeProyecto,
       credenciales: this.github.credencialesPara,
       credencialesPrueba: credencialesDe,
+      memoria: this.memoria,
       navegador: () => this.navegadorIA,
       movil: () => this.movilIA,
       app: () => this.appIA,
@@ -417,7 +418,7 @@ export class Nucleo {
       ? `Hay ${pruebas.length} credencial(es) de PRUEBA guardadas en este equipo para este proyecto (${pruebas.map((c) => c.nombre).join(', ')}). Cuando necesites un usuario, clave o URL para probar, consúltalas con credenciales_listar / credenciales_obtener en vez de pedírselas al usuario; no las escribas en archivos versionados ni en commits.`
       : ''
     return {
-      estable: [git.guia, credsCtx, AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim(),
+      estable: [GUIA_TRABAJO, git.guia, credsCtx, AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim(),
       dinamico: [memoria, tareas, git.estado, conAdjuntos ? AVISO_ADJUNTOS : ''].filter(Boolean).join('\n\n').trim()
     }
   }

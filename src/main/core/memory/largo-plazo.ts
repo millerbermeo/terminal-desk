@@ -43,8 +43,12 @@ export class MemoriaLargoPlazo {
       etiquetas: (nueva.etiquetas ?? []).map((e) => e.trim()).filter(Boolean).slice(0, 10),
       creada: new Date().toISOString()
     }
+    const clave = (t: string): string => t.trim().toLowerCase().replace(/\s+/g, ' ')
     const doc = await this.almacen.actualizar(validarId(proyectoId), (actual) => {
       const entradas = actual?.entradas ?? []
+      // Mismo tipo y título = la misma nota: se actualiza en su sitio (conserva el id) en vez de acumular duplicados.
+      const repetida = entradas.find((e) => e.tipo === entrada.tipo && clave(e.titulo) === clave(titulo))
+      if (repetida) return { entradas: entradas.map((e) => (e === repetida ? { ...entrada, id: repetida.id } : e)) }
       if (entradas.length >= MAX_ENTRADAS) throw new Error('Memoria llena: elimina entradas antiguas')
       return { entradas: [...entradas, entrada] }
     })
