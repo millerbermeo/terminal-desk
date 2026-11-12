@@ -1,0 +1,116 @@
+/* ===== Sistema de diseño: primitivas (va después de las capas históricas) =====
+   Reglas comunes a toda la app: tipografía, controles, superficies, estados y accesibilidad.
+   Lo específico de cada zona vive en su archivo (barra-lateral.css, modulos.css).
+   Solo se usan variables de tokens.css: nada de colores ni medidas sueltas. */
+
+/* ---------- base ---------- */
+body {
+  font-family: var(--fuente);
+  font-size: var(--t-cuerpo);
+  font-feature-settings: 'cv11', 'ss01', 'calt';
+  font-optical-sizing: auto;
+  background:
+    radial-gradient(900px 520px at 0% 0%, var(--glow-acento), transparent 60%),
+    radial-gradient(800px 480px at 100% 100%, var(--glow-violeta), transparent 60%),
+    var(--bg);
+}
+code, kbd, pre, samp { font-family: var(--fuente-mono); }
+/* cifras que cambian (contadores, tiempos, tokens): ancho fijo para que no bailen */
+.contador, .insignia, .chip, .ag-uso-chip, .ag-estado-barra, time { font-variant-numeric: tabular-nums; }
+::selection { background: rgba(129, 140, 248, 0.32); }
+
+/* ---------- botones: una altura, tres pesos (primario, normal, fantasma) ---------- */
+button { border-radius: var(--radio); white-space: nowrap; }
+button.icono, button.cerrar { border-radius: var(--radio-sm); }
+button.primario, .btn-nueva, .ag-cuenta-btn.primario { background: var(--degradado-primario); font-weight: 600; letter-spacing: -0.003em; }
+/* deshabilitado: plano y apagado; nunca un morado turbio que parezca pulsable */
+button:disabled { opacity: 1; color: var(--texto-tenue); cursor: not-allowed; }
+button.primario:disabled, .btn-nueva:disabled, .ag-cuenta-btn.primario:disabled {
+  background: var(--bg-sutil); border-color: var(--borde); color: var(--texto-tenue); box-shadow: none; filter: none;
+}
+button.icono:disabled, button.cerrar:disabled { opacity: 0.4; }
+
+/* ---------- campos ---------- */
+/* misma altura que los botones; :where() no suma especificidad, así cualquier campo especial puede fijar la suya */
+:where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']), select) { height: var(--alto-control); }
+input, select { padding-block: 0; }
+input, select, textarea { background-color: var(--bg-hundido); border-color: var(--borde); }
+input:hover, select:hover, textarea:hover { border-color: var(--borde-fuerte); }
+input:focus, textarea:focus, select:focus { border-color: var(--acento); box-shadow: var(--anillo); background-color: rgba(0, 0, 0, 0.36); }
+input[aria-invalid='true'], textarea[aria-invalid='true'] { border-color: var(--error); }
+input[aria-invalid='true']:focus, textarea[aria-invalid='true']:focus { box-shadow: var(--anillo-error); }
+
+/* ---------- foco de teclado: siempre visible, mismo anillo en todo ---------- */
+:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, summary:focus-visible, [role='button']:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--acento); outline-offset: 2px; border-radius: var(--radio-sm);
+}
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; }
+
+/* ---------- títulos ---------- */
+.cfg-cab h2, .config h2 {
+  font-size: var(--t-pagina); font-weight: 650; letter-spacing: var(--tr-pagina); line-height: 1.15;
+  background: none; -webkit-background-clip: border-box; background-clip: border-box; color: var(--texto);
+}
+.cfg-cab h2 span, .config h2 span { color: inherit; background: none; -webkit-text-fill-color: currentColor; }
+.modal h3 { font-size: var(--t-titulo); letter-spacing: var(--tr-titulo); }
+
+/* ---------- pantallas de ajustes: columna de lectura centrada ---------- */
+.config { padding: var(--e6) var(--e6) var(--e7); scrollbar-gutter: stable; }
+.config > :not(.modal-fondo):not(.act-columnas) { max-width: var(--ancho-lectura); margin-inline: auto; }
+.cfg-cab { margin-bottom: var(--e5); gap: var(--e4); }
+.cfg-grupo { background: var(--bg-sutil); border-color: var(--borde); }
+
+/* ---------- chips e insignias ---------- */
+.chip { font-size: 11px; padding: 2px 8px; border-color: var(--borde); }
+.chip-ok { background: var(--ok-suave); border-color: transparent; }
+.chip-aviso { background: var(--aviso-suave); border-color: transparent; }
+
+/* ---------- estado vacío ---------- */
+.estado-vacio h3 { font-size: 15px; font-weight: 620; letter-spacing: -0.015em; }
+.estado-vacio p { color: var(--texto-suave); max-width: 46ch; }
+.estado-vacio-icono { box-shadow: var(--sombra-1), var(--canto-luz); }
+
+/* ---------- carga: indicador giratorio y esqueletos (components/Cargando.tsx) ---------- */
+.cargando { display: flex; align-items: center; justify-content: center; gap: var(--e2); padding: var(--e5); color: var(--texto-suave); font-size: var(--t-cuerpo); animation: aparecer 300ms 120ms ease-out both; }
+.cargando.en-linea { display: inline-flex; padding: 0; }
+.cargando.pantalla { height: 100%; flex-direction: column; gap: var(--e3); }
+.giro { flex: none; width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--borde-fuerte); border-top-color: var(--acento); animation: girar 700ms linear infinite; }
+.cargando.pantalla .giro { width: 22px; height: 22px; }
+.esqueletos { display: flex; flex-direction: column; gap: var(--e2); padding: var(--e3) var(--e4); animation: aparecer 300ms 120ms ease-out both; }
+.esqueleto {
+  height: 14px; border-radius: var(--radio-sm);
+  background: linear-gradient(90deg, var(--bg-sutil) 20%, var(--bg-hover) 50%, var(--bg-sutil) 80%) 0 0 / 300% 100%;
+  animation: brillo-esqueleto 1.6s ease-in-out infinite;
+}
+.esqueleto.fila { height: var(--alto-fila); border-radius: var(--radio); }
+.esqueleto.tarjeta { height: 76px; border-radius: var(--radio-lg); }
+.esqueleto:nth-child(3n + 2) { width: 82%; }
+.esqueleto:nth-child(3n) { width: 64%; }
+.esqueleto.fila, .esqueleto.tarjeta { width: 100%; }
+@keyframes girar { to { transform: rotate(360deg); } }
+@keyframes brillo-esqueleto { from { background-position: 100% 0; } to { background-position: 0 0; } }
+.cargando-app { height: 100%; display: grid; place-items: center; color: var(--texto-suave); }
+
+/* ---------- mensajes en línea: error, aviso, correcto ---------- */
+.error, .aviso-linea, .ok-linea { font-size: var(--t-nota); line-height: 1.45; }
+.limite-errores { border-radius: var(--radio-lg); }
+
+/* ---------- modales ---------- */
+.modal { background: var(--bg-popover); gap: var(--e4); }
+.modal label { font-size: 12px; }
+.cfg-acciones { gap: var(--e2); }
+
+/* ---------- accesibilidad ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .giro { animation-duration: 1.4s; }
+  .esqueleto { animation: none; background: var(--bg-hover); }
+  .cargando, .esqueletos { animation: none; }
+}
+@media (prefers-contrast: more) {
+  :root { --borde-tenue: rgba(255, 255, 255, 0.16); }
+  button:disabled { color: var(--texto-suave); }
+}
+@media (forced-colors: active) {
+  :focus-visible { outline: 2px solid Highlight; }
+}

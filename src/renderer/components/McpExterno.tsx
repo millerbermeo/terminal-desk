@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ClienteMcpExterno, EstadoMcpExterno } from '@shared/control-app'
+import { Esqueletos } from './Cargando'
 
 /**
  * Instala el servidor MCP «odesk» en asistentes externos (Claude Code fuera de Odesk, Claude Desktop, Cursor, VS Code): desde ellos se
@@ -41,7 +42,7 @@ export function McpExterno() {
         integrado e historial. Lo que cierra, para, quita o restaura se pregunta aquí antes de hacerse. Reinicia el cliente tras instalarlo.
       </p>
       <section className="cfg-grupo">
-        {!estado && !error && <div className="cfg-proyecto">Cargando…</div>}
+        {!estado && !error && <Esqueletos cuantos={4} />}
         {estado?.clientes.map((c) => (
           <div className="cfg-proyecto" key={c.id}>
             <strong>{c.nombre}</strong>

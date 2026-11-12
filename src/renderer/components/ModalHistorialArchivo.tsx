@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { HistorialArchivo } from './HistorialArchivo'
+import { IconoCerrar } from './Iconos'
 
 interface Props {
   proyectoId: string
@@ -26,7 +27,7 @@ export function ModalHistorialArchivo({ proyectoId, ruta, onCerrar, onCambio }: 
             Historial · <span className="mono">{ruta}</span>
           </h3>
           <button className="icono" onClick={onCerrar} aria-label="Cerrar">
-            ✕
+            <IconoCerrar />
           </button>
         </div>
         <HistorialArchivo proyectoId={proyectoId} ruta={ruta} onCambio={onCambio} />

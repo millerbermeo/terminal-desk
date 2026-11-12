@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { CATEGORIAS, MAX_ESTADOS, NOMBRE_CATEGORIA, validarEstados, type CategoriaEstado, type EstadoTarea, type Tarea } from '@shared/tareas'
+import { IconoCerrar } from './Iconos'
 
 interface Props {
   estados: EstadoTarea[]
@@ -47,7 +48,7 @@ export function TareasEstados({ estados, tareas, onCerrar, intentar }: Props) {
         <div className="modal-cab">
           <h3>Estados del flujo de trabajo</h3>
           <button className="icono" onClick={onCerrar} aria-label="Cerrar">
-            ✕
+            <IconoCerrar />
           </button>
         </div>
         <p className="modal-texto">

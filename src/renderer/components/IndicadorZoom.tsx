@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EstadoZoom } from '@shared/zoom'
+import { IconoBuscar } from './Iconos'
 
 const VISIBLE_MS = 2200
 
@@ -24,7 +25,7 @@ export function IndicadorZoom() {
   return (
     // `zoom` en CSS compensa el de la ventana: el indicador mantiene siempre el mismo tamaño en pantalla.
     <div className="zoom-indicador" role="status" aria-live="polite" style={{ zoom: 100 / zoom.porcentaje }}>
-      <span className="zoom-lupa" aria-hidden="true">🔍</span>
+      <span className="zoom-lupa" aria-hidden="true"><IconoBuscar /></span>
       <strong>{zoom.porcentaje}%</strong>
       {zoom.porcentaje === 100 && <small>tamaño original</small>}
     </div>

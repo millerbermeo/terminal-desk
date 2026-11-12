@@ -9,6 +9,7 @@ import { ConectarGitHub } from './ConectarGitHub'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoCarpeta, IconoGitHub, IconoReiniciar } from './Iconos'
 import { ModalClonar } from './ModalClonar'
+import { Cargando, Esqueletos } from './Cargando'
 
 const gh = window.api.github.operar
 const abrir = (url: string): void => void window.api.navegador.externo(url).catch(() => undefined)
@@ -225,7 +226,7 @@ export function GitHubCuenta({ datos, onDatos }: Props) {
     })
   }, [repos, texto, tipo, aqui])
 
-  if (!estado) return <div className="config gc">{fallo ? <p className="vc-nota error">{fallo}</p> : <p className="tareas-vacio">Cargando…</p>}</div>
+  if (!estado) return <div className="config gc">{fallo ? <p className="vc-nota error">{fallo}</p> : <Cargando variante="pantalla" />}</div>
 
   if (!estado.conectado) {
     return (
@@ -285,7 +286,7 @@ export function GitHubCuenta({ datos, onDatos }: Props) {
           {errores.cuenta ? (
             <p className="vc-nota error">{errores.cuenta}</p>
           ) : !p ? (
-            <p className="tareas-vacio">Cargando…</p>
+            <Esqueletos cuantos={4} />
           ) : (
             <>
               {p.bio && <p className="gc-bio">{p.bio}</p>}
@@ -317,7 +318,7 @@ export function GitHubCuenta({ datos, onDatos }: Props) {
           }
         >
           {!c ? (
-            <p className="tareas-vacio">Cargando…</p>
+            <Esqueletos cuantos={4} />
           ) : (
             <>
               <dl className="gc-datos">
@@ -433,7 +434,7 @@ export function GitHubCuenta({ datos, onDatos }: Props) {
           {errores.orgs ? (
             <p className="vc-nota error">{errores.orgs}</p>
           ) : !orgs ? (
-            <p className="tareas-vacio">Cargando…</p>
+            <Esqueletos cuantos={4} />
           ) : orgs.length === 0 ? (
             <p className="vc-nota gc-vacio">No perteneces a ninguna organización (o el token no tiene el permiso para verlas).</p>
           ) : (
@@ -467,7 +468,7 @@ export function GitHubCuenta({ datos, onDatos }: Props) {
             </div>
           }
         >
-          {errores.actividad ? <p className="vc-nota error">{errores.actividad}</p> : !actividad ? <p className="tareas-vacio">Cargando…</p> : <ListaActividad items={items} vacio={pestana === 'misPrs' ? 'No tienes pull requests abiertos.' : pestana === 'revisiones' ? 'Nadie te ha pedido revisión.' : 'No tienes incidencias asignadas.'} />}
+          {errores.actividad ? <p className="vc-nota error">{errores.actividad}</p> : !actividad ? <Esqueletos cuantos={4} /> : <ListaActividad items={items} vacio={pestana === 'misPrs' ? 'No tienes pull requests abiertos.' : pestana === 'revisiones' ? 'Nadie te ha pedido revisión.' : 'No tienes incidencias asignadas.'} />}
         </Tarjeta>
 
         <Tarjeta
@@ -494,7 +495,7 @@ export function GitHubCuenta({ datos, onDatos }: Props) {
           {errores.repos ? (
             <p className="vc-nota error">{errores.repos}</p>
           ) : !repos ? (
-            <p className="tareas-vacio">Cargando…</p>
+            <Esqueletos cuantos={4} />
           ) : visibles.length === 0 ? (
             <p className="vc-nota gc-vacio">{repos.length === 0 ? 'No hay repositorios en tu cuenta.' : 'Ningún repositorio coincide.'}</p>
           ) : (

@@ -5,7 +5,8 @@ import { filtroDeAmbito, useTareas, mensajeDe, type Ambito } from '../tareas/use
 import { TareaDetalle } from './TareaDetalle'
 import { TareasEstados } from './TareasEstados'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoActividad, IconoBuscar, IconoMas, IconoTareas } from './Iconos'
+import { IconoActividad, IconoBuscar, IconoMas, IconoTareas, IconoCerrar } from './Iconos'
+import { Esqueletos } from './Cargando'
 
 type Pestana = 'tablero' | 'lista' | 'resumen' | 'actividad'
 const PESTANAS: { id: Pestana; nombre: string }[] = [
@@ -136,13 +137,13 @@ export function Tareas({ datos, visible }: Props) {
         <div className="tareas-error" role="alert">
           {error}
           <button className="icono" onClick={() => setError('')} aria-label="Cerrar aviso">
-            ✕
+            <IconoCerrar />
           </button>
         </div>
       )}
       <div className="tareas-cuerpo">
         {!cargado ? (
-          <p className="tareas-vacio">Cargando…</p>
+          <Esqueletos forma="tarjetas" cuantos={4} />
         ) : tareas.length === 0 ? (
           <EstadoVacio
             icono={<IconoTareas />}
@@ -325,7 +326,7 @@ function Resumen({ ambito, onAbrir, tareas }: { ambito: Ambito; onAbrir: (id: st
     }
   }, [clave, tareas])
   if (fallo) return <p className="tareas-vacio">{fallo}</p>
-  if (!r) return <p className="tareas-vacio">Cargando…</p>
+  if (!r) return <Esqueletos cuantos={6} />
   const enlace = (x: { id: string; numero: number; titulo: string }, extra?: string): React.ReactNode => (
     <li key={x.id}>
       <button className="enlace" onClick={() => onAbrir(x.id)}>
@@ -387,7 +388,7 @@ function ActividadTareas({ ambito, onAbrir, tareas }: { ambito: Ambito; onAbrir:
       vigente = false
     }
   }, [proyectoId, tareas])
-  if (!filas) return <p className="tareas-vacio">Cargando…</p>
+  if (!filas) return <Esqueletos cuantos={6} />
   if (filas.length === 0) return <EstadoVacio icono={<IconoActividad />} titulo="Aún no hay actividad" texto="Aquí verás quién hizo cada cambio: tú o la IA." />
   return (
     <ul className="actividad">

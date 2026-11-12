@@ -6,6 +6,7 @@ import { mensajeDe } from '../tareas/useTareas'
 import { EstadoVacio } from './EstadoVacio'
 import { HistorialArchivo } from './HistorialArchivo'
 import { IconoArchivo, IconoReiniciar } from './Iconos'
+import { Esqueletos } from './Cargando'
 
 const api = window.api.historial.operar
 
@@ -96,7 +97,7 @@ export function HistorialLocal({ proyectoId, tick = 0, avisar }: { proyectoId: s
     }
   }
 
-  if (!estado) return error ? <p className="vc-nota error" style={{ padding: 24 }}>{error}</p> : <p className="tareas-vacio">Cargando…</p>
+  if (!estado) return error ? <p className="vc-nota error" style={{ padding: 24 }}>{error}</p> : <Esqueletos cuantos={6} />
   const v = VIGILANCIA[estado.vigilancia]
   const uso = Math.min(100, Math.round((estado.bytes / estado.limiteBytes) * 100))
 
@@ -152,7 +153,7 @@ export function HistorialLocal({ proyectoId, tick = 0, avisar }: { proyectoId: s
             </div>
           </div>
           {!archivos ? (
-            <p className="tareas-vacio">Cargando…</p>
+            <Esqueletos forma="lineas" cuantos={8} />
           ) : archivos.length === 0 ? (
             <EstadoVacio
               variante="compacto"

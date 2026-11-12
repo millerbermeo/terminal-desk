@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { EstadoBoveda, ResultadoBoveda } from '@shared/sesion'
+import { IconoCerrar } from './Iconos'
 
 interface Props {
   email?: string
@@ -46,7 +47,7 @@ export function Cuenta({ email, onCerrarSesion, onCerrarTodas, onCerrar }: Props
         <div className="modal-cab">
           <h3>Cuenta</h3>
           <button type="button" className="icono" onClick={onCerrar} aria-label="Cerrar" disabled={enviando}>
-            ✕
+            <IconoCerrar />
           </button>
         </div>
         <p className="modal-texto">{email ? <>Has entrado como <strong>{email}</strong>.</> : 'Sesión iniciada.'}</p>

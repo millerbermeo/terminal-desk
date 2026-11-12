@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { PendienteClonar } from '@shared/equipos'
 import { leerPreferencias } from '../github/preferencias'
 import { mensajeDe } from '../tareas/useTareas'
-import { IconoCarpeta } from './Iconos'
+import { IconoCarpeta, IconoCerrar } from './Iconos'
 import { confirmar } from '../confirmar'
 
 interface Props {
@@ -138,7 +138,7 @@ export function ModalClonarPendientes({ pendientes, inicial, onCerrar, onTermina
         <div className="modal-cab">
           <h3>Proyectos de tu cuenta</h3>
           <button type="button" className="icono" onClick={onCerrar} aria-label="Cerrar" disabled={trabajando}>
-            ✕
+            <IconoCerrar />
           </button>
         </div>
         <p className="modal-texto">

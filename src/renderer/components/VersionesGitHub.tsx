@@ -8,6 +8,7 @@ import { ConectarGitHub } from './ConectarGitHub'
 import { IconoGlobo, IconoMas, IconoRama } from './Iconos'
 import { ModalConfirmar } from './ModalConfirmar'
 import { ModalFormulario } from './ModalFormulario'
+import { Esqueletos } from './Cargando'
 
 const gh = window.api.github.operar
 const abrir = (url: string): void => void window.api.navegador.externo(url).catch(() => undefined)
@@ -90,7 +91,7 @@ export function VersionesGitHub({ c }: { c: ContextoGit }) {
 
   const actualizar = (): void => void c.recargar()
 
-  if (!gha) return fallo ? <p className="vc-nota error" style={{ padding: 24 }}>{fallo}</p> : <p className="tareas-vacio">Cargando…</p>
+  if (!gha) return fallo ? <p className="vc-nota error" style={{ padding: 24 }}>{fallo}</p> : <Esqueletos forma="tarjetas" cuantos={3} />
 
   if (!gha.conectado) {
     return (

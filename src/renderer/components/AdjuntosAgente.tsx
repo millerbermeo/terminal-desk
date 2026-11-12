@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Adjunto } from '@shared/core/adjuntos'
+import { Cargando } from './Cargando'
+import { IconoArchivo, IconoCerrar, IconoImagen } from './Iconos'
 
 const peso = (bytes: number): string => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`)
-const ICONO = { imagen: '🖼', pdf: '📄', texto: '📝' } as const
+const ICONO = { imagen: <IconoImagen />, pdf: <IconoArchivo />, texto: <IconoArchivo /> } as const
 
 const cache = new Map<string, string>()
 
@@ -60,10 +62,10 @@ function VisorImagen({ a, onCerrar, onQuitar }: { a: Adjunto; onCerrar: () => vo
           </button>
         )}
         <button autoFocus aria-label="Cerrar" title="Cerrar (Esc)" onClick={onCerrar}>
-          ✕
+          <IconoCerrar />
         </button>
       </div>
-      {src ? <img className="ag-visor-img" src={src} alt={a.nombre} onMouseDown={(e) => e.stopPropagation()} /> : <span className="ag-visor-nombre">Cargando…</span>}
+      {src ? <img className="ag-visor-img" src={src} alt={a.nombre} onMouseDown={(e) => e.stopPropagation()} /> : <Cargando />}
     </div>,
     document.body
   )
@@ -90,7 +92,7 @@ export function AdjuntosAgente({ adjuntos, onQuitar }: Props) {
           <small>{peso(a.bytes)}</small>
           {onQuitar && (
             <button className="icono" aria-label={`Quitar ${a.nombre}`} onClick={() => onQuitar(a)}>
-              ✕
+              <IconoCerrar />
             </button>
           )}
         </li>

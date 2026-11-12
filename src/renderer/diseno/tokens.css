@@ -1,0 +1,111 @@
+/* ===== Sistema de diseño de Odesk Agent: variables =====
+   Única fuente de verdad de color, tipografía, espaciado, forma, profundidad y movimiento.
+   Se carga antes que cualquier otra hoja; ninguna otra debe volver a definir estas variables
+   (salvo dentro de una media query de accesibilidad). Guía de uso: docs/diseno.md. */
+
+:root {
+  color-scheme: dark;
+
+  /* ---------- tipografía ---------- */
+  --fuente: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', sans-serif;
+  --fuente-mono: 'JetBrains Mono Variable', 'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', Menlo, Consolas, monospace;
+  /* escala: tamaño / interlineado / tracking van juntos (texto grande = más apretado) */
+  --t-micro: 10.5px;   /* etiquetas en mayúsculas, contadores */
+  --t-nota: 11.5px;    /* ayudas, metadatos */
+  --t-cuerpo: 13px;    /* texto de la interfaz */
+  --t-destacado: 14px; /* títulos de tarjeta, filas principales */
+  --t-titulo: 17px;    /* títulos de modal y de panel */
+  --t-pagina: 24px;    /* título de pantalla */
+  --tr-micro: 0.06em;
+  --tr-titulo: -0.02em;
+  --tr-pagina: -0.028em;
+
+  /* ---------- superficies: de la más profunda (contenido) a la más elevada (menús) ---------- */
+  --bg: #0a0b0e;
+  --bg-sidebar: #0f1116;
+  --bg-elevado: #16181f;
+  --bg-popover: #171a21;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-sutil: rgba(255, 255, 255, 0.032);
+  --bg-hundido: rgba(0, 0, 0, 0.28); /* campos y pistas (segmentado, barras de progreso) */
+
+  /* bordes translúcidos: separan sin pesar */
+  --borde-tenue: rgba(255, 255, 255, 0.055);
+  --borde: rgba(255, 255, 255, 0.08);
+  --borde-fuerte: rgba(255, 255, 255, 0.13);
+  --borde-hover: rgba(255, 255, 255, 0.22);
+
+  /* texto: tres niveles; el tenue cumple 4.5:1 sobre --bg */
+  --texto: #f0f0f3;
+  --texto-suave: #a9a9b6;
+  --texto-tenue: #84848f;
+
+  /* ---------- marca y estados ---------- */
+  --acento: #8b93ff;
+  --acento-fuerte: #6366f1;
+  --acento-claro: #c7cbff; /* texto sobre fondos teñidos de acento */
+  --acento-suave: rgba(129, 140, 248, 0.14);
+  --acento-borde: rgba(129, 140, 248, 0.32);
+  --violeta: #c084fc;
+  --ok: #34d399;
+  --ok-suave: rgba(52, 211, 153, 0.12);
+  --aviso: #fbbf24;
+  --aviso-suave: rgba(251, 191, 36, 0.12);
+  --error: #f87171;
+  --error-suave: rgba(248, 113, 113, 0.12);
+  --degradado-marca: linear-gradient(90deg, #6366f1, #a78bfa 60%, #c084fc);
+  --degradado-primario: linear-gradient(180deg, #7a81fb 0%, #6366f1 100%);
+  --glow-acento: rgba(99, 102, 241, 0.09);
+  --glow-violeta: rgba(192, 132, 252, 0.06);
+
+  /* ---------- materiales: más pesado = región estructural; más ligero = elemento interactivo ---------- */
+  --material-grueso: rgba(13, 14, 19, 0.8);
+  --material-medio: rgba(18, 20, 26, 0.74);
+  --material-fino: rgba(24, 26, 33, 0.93); /* menús sobre texto: casi opaco para que se lean */
+  --vidrio: rgba(16, 18, 23, 0.72);
+  --desenfoque-grueso: blur(28px) saturate(180%);
+  --desenfoque-medio: blur(20px) saturate(170%);
+  --canto-luz: inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --brillo: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  /* ---------- forma ---------- */
+  --radio-sm: 6px;
+  --radio: 9px;
+  --radio-lg: 13px;
+  --radio-xl: 18px;
+  --radio-pildora: 999px;
+
+  /* ---------- profundidad ---------- */
+  --sombra-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.025);
+  --sombra-2: 0 10px 30px -6px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.28);
+  --sombra: 0 32px 80px -12px rgba(0, 0, 0, 0.7), 0 12px 28px -8px rgba(0, 0, 0, 0.45);
+  --anillo: 0 0 0 3.5px rgba(129, 140, 248, 0.24);
+  --anillo-error: 0 0 0 3.5px rgba(248, 113, 113, 0.2);
+
+  /* ---------- espaciado (escala de 4 px) ---------- */
+  --e1: 4px;
+  --e2: 8px;
+  --e3: 12px;
+  --e4: 16px;
+  --e5: 24px;
+  --e6: 32px;
+  --e7: 48px;
+
+  /* ---------- medidas de la estructura ---------- */
+  --alto-fila: 30px;    /* fila de lista o de navegación */
+  --alto-control: 30px; /* botones y campos de una barra */
+  --alto-barra: 52px;   /* barra superior de cada módulo */
+  --ancho-lectura: 960px;
+
+  /* ---------- movimiento ---------- */
+  /* Muelle críticamente amortiguado (damping 1.0, response 0.4 s): sin rebote, por defecto. */
+  --muelle: linear(0, 0.0492, 0.1573, 0.285, 0.4111, 0.5253, 0.6236, 0.7054, 0.7718, 0.8247, 0.8663, 0.8987, 0.9236, 0.9427, 0.9571, 0.9681, 0.9763, 0.9824, 0.987, 0.9904, 0.993, 0.9948, 0.9962, 0.9972, 1);
+  --muelle-t: 520ms;
+  /* Muelle con un poco de rebote (damping 0.8, response 0.35 s): solo para cosas con impulso físico (interruptor, arrastre). */
+  --muelle-rebote: linear(0, 0.0465, 0.1553, 0.2912, 0.4315, 0.5623, 0.6765, 0.771, 0.846, 0.9032, 0.945, 0.9742, 0.9935, 1.0054, 1.0119, 1.0147, 1.0151, 1.014, 1.0122, 1.0101, 1.008, 1.0061, 1.0044, 1.0031, 1);
+  --muelle-rebote-t: 440ms;
+  --ease: var(--muelle);
+  --salida: cubic-bezier(0.32, 0, 0.67, 0); /* inversa de la entrada: el camino de vuelta refleja el de ida */
+  --rapido: 140ms;
+  --medio: 240ms;
+}

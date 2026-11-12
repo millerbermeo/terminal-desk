@@ -1,4 +1,5 @@
 import { par, type ParClave } from '@shared/api'
+import { IconoCerrar } from './Iconos'
 
 interface Props {
   filas: ParClave[]
@@ -32,7 +33,7 @@ export function TablaClaveValor({ filas, onCambio, textoClave = 'Clave', textoVa
           <input value={f.clave} placeholder={textoClave} {...(lista ? { list: lista } : {})} onChange={(e) => cambiar(f.id, { clave: e.target.value })} aria-label={textoClave} spellCheck={false} />
           <input value={f.valor} placeholder={textoValor} onChange={(e) => cambiar(f.id, { valor: e.target.value })} aria-label={textoValor} spellCheck={false} />
           <button className="icono" onClick={() => onCambio(filas.filter((x) => x.id !== f.id))} aria-label="Quitar fila" title="Quitar">
-            ✕
+            <IconoCerrar />
           </button>
         </div>
       ))}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { validarNombreRef, type EstadoGit, type Rama } from '@shared/versiones'
 import { mensajeDe } from '../tareas/useTareas'
 import { git } from '../versiones/useGit'
-import { IconoRama } from './Iconos'
+import { IconoRama, IconoCerrar } from './Iconos'
 
 /** Qué se quiere hacer cuando hay cambios pendientes y hay que decidir antes qué hacer con ellos. */
 type Pendiente = { tipo: 'cambiar'; rama: string } | { tipo: 'crear'; nombre: string }
@@ -190,7 +190,7 @@ export function BarraRama({ proyectoId, ocupadoAgente }: Props) {
             Crear
           </button>
           <button type="button" onClick={() => (setNueva(null), setError(''))}>
-            ✕
+            <IconoCerrar />
           </button>
         </form>
       )}
@@ -220,7 +220,7 @@ export function BarraRama({ proyectoId, ocupadoAgente }: Props) {
             <div className="modal-cab">
               <h3>Tienes cambios sin confirmar</h3>
               <button className="icono" onClick={cerrarDialogo} aria-label="Cerrar" disabled={trabajando !== ''}>
-                ✕
+                <IconoCerrar />
               </button>
             </div>
             <p className="modal-texto">

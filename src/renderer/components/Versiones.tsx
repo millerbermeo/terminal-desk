@@ -4,7 +4,7 @@ import type { DatosProyectos } from '@shared/modelos'
 import { enConflicto, type EstadoGit, type OperacionEnCurso } from '@shared/versiones'
 import { git, useGit, type ContextoGit } from '../versiones/useGit'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoMas, IconoRama, IconoReiniciar } from './Iconos'
+import { IconoMas, IconoRama, IconoReiniciar, IconoCerrar } from './Iconos'
 import { VersionesCambios } from './VersionesCambios'
 import { ModalClonar } from './ModalClonar'
 import { VersionesEtiquetas } from './VersionesEtiquetas'
@@ -253,7 +253,7 @@ export function Versiones({ datos, visible, onDatos, avisos = [] }: Props) {
           {conflictos}
           <span className="ag-espacio" />
           <button className="icono" onClick={() => setConflictos('')} aria-label="Cerrar aviso">
-            ✕
+            <IconoCerrar />
           </button>
         </div>
       )}
@@ -281,7 +281,7 @@ export function Versiones({ datos, visible, onDatos, avisos = [] }: Props) {
         <div className="vc-banner error" role="alert">
           <span className="vc-error-texto">{error}</span>
           <button className="icono" onClick={() => setError('')} aria-label="Cerrar aviso">
-            ✕
+            <IconoCerrar />
           </button>
         </div>
       )}

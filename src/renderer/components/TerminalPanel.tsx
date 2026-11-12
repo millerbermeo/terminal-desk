@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
+import { FUENTE_MONO } from '../diseno/fuentes'
 import { IconoChispa, IconoCopiar, IconoPegar, IconoSeleccionar, IconoLimpiar } from './Iconos'
 import { fijarSugerencias, SugerenciasTerminal, sugerenciasActivadas } from '../terminal/sugerencias'
 import { fijarWebglDesactivado, VigilanteAtlas, webglDesactivado } from '../terminal/reparacion'
@@ -85,7 +86,7 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
   useEffect(() => {
     const el = contenedor.current!
     const t = new Terminal({
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', Menlo, Consolas, monospace",
+      fontFamily: FUENTE_MONO,
       fontSize: 14,
       cursorBlink: true,
       scrollOnUserInput: true, // al teclear siempre se vuelve al final (el cursor y el prompt)

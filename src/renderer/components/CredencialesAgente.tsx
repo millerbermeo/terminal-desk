@@ -3,7 +3,7 @@ import type { DatosProyectos } from '@shared/modelos'
 import type { AmbitoCredenciales, CampoCredencial, CredencialPrueba } from '@shared/credenciales'
 import { confirmar } from '../confirmar'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoEscudo } from './Iconos'
+import { IconoEscudo, IconoCerrar } from './Iconos'
 
 const limpiar = (m: string): string => m.replace(/^Error invoking remote method '[^']+': (Error: )?/, '').replace(/^Credenciales: /, '')
 const VACIA = (): { id?: string; nombre: string; notas: string; campos: CampoCredencial[] } => ({ nombre: '', notas: '', campos: [{ clave: '', valor: '', secreto: false }] })
@@ -99,7 +99,7 @@ export function CredencialesAgente({ datos, visible = true }: Props) {
                 <label className="ag-recordar" title="Se oculta en pantalla">
                   <input type="checkbox" checked={c.secreto === true} onChange={(e) => cambiarCampo(i, { secreto: e.target.checked })} /> secreto
                 </label>
-                <button className="peligro" style={{ opacity: 1 }} title="Quitar campo" onClick={() => setEdicion({ ...edicion, campos: edicion.campos.filter((_, j) => j !== i) })}>✕</button>
+                <button className="peligro" style={{ opacity: 1 }} title="Quitar campo" onClick={() => setEdicion({ ...edicion, campos: edicion.campos.filter((_, j) => j !== i) })}><IconoCerrar /></button>
               </div>
             ))}
             <datalist id="cred-sugeridas">{SUGERIDAS.map((s) => <option key={s} value={s} />)}</datalist>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { EntradaMemoria, TipoMemoria } from '@shared/core/memoria'
 import type { DatosProyectos } from '@shared/modelos'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoCerebro } from './Iconos'
+import { IconoCerebro, IconoCerrar } from './Iconos'
 
 const TIPOS: { id: TipoMemoria; nombre: string; ayuda: string }[] = [
   { id: 'regla', nombre: 'Regla', ayuda: 'Se incluye siempre en el contexto del agente' },
@@ -61,7 +61,7 @@ export function MemoriaAgente({ datos, visible }: { datos: DatosProyectos; visib
               <span>{e.contenido}</span>
               {e.etiquetas.length > 0 && <small>{e.etiquetas.join(' · ')}</small>}
             </div>
-            <button className="peligro" title="Eliminar" onClick={() => void window.api.core.memoriaEliminar(e.id, ambito || undefined).then(setEntradas)}>✕</button>
+            <button className="peligro" title="Eliminar" onClick={() => void window.api.core.memoriaEliminar(e.id, ambito || undefined).then(setEntradas)}><IconoCerrar /></button>
           </div>
         ))}
       </section>

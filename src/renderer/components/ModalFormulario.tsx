@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { IconoCerrar } from './Iconos'
 
 export interface CampoFormulario {
   id: string
@@ -62,7 +63,7 @@ export function ModalFormulario({ titulo, descripcion, campos, casilla, etiqueta
         <div className="modal-cab">
           <h3>{titulo}</h3>
           <button type="button" className="icono" onClick={onCerrar} aria-label="Cerrar" disabled={enviando}>
-            ✕
+            <IconoCerrar />
           </button>
         </div>
         {descripcion && <p className="modal-texto">{descripcion}</p>}

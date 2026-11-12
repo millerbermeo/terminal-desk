@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ComandosAgente } from './ComandosAgente'
 import { PermisosAgente } from './PermisosAgente'
+import { IconoCerrar } from './Iconos'
 
 interface Props {
   proyectoId?: string
@@ -25,7 +26,7 @@ export function GestionProyecto({ proyectoId, nombre, inicial, onCerrar }: Props
       <div className="modal gestion" role="dialog" aria-modal="true" aria-label="Permisos y comandos">
         <div className="modal-cab">
           <h3>{nombre ?? 'Todos los proyectos'}</h3>
-          <button className="icono" onClick={onCerrar} title="Cerrar (Esc)">✕</button>
+          <button className="icono" onClick={onCerrar} title="Cerrar (Esc)"><IconoCerrar /></button>
         </div>
         <div className="segmentado" role="tablist" style={{ alignSelf: 'flex-start' }}>
           <button className={pestana === 'permisos' ? 'on' : ''} onClick={() => setPestana('permisos')}>Permisos</button>

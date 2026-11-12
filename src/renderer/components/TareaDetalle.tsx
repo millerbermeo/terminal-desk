@@ -3,6 +3,7 @@ import type { DatosProyectos } from '@shared/modelos'
 import { COLORES_TAREA, PRIORIDADES, dependenciasAbiertas, type DetalleTarea, type EstadoTarea, type ItemLista, type Prioridad, type Tarea, type TipoReferencia } from '@shared/tareas'
 import { NOMBRE_COLOR, NOMBRE_PRIORIDAD } from './Tareas'
 import { ModalConfirmar } from './ModalConfirmar'
+import { IconoCerrar } from './Iconos'
 
 interface Props {
   id: string
@@ -43,7 +44,7 @@ function ListaItems({ titulo, items, vacio, onMarcar, onQuitar, onAnadir }: { ti
               <input type="checkbox" checked={i.hecho} onChange={(e) => onMarcar(i, e.target.checked)} /> <span>{i.texto}</span>
             </label>
             <button className="icono" onClick={() => onQuitar(i)} title="Quitar" aria-label={`Quitar «${i.texto}»`}>
-              ✕
+              <IconoCerrar />
             </button>
           </li>
         ))}
@@ -117,7 +118,7 @@ export function TareaDetalle({ id, datos, todas, estados, onCerrar, onEstado, on
             Eliminar
           </button>
           <button className="icono" onClick={onCerrar} title="Cerrar (Esc)" aria-label="Cerrar">
-            ✕
+            <IconoCerrar />
           </button>
         </header>
         <div className="td-cuerpo">
@@ -190,7 +191,7 @@ export function TareaDetalle({ id, datos, todas, estados, onCerrar, onEstado, on
                 <input type="date" value={t.vence !== undefined ? fechaLocal(t.vence) : ''} onChange={(e) => void editar({ vence: e.target.value ? new Date(`${e.target.value}T23:59:59`).getTime() : null })} />
                 {t.vence !== undefined && (
                   <button className="icono" onClick={() => void editar({ vence: null })} title="Quitar fecha" aria-label="Quitar fecha">
-                    ✕
+                    <IconoCerrar />
                   </button>
                 )}
               </span>
@@ -231,7 +232,7 @@ export function TareaDetalle({ id, datos, todas, estados, onCerrar, onEstado, on
                       'tarea eliminada'
                     )}{' '}
                     <button className="icono" onClick={() => void intentar(() => op('dependencias', { tarea: t.id, dependeDe: t.dependeDe.filter((z) => z !== d) }))} aria-label="Quitar dependencia">
-                      ✕
+                      <IconoCerrar />
                     </button>
                   </span>
                 )
@@ -272,7 +273,7 @@ export function TareaDetalle({ id, datos, todas, estados, onCerrar, onEstado, on
                     )}
                   </span>
                   <button className="icono" onClick={() => void intentar(() => op('referencia', { tarea: t.id, accion: 'quitar', referenciaId: r.id }))} aria-label="Quitar referencia">
-                    ✕
+                    <IconoCerrar />
                   </button>
                 </li>
               ))}

@@ -3,7 +3,7 @@ import { carpetaDeArchivo, enConflicto, nombreDeArchivo, NOMBRE_ESTADO, preparad
 import { git, type ContextoGit } from '../versiones/useGit'
 import { DiffVista } from './DiffVista'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoCheck } from './Iconos'
+import { IconoCheck, IconoMas } from './Iconos'
 import { ModalConfirmar } from './ModalConfirmar'
 
 type Lado = 'preparado' | 'cambio' | 'conflicto'
@@ -36,7 +36,7 @@ function Fila({ a, lado, seleccionado, ocupado, onSel, onPreparar, onDespreparar
         )}
         {onPreparar && (
           <button className="icono" disabled={ocupado} onClick={onPreparar} title={lado === 'conflicto' ? 'Marcar como resuelto' : 'Preparar para el commit'} aria-label={`Preparar ${a.ruta}`}>
-            ＋
+            <IconoMas />
           </button>
         )}
         {onDespreparar && (

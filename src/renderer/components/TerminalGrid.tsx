@@ -119,7 +119,13 @@ export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveL
     if (reiniciarLayout > 0) setEstado({ arbol: null, personalizado: false })
   }, [reiniciarLayout])
 
-  useEffect(() => onPersonalizado(efectivo.personalizado), [efectivo.personalizado, onPersonalizado])
+  // Solo avisa cuando cambia el valor: quien la usa pasa una función nueva en cada render y, si dependiera de ella,
+  // el efecto se repetiría sin fin (cada aviso vuelve a pintar al padre).
+  const avisarPersonalizado = useRef(onPersonalizado)
+  useEffect(() => {
+    avisarPersonalizado.current = onPersonalizado
+  })
+  useEffect(() => avisarPersonalizado.current(efectivo.personalizado), [efectivo.personalizado])
 
   // la distribución a mano se recuerda por pestaña; «Reorganizar» la olvida
   useEffect(() => {

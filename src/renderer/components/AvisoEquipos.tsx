@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { trabajandoAhora, type AvisoEquipo } from '@shared/equipos'
 import { fechaRelativa } from '@shared/versiones'
+import { IconoCerrar } from './Iconos'
 
 /** Texto corto de lo que tiene pendiente otro equipo: «5 archivos sin guardar, 2 commits sin enviar». */
 export function resumenAviso(a: Pick<AvisoEquipo, 'cambios' | 'adelante'>): string {
@@ -44,7 +45,7 @@ export function AvisoEquipos({ avisos, onVerEquipos }: Props) {
       </div>
       <button onClick={onVerEquipos}>Ver equipos</button>
       <button className="icono" aria-label="Ocultar el aviso" title="Ocultar" onClick={() => setOcultos(new Set(avisos.map((a) => a.idEquipo)))}>
-        ✕
+        <IconoCerrar />
       </button>
     </div>
   )

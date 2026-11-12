@@ -3,7 +3,8 @@ import type { DatosProyectos } from '@shared/modelos'
 import type { RepoGitHub } from '@shared/github'
 import { mensajeDe } from '../tareas/useTareas'
 import { leerPreferencias } from '../github/preferencias'
-import { IconoCarpeta } from './Iconos'
+import { IconoCarpeta, IconoCerrar } from './Iconos'
+import { Esqueletos } from './Cargando'
 
 interface Props {
   datos: DatosProyectos
@@ -87,7 +88,7 @@ export function ModalClonar({ datos, conectado, onCerrar, onClonado, repoInicial
         <div className="modal-cab">
           <h3>Clonar un repositorio</h3>
           <button type="button" className="icono" onClick={onCerrar} aria-label="Cerrar" disabled={clonando}>
-            ✕
+            <IconoCerrar />
           </button>
         </div>
         <p className="modal-texto">Descarga el repositorio en una carpeta y lo agrega como proyecto. Para los privados, conecta antes tu cuenta (Versiones → GitHub) o usa una clave SSH.</p>
@@ -97,7 +98,7 @@ export function ModalClonar({ datos, conectado, onCerrar, onClonado, repoInicial
         </label>
         {conectado && (
           <div className="gh-repos" role="listbox" aria-label="Tus repositorios">
-            {repos === null && <p className="vc-nota">Cargando tus repositorios…</p>}
+            {repos === null && <Esqueletos cuantos={5} texto="Cargando tus repositorios…" />}
             {repos?.length === 0 && !error && <p className="vc-nota">No se encontraron repositorios en tu cuenta.</p>}
             {sugeridos.map((r) => (
               <button type="button" key={r.id} role="option" aria-selected={repo === r.completo} className={`gh-repo${repo === r.completo ? ' sel' : ''}`} onClick={() => setRepo(r.completo)}>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { dividirArgumentos, nombreReservado, type ComandoUsuario } from '@shared/core/comandos'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoRayo } from './Iconos'
+import { IconoRayo, IconoCerrar, IconoLapiz } from './Iconos'
 
 const limpiar = (m: string): string => m.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 const vacio = (): ComandoUsuario => ({ nombre: '', descripcion: '', tipo: 'ejecutable', comando: [], argumentos: false, permitido: false })
@@ -57,8 +57,8 @@ export function ComandosAgente({ proyectoId, visible = true }: Props) {
       <code title={x.tipo === 'prompt' ? x.plantilla : lineaDe(x)}>{x.descripcion}</code>
       {editable && (
         <>
-          <button className="icono" style={{ opacity: 1 }} title="Editar" onClick={() => editar(x)}>✎</button>
-          <button className="peligro" style={{ opacity: 1 }} title="Eliminar" onClick={() => void window.api.core.comandosEliminar(x.nombre, ambito).then(setPropios)}>✕</button>
+          <button className="icono" style={{ opacity: 1 }} title="Editar" onClick={() => editar(x)}><IconoLapiz /></button>
+          <button className="peligro" style={{ opacity: 1 }} title="Eliminar" onClick={() => void window.api.core.comandosEliminar(x.nombre, ambito).then(setPropios)}><IconoCerrar /></button>
         </>
       )}
     </div>

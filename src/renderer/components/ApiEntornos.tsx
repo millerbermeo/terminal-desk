@@ -3,7 +3,7 @@ import type { DatosApi, VariableEntorno } from '@shared/api'
 import { nuevoId } from '@shared/api'
 import { mensajeDe } from '../tareas/useTareas'
 import { EstadoVacio } from './EstadoVacio'
-import { IconoServidor } from './Iconos'
+import { IconoServidor, IconoCerrar } from './Iconos'
 import { ModalConfirmar } from './ModalConfirmar'
 
 interface Props {
@@ -67,7 +67,7 @@ export function ApiEntornos({ datos, onDatos, onCerrar }: Props) {
         <div className="modal-cab">
           <h3>Entornos</h3>
           <button className="icono" onClick={onCerrar} aria-label="Cerrar">
-            ✕
+            <IconoCerrar />
           </button>
         </div>
         <p className="modal-texto">
@@ -105,7 +105,7 @@ export function ApiEntornos({ datos, onDatos, onCerrar }: Props) {
                       <input value={v.clave} placeholder="Variable" spellCheck={false} onChange={(e) => cambiar(v.id, { clave: e.target.value })} aria-label="Nombre de la variable" />
                       <input value={v.valor} placeholder="Valor" spellCheck={false} onChange={(e) => cambiar(v.id, { valor: e.target.value })} aria-label="Valor" />
                       <button className="icono" onClick={() => setVariables(variables.filter((x) => x.id !== v.id))} aria-label="Quitar variable">
-                        ✕
+                        <IconoCerrar />
                       </button>
                     </div>
                   ))}

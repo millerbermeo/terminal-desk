@@ -73,6 +73,7 @@ const NAV: { grupo: string; items: ItemNav[] }[] = [
 ]
 
 const CLAVE_MINI = 'odesk.sidebar.mini'
+const CLAVE_NAV = 'odesk.sidebar.nav-cerrados'
 const ESTRECHO = '(max-width: 760px)'
 
 /** Barra lateral compacta (solo iconos): a mano, o sola cuando la ventana es estrecha. */
@@ -117,6 +118,25 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
   const [compacta, forzada, alternarCompacta] = useBarraCompacta()
   const [filtro, setFiltro] = useState('')
   const pie = useRef<HTMLElement>(null)
+  // grupos de navegación plegados (se recuerda): deja más sitio a la lista de proyectos; el grupo de la vista abierta nunca se oculta
+  const [navCerrados, setNavCerrados] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(CLAVE_NAV) ?? '[]') as string[])
+    } catch {
+      return new Set()
+    }
+  })
+  const alternarNav = (grupo: string): void =>
+    setNavCerrados((c) => {
+      const n = new Set(c)
+      if (!n.delete(grupo)) n.add(grupo)
+      try {
+        localStorage.setItem(CLAVE_NAV, JSON.stringify([...n]))
+      } catch {
+        // sin almacenamiento: solo dura esta sesión
+      }
+      return n
+    })
 
   // El menú de abajo tiene su propio scroll (con la ventana baja no cabe entero): la herramienta abierta siempre queda a la vista.
   useEffect(() => {
@@ -244,17 +264,18 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
         <button className="btn-nueva" onClick={onNueva} title="Nueva terminal" aria-label="Nueva terminal">
           <IconoMas /> <span className="txt">Nueva terminal</span>
         </button>
-        <button onClick={onMulti} title="Abrir una pestaña con terminales de 2 o más proyectos" aria-label="Terminal multiproyecto">
-          <IconoAbrirTodas /> <span className="txt">Multiproyecto</span>
+        <button className="accion-icono" onClick={onMulti} title="Multiproyecto: abrir una pestaña con terminales de 2 o más proyectos" aria-label="Terminal multiproyecto">
+          <IconoAbrirTodas />
         </button>
-        <div className="acciones-proyecto">
-          <button onClick={onAbrirCarpeta} title="Elegir una carpeta con el explorador de archivos y agregarla como proyecto">
-            <IconoCarpeta /> <span className="txt">Abrir carpeta</span>
-          </button>
-          <button onClick={onAgregarRuta} title="Escribir o pegar la ruta de un proyecto (con autocompletado)">
-            <IconoMas /> <span className="txt">Agregar ruta</span>
-          </button>
-        </div>
+      </div>
+      <div className="proyectos-cab">
+        <span className="nav-etiqueta">Proyectos</span>
+        <button className="icono" onClick={onAbrirCarpeta} title="Abrir carpeta: elegirla con el explorador de archivos y agregarla como proyecto" aria-label="Abrir carpeta">
+          <IconoCarpeta />
+        </button>
+        <button className="icono" onClick={onAgregarRuta} title="Agregar ruta: escribir o pegar la ruta de un proyecto (con autocompletado)" aria-label="Agregar ruta">
+          <IconoMas />
+        </button>
       </div>
       <div className="buscar">
         <IconoBuscar />
@@ -301,8 +322,12 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
       </nav>
       <footer ref={pie}>
         {NAV.map((g) => (
-          <div className="nav-grupo" key={g.grupo}>
-            <div className="nav-etiqueta">{g.grupo}</div>
+          <div className={`nav-grupo${navCerrados.has(g.grupo) && !g.items.some((i) => i.vista === vista) ? ' cerrado' : ''}`} key={g.grupo}>
+            <button className="nav-etiqueta" onClick={() => alternarNav(g.grupo)} aria-expanded={!navCerrados.has(g.grupo)}>
+              <span className="chevron"><IconoChevron /></span>
+              {g.grupo}
+            </button>
+            <div className="nav-items">
             {g.items.map((i) => (
               <button
                 key={i.vista}
@@ -317,6 +342,7 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
                 {i.vista === 'asistente' && pendientesAsistente > 0 && <span className="insignia" title="El asistente espera tu confirmación">{pendientesAsistente}</span>}
               </button>
             ))}
+            </div>
           </div>
         ))}
         <button className="cuenta-tarjeta" onClick={onCuenta} title={`Cuenta${email ? ` · ${email}` : ''}: cambiar contraseña o cerrar sesión`}>
