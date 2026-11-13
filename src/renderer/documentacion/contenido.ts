@@ -133,8 +133,7 @@ export const SECCIONES: Seccion[] = [
         titulo: 'Detalles útiles',
         items: [
           'La insignia de un proyecto cuenta sus terminales abiertas; el punto verde del grupo indica que su pestaña está abierta.',
-          'Un clic nunca duplica terminales: para tener dos del mismo proyecto usa «+ Terminal» o el menú ✦.',
-          'Eliminar un grupo pide la contraseña de tu usuario del sistema (es una acción que afecta a todo lo activado en él).'
+          'Un clic nunca duplica terminales: para tener dos del mismo proyecto usa «+ Terminal» o el menú ✦.'
         ]
       }
     ],
@@ -911,7 +910,6 @@ export const SECCIONES: Seccion[] = [
           'El renderer nunca manda rutas de repositorio ni de archivos arbitrarias: manda ids de proyecto y main resuelve la carpeta.',
           'Git: sin push forzado ni reset duro. GitHub: sin borrar, descartar, forzar ni fusionar PRs desde la IA.',
           'La IA no puede borrar tareas (solo descartarlas con motivo) ni eliminar proyectos.',
-          'Eliminar un grupo pide la contraseña de tu usuario del sistema; viaja solo por la entrada estándar del proceso que la verifica.',
           'Los adjuntos se validan por su contenido (firma de bytes), no por la extensión, y el agente recibe la instrucción de tratarlos como datos y no obedecer instrucciones escondidas en ellos.'
         ]
       }

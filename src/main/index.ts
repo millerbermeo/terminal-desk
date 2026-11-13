@@ -5,14 +5,13 @@ import { join } from 'node:path'
 import icono from '../../resources/icon.png?asset'
 import type { Proveedor, Recurso } from '@shared/modelos'
 import type { AccionNavegador } from '@shared/navegador'
-import { Canales, type DestinoActivacion, type OpcionesTerminal, type PayloadVentana, type ResultadoEliminarGrupo, type SolicitudAgregar } from '@shared/ipc'
+import { Canales, type DestinoActivacion, type OpcionesTerminal, type PayloadVentana, type SolicitudAgregar } from '@shared/ipc'
 import { registrarIpcArchivos } from './archivos-ipc'
 import { ServicioHistorial } from './historial/servicio'
 import { ejecutarOperacionHistorial } from './historial/operaciones'
 import { Nucleo, registrarIpcCore } from './core'
 import { GestorTerminales } from './terminales'
 import { eliminarProveedor, enCola as enColaProveedores, guardarProveedor, listarProveedores, obtenerProveedor } from './proveedores'
-import { verificarPassword } from './autenticacion'
 import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones } from './agentes'
 import { resolverPerfil } from './migracion'
 import { mantenerCavemanActualizado } from './caveman'
@@ -628,12 +627,10 @@ function registrarIpc(): void {
     const r = await cambiarCarpetaProyecto({ proyectoId: String(id), ruta: String(ruta ?? ''), ...(confirmar === true ? { confirmar: true } : {}) })
     return { datos: await leerProyectos(), ...(r.aviso ? { aviso: r.aviso } : {}) }
   })
-  ipcMain.handle(Canales.grupoEliminar, async (_e, id: string, password: string): Promise<ResultadoEliminarGrupo> => {
-    const auth = await verificarPassword(String(password ?? ''))
-    if (!auth.ok) return auth
+  ipcMain.handle(Canales.grupoEliminar, async (_e, id: string): Promise<Awaited<ReturnType<typeof eliminarGrupo>>> => {
     const datos = await eliminarGrupo(id)
     await nucleo.tareas.desvincular({ grupoId: id })
-    return { ok: true, datos }
+    return datos
   })
   ipcMain.handle(Canales.agentesListar, () => leerBiblioteca())
   ipcMain.handle(Canales.agentesGuardar, (_e, r: Recurso) => guardarRecurso(r))

@@ -10,11 +10,9 @@ interface Props {
 }
 
 export function ModalEliminarGrupo({ grupo, proyectos, onEliminado, onCerrar }: Props) {
-  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [verificando, setVerificando] = useState(false)
   const [cerrando, setCerrando] = useState(false)
-  const [sacudir, setSacudir] = useState(0)
 
   const salir = useCallback((): void => {
     setCerrando(true)
@@ -32,25 +30,15 @@ export function ModalEliminarGrupo({ grupo, proyectos, onEliminado, onCerrar }: 
   const confirmar = async (): Promise<void> => {
     setVerificando(true)
     setError(null)
-    let res
     try {
-      res = await window.api.proyectos.eliminarGrupo(grupo.id, password)
-    } catch {
-      res = { ok: false as const, motivo: 'no-disponible' as const }
-    }
-    setVerificando(false)
-    if (res.ok) {
-      onEliminado(res.datos)
+      const datos = await window.api.proyectos.eliminarGrupo(grupo.id)
+      onEliminado(datos)
       salir()
-      return
+    } catch {
+      setError('No se pudo eliminar el grupo')
+    } finally {
+      setVerificando(false)
     }
-    setPassword('')
-    setSacudir((n) => n + 1)
-    setError(
-      res.motivo === 'incorrecta'
-        ? 'Contraseña incorrecta'
-        : 'No se pudo verificar la contraseña (requiere un usuario con permisos de administrador / sudo)'
-    )
   }
 
   return (
@@ -62,7 +50,7 @@ export function ModalEliminarGrupo({ grupo, proyectos, onEliminado, onCerrar }: 
         aria-label="Eliminar grupo"
         onSubmit={(e) => {
           e.preventDefault()
-          if (password && !verificando) void confirmar()
+          if (!verificando) void confirmar()
         }}
       >
         <div className="modal-cab">
@@ -75,28 +63,15 @@ export function ModalEliminarGrupo({ grupo, proyectos, onEliminado, onCerrar }: 
           {proyectos > 0
             ? `Sus ${proyectos} proyecto${proyectos === 1 ? '' : 's'} pasarán a «Sin grupo». `
             : 'El grupo está vacío. '}
-          Para confirmar, escribe la contraseña de tu usuario del sistema.
+          ¿Seguro que quieres eliminarlo?
         </p>
-        <input
-          key={sacudir}
-          className={sacudir > 0 ? 'sacudir' : ''}
-          type="password"
-          autoFocus
-          autoComplete="current-password"
-          placeholder="Contraseña del sistema"
-          value={password}
-          onChange={(e) => {
-            setPassword(e.target.value)
-            setError(null)
-          }}
-        />
         {error && (
           <div className="cfg-error">
             <IconoCerrar /> {error}
           </div>
         )}
         <div className="cfg-acciones">
-          <button type="submit" className="peligro-solido" disabled={!password || verificando}>
+          <button type="submit" className="peligro-solido" disabled={verificando}>
             {verificando ? <span className="spinner" /> : <IconoBasura />} Eliminar grupo
           </button>
           <button type="button" onClick={salir} disabled={verificando}>
