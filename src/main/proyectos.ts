@@ -52,7 +52,32 @@ export async function leerProyectos(): Promise<DatosProyectos> {
     proyectos: r.projects.flatMap((p) => (locales[p.id] ? [{ id: p.id, nombre: p.name, ruta: locales[p.id], ...(p.groupId ? { grupo: p.groupId } : {}) }] : []))
   }
   memoria = { datos, hasta: Date.now() + VIGENCIA_MS }
+  void completarRepos(r.projects, locales)
   return structuredClone(datos)
+}
+
+const reposRevisados = new Map<string, number>() // proyecto -> cuándo se miró (se repite cada 5 min si no tenía remoto)
+
+/**
+ * Un proyecto registrado antes de que su carpeta tuviera `origin` queda en el servidor sin repositorio y otros equipos no pueden
+ * clonarlo ni reconocerlo. Si aquí ya tiene remoto, se lo manda (cada 5 min como mucho; nunca bloquea ni lanza).
+ */
+async function completarRepos(proyectos: ProyectoApi[], locales: Record<string, string>): Promise<void> {
+  let cambio = false
+  for (const p of proyectos) {
+    const ruta = locales[p.id]
+    if (p.repo || !ruta || (reposRevisados.get(p.id) ?? 0) > Date.now()) continue
+    reposRevisados.set(p.id, Date.now() + 5 * 60_000)
+    try {
+      const repo = await repoDe(ruta)
+      if (!repo) continue // todavía sin remoto: se vuelve a mirar en 5 min
+      await servidor.put(`/projects/${encodeURIComponent(p.id)}/repo`, { repo })
+      cambio = true
+    } catch {
+      /* se reintenta en 5 min */
+    }
+  }
+  if (cambio) olvidarProyectos()
 }
 
 /** Proyectos del archivo local de antes de existir el servidor (`proyectos.json`); vacío si no hay. */
