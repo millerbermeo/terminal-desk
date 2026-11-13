@@ -164,6 +164,7 @@ const api: ApiCentro = {
     elegirCarpetas: () => ipcRenderer.invoke(Canales.proyectosElegirCarpetas),
     sugerirRutas: (prefijo) => ipcRenderer.invoke(Canales.proyectosSugerirRutas, prefijo),
     eliminar: (id) => ipcRenderer.invoke(Canales.proyectosEliminar, id),
+    moverAGrupo: (id, grupoId) => ipcRenderer.invoke(Canales.proyectosMoverGrupo, id, grupoId),
     cambiarCarpeta: (id, ruta, confirmar) => ipcRenderer.invoke(Canales.proyectosCambiarCarpeta, id, ruta, confirmar === true),
     eliminarGrupo: (id) => ipcRenderer.invoke(Canales.grupoEliminar, id)
   },

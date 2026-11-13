@@ -73,6 +73,19 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
           <button disabled={cambiando === p.id} title="¿Enlazaste la carpeta equivocada? Elige la correcta: se suelta el enlace de la anterior (no borra nada de tu código)" onClick={() => void cambiarCarpeta(p.id, p.nombre)}>
             <IconoCarpeta /> Cambiar carpeta
           </button>
+          <select
+            value={grupoId ?? ''}
+            title="Mover a otro grupo"
+            aria-label={`Mover «${p.nombre}» a otro grupo`}
+            onChange={(e) => void window.api.proyectos.moverAGrupo(p.id, e.target.value || null).then(onDatos).catch((err) => setMensajes((m) => ({ ...m, [p.id]: { tipo: 'error', texto: mensajeDe(err) } })))}
+          >
+            <option value="">Sin grupo</option>
+            {datos.grupos.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.nombre}
+              </option>
+            ))}
+          </select>
           <button className="peligro" title="Quitar de la lista (no borra la carpeta)" onClick={() => void window.api.proyectos.eliminar(p.id).then(onDatos)}>
             <IconoBasura /> Quitar
           </button>
