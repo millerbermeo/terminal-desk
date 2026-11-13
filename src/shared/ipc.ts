@@ -48,6 +48,7 @@ export const Canales = {
   proyectosSugerirRutas: 'proyectos:sugerir-rutas',
   proyectosEliminar: 'proyectos:eliminar',
   proyectosCambiarCarpeta: 'proyectos:cambiar-carpeta',
+  proyectosMoverGrupo: 'proyectos:mover-grupo',
   grupoEliminar: 'grupo:eliminar',
   terminalCrear: 'terminal:crear',
   terminalEscribir: 'terminal:escribir',
@@ -460,7 +461,8 @@ export interface ApiCentro {
     eliminar(id: string): Promise<DatosProyectos>
     /** Cambia la carpeta de un proyecto de este equipo (por si te equivocaste al enlazarlo). Con `confirmar`, aunque pida confirmación (id viejo o remoto distinto). */
     cambiarCarpeta(id: string, ruta: string, confirmar?: boolean): Promise<{ datos: DatosProyectos; aviso?: string }>
-    /** Exige la contraseña del usuario del sistema. */
+    /** Pasa un proyecto a otro grupo (`null` = «Sin grupo»). */
+    moverAGrupo(id: string, grupoId: string | null): Promise<DatosProyectos>
     eliminarGrupo(id: string): Promise<DatosProyectos>
   }
   /** Anota un suceso técnico (error de la interfaz…) en el registro local y, si hay sesión, en la cuenta. Nunca lanza. */

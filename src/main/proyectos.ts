@@ -217,6 +217,16 @@ export async function eliminarProyecto(id: string): Promise<DatosProyectos> {
   return leerProyectos()
 }
 
+/** Pasa un proyecto a otro grupo (`null` = sin grupo). */
+export async function moverProyectoAGrupo(id: string, grupoId: string | null): Promise<DatosProyectos> {
+  try {
+    await servidor.put(`/projects/${encodeURIComponent(id)}/group`, { groupId: grupoId })
+  } finally {
+    olvidarProyectos()
+  }
+  return leerProyectos()
+}
+
 /** Borra el grupo; sus proyectos pasan a "sin grupo". */
 export async function eliminarGrupo(id: string): Promise<DatosProyectos> {
   try {
