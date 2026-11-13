@@ -202,10 +202,6 @@ export interface ValidacionRuta {
   mensaje?: string // motivo si no es válida
 }
 
-export type ResultadoEliminarGrupo =
-  | { ok: true; datos: DatosProyectos }
-  | { ok: false; motivo: 'incorrecta' | 'no-disponible' }
-
 export type ResultadoProveedor = { ok: true; proveedores: ProveedorEstado[] } | { ok: false; mensaje: string }
 
 /** Lo que puede contener una pestaña de una celda. */
@@ -465,7 +461,7 @@ export interface ApiCentro {
     /** Cambia la carpeta de un proyecto de este equipo (por si te equivocaste al enlazarlo). Con `confirmar`, aunque pida confirmación (id viejo o remoto distinto). */
     cambiarCarpeta(id: string, ruta: string, confirmar?: boolean): Promise<{ datos: DatosProyectos; aviso?: string }>
     /** Exige la contraseña del usuario del sistema. */
-    eliminarGrupo(id: string, password: string): Promise<ResultadoEliminarGrupo>
+    eliminarGrupo(id: string): Promise<DatosProyectos>
   }
   /** Anota un suceso técnico (error de la interfaz…) en el registro local y, si hay sesión, en la cuenta. Nunca lanza. */
   registro: {
