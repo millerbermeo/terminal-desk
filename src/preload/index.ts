@@ -1,6 +1,7 @@
 import type { AccionIa } from '@shared/control-app'
 import { contextBridge, ipcRenderer } from 'electron'
 import type { EstadoArranque, TerminalArranque } from '@shared/arranque'
+import type { EventoChat } from '@shared/chat'
 import type { CambioArchivo } from '@shared/archivos'
 import type { EventoAgente } from '@shared/core/agente'
 import type { ResumenUso } from '@shared/core/uso'
@@ -116,6 +117,15 @@ const api: ApiCentro = {
   },
   equipos: {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.equiposOperar, op, entrada)
+  },
+  chat: {
+    // Los errores viajan como datos (por IPC un `throw` llega con un prefijo técnico): aquí se vuelven un Error con el mensaje limpio.
+    operar: async (op, entrada) => {
+      const r = (await ipcRenderer.invoke(Canales.chatOperar, op, entrada)) as { ok: true; valor: never } | { ok: false; mensaje: string }
+      if (!r.ok) throw new Error(r.mensaje)
+      return r.valor
+    },
+    onEvento: (cb) => suscribir<EventoChat>(Canales.chatEvento, cb)
   },
   github: {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.githubOperar, op, entrada)

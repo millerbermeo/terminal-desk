@@ -232,6 +232,17 @@ export class ClienteServidor {
     return this.peticion<T>('DELETE', ruta, cuerpo)
   }
 
+  /** Descarga un archivo con sesión (el contenido llega entero en memoria: úsalo solo para adjuntos acotados por el servidor). */
+  descargar(ruta: string, espera = 90_000): Promise<{ datos: Uint8Array; tipo: string }> {
+    return this.peticion<{ datos: Uint8Array; tipo: string }>('GET', ruta, undefined, true, { bytes: true, espera })
+  }
+
+  /** Token de la sesión para abrir el WebSocket del chat. Solo para el proceso principal: la interfaz nunca lo ve. */
+  async tokenActual(): Promise<string | undefined> {
+    await this.cargar()
+    return this.token
+  }
+
   /** Envía datos binarios (p. ej. un audio) con sesión. `espera` es más larga que la de las peticiones JSON. */
   binario<T>(ruta: string, datos: Uint8Array, tipo: string, cabeceras: Record<string, string> = {}, espera = 90_000): Promise<T> {
     return this.peticion<T>('POST', ruta, undefined, true, { binario: { datos, tipo, cabeceras }, espera })
@@ -242,7 +253,7 @@ export class ClienteServidor {
     ruta: string,
     cuerpo?: unknown,
     conSesion = true,
-    { binario, espera = TIEMPO_MAX_MS }: { binario?: { datos: Uint8Array; tipo: string; cabeceras: Record<string, string> }; espera?: number } = {}
+    { binario, bytes, espera = TIEMPO_MAX_MS }: { binario?: { datos: Uint8Array; tipo: string; cabeceras: Record<string, string> }; bytes?: boolean; espera?: number } = {}
   ): Promise<T> {
     await this.cargar()
     if (conSesion && !this.token) throw new ErrorSesion()
@@ -285,6 +296,7 @@ export class ClienteServidor {
       throw new ErrorServidor(e.mensaje, res.status, e.codigo)
     }
     if (res.status === 204) return undefined as T
+    if (bytes) return { datos: new Uint8Array(await res.arrayBuffer()), tipo: res.headers.get('content-type') ?? '' } as T
     return (await res.json()) as T
   }
 }

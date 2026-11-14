@@ -14,6 +14,9 @@ export const IconoCarpeta = () => (
 export const IconoTareas = () => (
   <Icono><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m8 12 3 3 5-6" /></Icono>
 )
+export const IconoChat = () => (
+  <Icono><path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.3A8 8 0 1 1 21 12z" /></Icono>
+)
 export const IconoMas = () => (
   <Icono><path d="M12 5v14M5 12h14" /></Icono>
 )

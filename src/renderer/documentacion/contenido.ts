@@ -731,6 +731,43 @@ export const SECCIONES: Seccion[] = [
   },
 
   {
+    id: 'chat',
+    titulo: 'Chat entre cuentas',
+    icono: 'chat',
+    categoria: 'Herramientas',
+    gancho: 'Mensajes en tiempo real, archivos, notas de voz y llamadas con tus contactos',
+    resumen:
+      'Un chat al estilo de las apps de mensajería, dentro de Odesk Agent: agregas contactos por correo, ellos aceptan, y desde ahí pueden escribirse al instante, enviarse fotos, archivos y notas de voz, y hacer llamadas de voz o video.',
+    donde: 'Pantalla «Chat» (barra lateral)',
+    paraQue: [
+      'Hablar con tu equipo sin salir de la app donde trabajas.',
+      'Mandar capturas, archivos o una nota de voz en vez de explicarlo por escrito.',
+      'Resolver algo en una llamada o videollamada sin abrir otra herramienta.'
+    ],
+    pasos: [
+      { titulo: '1. Agrega un contacto', texto: 'En la pestaña «Contactos» escribe su correo y pulsa «Invitar». Si esa persona ya tiene cuenta ve tu solicitud en su chat; si no, le llega una invitación por correo y la solicitud aparece cuando se registre. Nadie puede escribirte sin que aceptes antes.' },
+      { titulo: '2. Acepta o rechaza', texto: 'Las solicitudes que recibes salen arriba en «Contactos» con «Aceptar» y «Rechazar». Si pidieron agregarse a la vez, quedan como contactos al instante. «Bloquear» (⛔) corta el trato sin avisar a la otra persona.' },
+      { titulo: '3. Escribe', texto: 'Enter envía y Shift+Enter hace un salto de línea. Verás ✓ enviado, ✓✓ entregado y ✓✓ azul cuando lo leyó, y «escribiendo…» mientras teclea. Con el menú ⌄ de cada mensaje puedes responder, reaccionar con un emoji, copiar, editar (hasta 15 minutos) o eliminarlo para todos.' },
+      { titulo: '4. Envía archivos y notas de voz', texto: 'Con 📎, arrastrando un archivo al chat o pegando una captura (hasta 25 MB). Con 🎤 grabas una nota de voz (hasta 10 minutos): se envía con «Enviar» y quien la recibe puede reproducirla a 1×, 1,5× o 2×.' },
+      { titulo: '5. Llama', texto: 'Los botones 📞 y 🎥 del chat (o de la lista de contactos) hacen una llamada de voz o una videollamada. La otra persona la recibe aunque esté en otra sección de la app. Puedes silenciar el micrófono y apagar la cámara. Las llamadas quedan anotadas en el chat.' }
+    ],
+    bloques: [
+      {
+        titulo: 'Detalles',
+        items: [
+          'Si no hay conexión los mensajes se muestran como «enviando» y puedes reintentarlos; los que te mandaron mientras no estabas llegan al reconectar.',
+          'Los avisos del sistema por mensajes nuevos siguen la preferencia de notificaciones del Asistente; cada chat se puede silenciar o archivar, y «Vaciar chat» solo borra tu copia.',
+          'Tu nombre en el chat y si compartes que estás en línea se cambian abajo, en «Contactos» → «Mi perfil en el chat».',
+          'Las llamadas van de equipo a equipo (WebRTC). Detrás de algunos routers hace falta un servidor TURN configurado en el backend; sin él pueden no conectar.',
+          'Los mensajes y archivos se guardan en tu servidor (no están cifrados de extremo a extremo): quien administra el servidor puede acceder a ellos.'
+        ]
+      }
+    ],
+    limites: ['Por ahora solo hay conversaciones de dos personas: no hay grupos, ni mensajes que desaparecen, ni notificaciones cuando la app está cerrada.'],
+    relacionadas: ['cuenta', 'seguridad']
+  },
+
+  {
     id: 'api',
     titulo: 'Cliente API',
     icono: 'api',

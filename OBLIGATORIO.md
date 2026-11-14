@@ -99,3 +99,13 @@ Biblioteca de recursos (compartidos o individuales de un proyecto) con activaci�
 - Sin la clave (o si Groq la rechaza) el botón 🎤 muestra estas instrucciones y no se graba ni se procesa nada.
 - El servidor tiene que estar actualizado (rutas `/voz/estado` y `/voz/transcribir`); un servidor antiguo responde 404 y el escritorio pide actualizar el backend.
 - En macOS la app empaquetada pide permiso de micrófono la primera vez (`NSMicrophoneUsageDescription` en `electron-builder.yml`); en Linux depende del sistema de audio (PipeWire/PulseAudio).
+
+## 12. Chat entre cuentas
+
+- **Migración del backend**: `pnpm migration:ejecutar` en `terminal-desk-api` (crea las tablas `chat_*`, migración `0012_chat`). Sin ella el chat responde 500.
+- **El API tiene que estar actualizado y reiniciado**: el chat usa rutas `/chat/*` y un WebSocket en `/chat/ws`. Un servidor antiguo responde 404 y el escritorio pide actualizar el backend. Detrás de un proxy (nginx, Caddy…) hay que **dejar pasar el upgrade de WebSocket** en `/chat/ws` (`proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade";`) y subir `proxy_read_timeout` por encima de 60 s (el API manda un latido cada 30 s).
+- **Archivos y notas de voz**: se guardan en disco en `CHAT_STORAGE_DIR` (por defecto `storage/chat/` junto al API). **Incluir esa carpeta en las copias de seguridad** y asegurar que el disco tiene sitio (límite de 25 MB por archivo, `CHAT_MAX_MB`). El cuerpo de la subida pasa por el proxy: si es nginx, `client_max_body_size 26m;`.
+- **Llamadas fuera de la misma red**: WebRTC necesita un servidor TURN para atravesar routers estrictos. Instalar `coturn` con `use-auth-secret` y poner en el `.env` del API `CHAT_TURN_URL=turn:turn.midominio.com:3478` y `CHAT_TURN_SECRET=<el mismo secreto de coturn>`. Sin TURN solo se usa STUN (`CHAT_STUN_URL`, por defecto el de Google) y algunas llamadas no conectarán.
+- **Permisos del sistema**: la primera llamada o nota de voz pide acceso al micrófono (y a la cámara en videollamada). En macOS ver `NSMicrophoneUsageDescription` / `NSCameraUsageDescription` en `electron-builder.yml`.
+- El correo de invitación a quien aún no tiene cuenta sale por el mismo SMTP que los códigos de verificación.
+

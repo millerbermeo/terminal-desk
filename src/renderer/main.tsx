@@ -23,6 +23,7 @@ import './diseno/proyectos.css'
 import './diseno/inicio.css'
 import './diseno/agentes.css'
 import './diseno/tareas.css'
+import './diseno/chat.css'
 import { Cargando } from './components/Cargando'
 
 // ?ventana=<token> => ventana separada (solo terminales); sin parámetro => ventana principal
