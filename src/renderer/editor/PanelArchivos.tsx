@@ -562,6 +562,12 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
         <div className="ed-arbol-cab">
           <strong title={nombre}>{nombre}</strong>
           <span className="ag-espacio" />
+          <button
+            title="Abrir este proyecto en una ventana de VS Code"
+            onClick={() => void window.api.archivos.abrirVscode(proyectoId).then((r) => { if (!r.ok) window.alert(r.mensaje ?? 'No se pudo abrir VS Code') })}
+          >
+            Abrir en VS Code
+          </button>
           <button className="icono" title="Nuevo archivo" aria-label="Nuevo archivo" onClick={() => iniciarNuevo('', 'archivo')}><IconoArchivoNuevo /></button>
           <button className="icono" title="Nueva carpeta" aria-label="Nueva carpeta" onClick={() => iniciarNuevo('', 'carpeta')}><IconoCarpetaNueva /></button>
           <button className="icono" title="Actualizar" aria-label="Actualizar" onClick={refrescarTodo}><IconoReiniciar /></button>

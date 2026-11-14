@@ -29,6 +29,7 @@ const api: ApiCentro = {
     duplicar: (id, ruta) => ipcRenderer.invoke(CA.duplicar, id, ruta),
     rutaAbsoluta: (id, ruta) => ipcRenderer.invoke(CA.rutaAbsoluta, id, ruta),
     mostrar: (id, ruta) => ipcRenderer.invoke(CA.mostrar, id, ruta),
+    abrirVscode: (id) => ipcRenderer.invoke(CA.abrirVscode, id),
     estadoGit: (id) => ipcRenderer.invoke(CA.estadoGit, id),
     vigilar: (id, carpetas) => ipcRenderer.invoke(CA.vigilar, id, carpetas),
     onCambio: (cb) => suscribir<CambioArchivo>(CA.cambio, cb)

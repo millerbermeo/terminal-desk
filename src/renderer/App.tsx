@@ -369,14 +369,34 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     [agregar]
   )
 
-  // Asistente en la carpeta raíz común de los proyectos del grupo (opcional; solo con 2+ proyectos).
-  const agregarAsistenteRaiz = useCallback(
-    (v: Ventana, raiz: string) => {
+  // «Terminal general»: celda con terminal + asistente + archivos en la carpeta raíz común del grupo.
+  // La raíz se registra como proyecto local (solo de este equipo) para que asistente y archivos funcionen como en cualquier proyecto.
+  const agregarGeneral = useCallback(
+    async (v: Ventana, raiz: string) => {
       setMenuNueva(null)
-      const titulo = tituloUnico('Raíz · Asistente', v.terminales)
-      agregar(v.id, v.nombre, [{ ...nuevaTerminal(titulo, raiz), vista: 'asistente' }])
+      try {
+        let d = datos
+        let p = d.proyectos.find((x) => x.ruta === raiz)
+        if (!p) {
+          const grupoId = d.grupos.some((g) => g.id === v.id) ? v.id : undefined
+          const r = await window.api.proyectos.agregar({
+            modo: 'local',
+            ...(grupoId ? { grupoId } : {}),
+            proyectos: [{ nombre: `Raíz · ${v.nombre}`, ruta: raiz }]
+          })
+          d = r.datos
+          setDatos(d)
+          p = d.proyectos.find((x) => x.ruta === raiz)
+          if (!p) throw new Error(r.errores[0]?.mensaje ?? 'No se pudo crear la terminal general')
+        }
+        const existente = v.terminales.find((t) => t.proyectoId === p!.id && !t.proveedorId)
+        if (existente) return enfocar(v.id, existente.id)
+        agregar(v.id, v.nombre, [nuevaTerminal(tituloUnico(p.nombre, v.terminales), raiz, undefined, p.id)])
+      } catch (err) {
+        console.error(err)
+      }
     },
-    [agregar]
+    [agregar, datos, enfocar]
   )
 
   // Terminal suelta: en la pestaña activa (o en una pestaña "Terminales" si no hay ninguna).
@@ -787,9 +807,9 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
                         const ps = datos.proyectos.filter((p) => claveDe(p).id === v.id)
                         const raiz = ps.length >= 2 ? raizComun(ps.map((p) => p.ruta)) : undefined
                         return raiz ? (
-                          <button role="menuitem" onClick={() => agregarAsistenteRaiz(v, raiz)} title={raiz}>
+                          <button role="menuitem" onClick={() => void agregarGeneral(v, raiz)} title={`${raiz} · terminal, asistente y archivos`}>
                             <IconoTerminal />
-                            <span>Asistente en la raíz de los proyectos</span>
+                            <span>Terminal general (raíz: terminal, asistente y archivos)</span>
                           </button>
                         ) : null
                       })()}

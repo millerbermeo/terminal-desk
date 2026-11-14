@@ -21,6 +21,7 @@ import './diseno/barra-lateral.css'
 import './diseno/modulos.css'
 import './diseno/proyectos.css'
 import './diseno/inicio.css'
+import './diseno/agentes.css'
 import './diseno/tareas.css'
 import { Cargando } from './components/Cargando'
 
