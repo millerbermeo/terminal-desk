@@ -9,6 +9,8 @@ interface Props {
   onSeleccion?: (id: number, marcado: boolean) => void
   /** Texto de la casilla de cada bloque. */
   etiquetaBloque?: string
+  /** Con esto, cada bloque lleva «Ir a la línea» (abre el archivo en el editor del proyecto en ese punto). */
+  onIr?: (b: BloqueDiff) => void
 }
 
 const MAX_FILAS = 4000
@@ -92,7 +94,7 @@ function filasDivididas(b: BloqueDiff): Fila[] {
   return filas
 }
 
-function Cabecera({ b, seleccion, onSeleccion, etiqueta }: { b: BloqueDiff; seleccion?: ReadonlySet<number>; onSeleccion?: (id: number, marcado: boolean) => void; etiqueta: string }) {
+function Cabecera({ b, seleccion, onSeleccion, etiqueta, onIr }: { b: BloqueDiff; seleccion?: ReadonlySet<number>; onSeleccion?: (id: number, marcado: boolean) => void; etiqueta: string; onIr?: (b: BloqueDiff) => void }) {
   return (
     <div className="hd-cab">
       {seleccion && (
@@ -107,6 +109,11 @@ function Cabecera({ b, seleccion, onSeleccion, etiqueta }: { b: BloqueDiff; sele
       {b.agregadas > 0 && <span className="hd-mas">+{b.agregadas}</span>}
       {b.quitadas > 0 && <span className="hd-menos">−{b.quitadas}</span>}
       {b.modificadas > 0 && <span className="hd-mod">~{b.modificadas}</span>}
+      {onIr && (
+        <button type="button" className="hd-ir" onClick={() => onIr(b)} title="Abrir el archivo en el editor del proyecto en esta línea">
+          Ir a la línea ↗
+        </button>
+      )}
     </div>
   )
 }
@@ -115,7 +122,7 @@ function Cabecera({ b, seleccion, onSeleccion, etiqueta }: { b: BloqueDiff; sele
  * Diferencias entre dos versiones de un archivo: líneas agregadas (verde), quitadas (rojo) y modificadas (se resalta lo que cambió dentro
  * de la línea), en una columna o en dos. Con `seleccion`, cada bloque se puede marcar para restaurarlo por separado.
  */
-export function VisorDiff({ diff, modo, seleccion, onSeleccion, etiquetaBloque = 'Restaurar este bloque' }: Props) {
+export function VisorDiff({ diff, modo, seleccion, onSeleccion, etiquetaBloque = 'Restaurar este bloque', onIr }: Props) {
   const total = useMemo(() => diff.bloques.reduce((n, b) => n + b.lineas.length, 0), [diff])
   if (diff.iguales) return <p className="tareas-vacio">Sin diferencias: las dos versiones son iguales.</p>
   // Si todo es agregado (o todo quitado) una de las dos mitades queda vacía: se usa el ancho completo en vez de dejar medio panel en blanco.
@@ -131,7 +138,7 @@ export function VisorDiff({ diff, modo, seleccion, onSeleccion, etiquetaBloque =
         restantes -= recorte.length
         return (
           <section key={b.id} className={`hd-bloque${seleccion?.has(b.id) ? ' marcado' : ''}`}>
-            <Cabecera b={b} seleccion={seleccion} onSeleccion={onSeleccion} etiqueta={etiquetaBloque} />
+            <Cabecera b={b} seleccion={seleccion} onSeleccion={onSeleccion} etiqueta={etiquetaBloque} onIr={onIr} />
             {modo === 'unificado'
               ? recorte.map((l, i) => (
                   <div key={i} className={`hd-l hd-${l.tipo}${l.modificada ? ' mod' : ''}`} role="row">

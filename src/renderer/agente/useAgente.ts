@@ -25,6 +25,8 @@ export interface Turno {
   lateral?: boolean
   /** Id del mensaje en el CLI (para deshacer los cambios de archivos de este turno). */
   mensajeId?: string
+  /** Cuándo empezó (ms): el cronómetro de la barra «trabajando». Los turnos recuperados del historial no lo tienen. */
+  inicio?: number
 }
 
 export interface OpcionesEnvio {
@@ -211,7 +213,7 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
       const raiz = modo === 'flujo' ? 'flujo' : modo === 'grupo' ? 'coordinador' : (solicitud.agenteId ?? 'asistente')
       actualizar((ts) => [
         ...ts,
-        { clave, prompt: solicitud.prompt, modo, destino, raiz, eventos: [], parcial: '', estado: 'en_curso', ...(solicitud.proyectoId ? { proyectoId: solicitud.proyectoId } : {}), ...(solicitud.autonomia && solicitud.autonomia !== 'preguntar' ? { autonomia: solicitud.autonomia } : {}), ...(adjuntos?.length ? { adjuntos } : {}) }
+        { clave, prompt: solicitud.prompt, modo, destino, raiz, eventos: [], parcial: '', estado: 'en_curso', inicio: Date.now(), ...(solicitud.proyectoId ? { proyectoId: solicitud.proyectoId } : {}), ...(solicitud.autonomia && solicitud.autonomia !== 'preguntar' ? { autonomia: solicitud.autonomia } : {}), ...(adjuntos?.length ? { adjuntos } : {}) }
       ])
       enVuelo.current++
       try {
@@ -251,7 +253,7 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
       const clave = `t${++contador.current}`
       actualizar((ts) => [
         ...ts,
-        { clave, prompt, modo: 'chat', destino, raiz: 'asistente', eventos: [], parcial: '', estado: 'en_curso', lateral: true, ...(proyectoId ? { proyectoId } : {}) }
+        { clave, prompt, modo: 'chat', destino, raiz: 'asistente', eventos: [], parcial: '', estado: 'en_curso', inicio: Date.now(), lateral: true, ...(proyectoId ? { proyectoId } : {}) }
       ])
       enVuelo.current++
       try {
@@ -276,7 +278,7 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
       const clave = `t${++contador.current}`
       actualizar((ts) => [
         ...ts,
-        { clave, prompt: `/${o.nombre}${o.argumentos ? ` ${o.argumentos}` : ''}`, modo: 'comando', destino: o.destino, raiz: 'comando', eventos: [], parcial: '', estado: 'en_curso', proyectoId: o.proyectoId }
+        { clave, prompt: `/${o.nombre}${o.argumentos ? ` ${o.argumentos}` : ''}`, modo: 'comando', destino: o.destino, raiz: 'comando', eventos: [], parcial: '', estado: 'en_curso', inicio: Date.now(), proyectoId: o.proyectoId }
       ])
       enVuelo.current++
       try {

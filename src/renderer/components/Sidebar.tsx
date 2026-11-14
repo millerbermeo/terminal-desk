@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { trabajandoAhora, type AvisoEquipo, type PendienteClonar } from '@shared/equipos'
 import { proyectosConNombreRepetido, type DatosProyectos, type Proyecto, type ProveedorEstado } from '@shared/modelos'
+import { sinRaiz } from '../raizGrupo'
 import logo from '../assets/logo.png'
 import { useChat } from '../chat/almacen'
 import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoBuscar, IconoChat, IconoGitHub, IconoGlobo, IconoInicio, IconoLibro, IconoMas, IconoNube, IconoPanelLateral, IconoRama, IconoRayo, IconoTareas, IconoUsuario } from './Iconos'
@@ -317,7 +318,7 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
       </div>
       <nav className="lista">
         {datos.grupos.map((g) =>
-          seccion(g.id, g.nombre, datos.proyectos.filter((p) => p.grupo === g.id), faltanDe(g.id))
+          seccion(g.id, g.nombre, sinRaiz(datos.proyectos.filter((p) => p.grupo === g.id)), faltanDe(g.id))
         )}
         {(sinGrupo.length > 0 || faltanSinGrupo.length > 0) && seccion('__sin-grupo__', 'Sin grupo', sinGrupo, faltanSinGrupo)}
         {pendientes.length > 0 && !q && (

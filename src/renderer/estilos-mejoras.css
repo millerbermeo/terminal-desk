@@ -372,6 +372,8 @@ body {
 .hd-aviso { font-family: inherit; }
 .hd-bloque { border: 1px solid var(--borde); border-radius: var(--radio); overflow: hidden; background: rgba(0, 0, 0, 0.22); }
 .hd-bloque.marcado { border-color: rgba(129, 140, 248, 0.55); box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.2); }
+.hd-ir { margin-left: auto; padding: 1px 8px; border: 1px solid var(--borde); border-radius: 5px; background: transparent; color: var(--texto-suave); font-size: 11px; cursor: pointer; }
+.hd-ir:hover { color: var(--texto); border-color: var(--acento, #818cf8); }
 .hd-cab { display: flex; align-items: center; gap: 12px; padding: 4px 10px; background: rgba(255, 255, 255, 0.04); border-bottom: 1px solid var(--borde); font-size: 11.5px; color: var(--texto-suave); }
 .hd-casilla { display: inline-flex; align-items: center; gap: 6px; flex-direction: row; max-width: none; color: var(--texto); font-family: var(--fuente); cursor: pointer; }
 .hd-mas { color: var(--ok); }
