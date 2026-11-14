@@ -19,6 +19,8 @@ export interface ResultadoRotacion {
 export async function prepararRotacion(o: {
   sesion: Sesion | undefined
   motivo: MotivoRotacion
+  /** Resumen de la rotación anterior (lo que ya no está en los turnos recientes). */
+  resumenAnterior?: string
   carpeta?: string
   cwd?: string
   senal?: AbortSignal
@@ -27,8 +29,10 @@ export async function prepararRotacion(o: {
   const turnos = o.sesion?.transcripcion ?? []
   const digest = digestDeConversacion(turnos)
   if (!digest.trim()) return undefined
+  const anterior = o.resumenAnterior?.trim()
   try {
-    const r = await consultarCli(PROMPT_RESUMEN, `<conversacion>\n${digest}\n</conversacion>`, {
+    const entrada = `${anterior ? `<resumen_anterior>\n${anterior}\n</resumen_anterior>\n\n` : ''}<conversacion>\n${digest}\n</conversacion>`
+    const r = await consultarCli(PROMPT_RESUMEN, entrada, {
       ...(o.carpeta ? { carpeta: o.carpeta } : {}),
       ...(o.cwd ? { cwd: o.cwd } : {}),
       ...(o.senal ? { senal: o.senal } : {})
@@ -36,7 +40,7 @@ export async function prepararRotacion(o: {
     if (r.uso.length) o.alUso?.(r.uso)
     return { bloque: bloqueContextoPrevio(r.texto, o.motivo), resumen: r.texto, conModelo: true }
   } catch {
-    const resumen = resumenDeRespaldo(digest)
+    const resumen = resumenDeRespaldo(digest, undefined, anterior)
     return { bloque: bloqueContextoPrevio(resumen, o.motivo), resumen, conModelo: false }
   }
 }

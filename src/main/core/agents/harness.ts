@@ -60,6 +60,18 @@ const MAX_PASOS = 25
 /** Punto único de ejecución: ensambla agente + LLM + herramientas + política + eventos. */
 export class Harness {
   private gastado = 0
+  /**
+   * Cola de las llamadas que escriben o ejecutan. Las de lectura van en paralelo; las demás, de una en una en TODA la ejecución
+   * (agente, subagentes delegados a la vez y fases del flujo comparten carpeta): dos ediciones simultáneas del mismo archivo se
+   * pisaban (leer-modificar-escribir) y dos confirmaciones se cruzaban. `delegar` es de lectura: no ocupa la cola mientras corre el hijo.
+   */
+  private escrituras: Promise<unknown> = Promise.resolve()
+
+  private enSerie<T>(fn: () => Promise<T>): Promise<T> {
+    const r = this.escrituras.then(fn, fn)
+    this.escrituras = r.catch(() => undefined)
+    return r
+  }
 
   constructor(private readonly o: OpcionesHarness) {}
 
@@ -89,9 +101,14 @@ export class Harness {
     emitir({ tipo: 'inicio', prompt })
 
     const puedeDelegar = agente.subagentes.size > 0 && profundidad < (this.o.maxProfundidad ?? 3)
+    // Lo que consumen los subagentes cuenta en el total de quien delega (antes la conversación solo sumaba lo del agente raíz).
+    const usoHijos = { tokensEntrada: 0, tokensSalida: 0 }
     const delegar = puedeDelegar
       ? herramientaDelegar(agente, async (hijo, tarea) => {
+          if (p.senal?.aborted) return { texto: 'Cancelado antes de delegar.', error: true }
           const r = await this.correr(hijo, tarea, p, ejecucionId, profundidad + 1, [])
+          usoHijos.tokensEntrada += r.uso.tokensEntrada
+          usoHijos.tokensSalida += r.uso.tokensSalida
           return { texto: r.estado === 'completado' ? r.texto : `El subagente terminó con estado «${r.estado}»${r.error ? `: ${r.error}` : ''}. ${r.texto}`.trim(), error: r.estado !== 'completado' }
         })
       : undefined
@@ -109,20 +126,31 @@ export class Harness {
       const h = extras.get(llamada.nombre) ?? registro.obtener(llamada.nombre)
       const riesgo = h?.clasificar?.(llamada.entrada) ?? h?.riesgo ?? 'ejecucion'
       const ctx = { cwd: p.cwd, ...(p.proyectoId ? { proyectoId: p.proyectoId } : {}), ...(p.senal ? { senal: p.senal } : {}) }
-      const bloqueo = await this.o.validar?.(llamada, riesgo, agente.nombre, ctx)
-      if (bloqueo) {
-        emitir({ tipo: 'guardrail', herramienta: llamada.nombre, motivo: bloqueo })
-        return { texto: `Bloqueado por guardrails: ${bloqueo}. No lo reintentes tal cual; busca otra forma que no implique ese riesgo.`, error: true }
+      const correr = async (): Promise<ResultadoHerramienta> => {
+        if (p.senal?.aborted) return { texto: `Cancelado: ${llamada.nombre} no se ejecutó.`, error: true }
+        const bloqueo = await this.o.validar?.(llamada, riesgo, agente.nombre, ctx)
+        if (bloqueo) {
+          emitir({ tipo: 'guardrail', herramienta: llamada.nombre, motivo: bloqueo })
+          return { texto: `Bloqueado por guardrails: ${bloqueo}. No lo reintentes tal cual; busca otra forma que no implique ese riesgo.`, error: true }
+        }
+        if (riesgo !== 'lectura') {
+          const ok = (await (p.aprobar ?? this.o.aprobar)?.(llamada, riesgo, agente.nombre)) ?? false
+          if (!ok) return { texto: `Acción denegada (${riesgo}): ${llamada.nombre} no fue aprobada.`, error: true }
+        }
+        return extras.has(llamada.nombre) ? ejecutarHerramienta(h!, llamada.entrada, ctx) : registro.llamar(llamada.nombre, llamada.entrada, ctx)
       }
-      if (riesgo !== 'lectura') {
-        const ok = (await (p.aprobar ?? this.o.aprobar)?.(llamada, riesgo, agente.nombre)) ?? false
-        if (!ok) return { texto: `Acción denegada (${riesgo}): ${llamada.nombre} no fue aprobada.`, error: true }
-      }
-      return extras.has(llamada.nombre) ? ejecutarHerramienta(h!, llamada.entrada, ctx) : registro.llamar(llamada.nombre, llamada.entrada, ctx)
+      return riesgo === 'lectura' ? correr() : this.enSerie(correr)
     }
 
-    const llamar = (llamada: LlamadaHerramienta): Promise<ResultadoHerramienta> =>
-      this.o.trazador ? this.o.trazador.conHerramienta(llamada, () => ejecutarLlamada(llamada)) : ejecutarLlamada(llamada)
+    // Nunca lanza: una excepción aquí (guardrail, aprobador, herramienta) tumbaba el turno entero, dejaba un tool_use sin resultado
+    // y la conversación sin guardar. El modelo recibe el error como resultado y decide.
+    const llamar = async (llamada: LlamadaHerramienta): Promise<ResultadoHerramienta> => {
+      try {
+        return await (this.o.trazador ? this.o.trazador.conHerramienta(llamada, () => ejecutarLlamada(llamada)) : ejecutarLlamada(llamada))
+      } catch (err) {
+        return { texto: `Error al ejecutar ${llamada.nombre}: ${(err as Error).message}`, error: true }
+      }
+    }
 
     const resultado = await ejecutarBucle(
       {
@@ -158,6 +186,8 @@ export class Harness {
       },
       [...historial, { rol: 'user', contenido: [...(profundidad === 0 ? (p.bloquesUsuario ?? []) : []), { tipo: 'texto', texto: prompt }] }]
     )
+    resultado.uso.tokensEntrada += usoHijos.tokensEntrada
+    resultado.uso.tokensSalida += usoHijos.tokensSalida
     emitir({ tipo: 'fin', resultado })
     return resultado
   }

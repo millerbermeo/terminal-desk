@@ -631,3 +631,11 @@ body {
 .chip-repetido { color: var(--error); border-color: var(--error); background: transparent; }
 .item.nombre-repetido .item-nombre { color: var(--error); }
 .cfg-nombre-edicion { min-width: 0; flex: 1 1 140px; }
+
+/* Proyectos de la cuenta sin carpeta: pistas para detectar huérfanos/duplicados y botón eliminar */
+.cp-eliminar { padding: 3px 6px; color: var(--texto-tenue); }
+.cp-eliminar:hover:not(:disabled) { color: var(--error); }
+.cp-pista { flex-basis: 100%; font-size: 12px; color: var(--texto-tenue); padding-left: 26px; }
+.cp-pista.sospechoso { color: var(--aviso, #f5b14c); }
+.cp-fila.eliminado { opacity: 0.5; }
+.cp-fila.eliminado .cp-nombre { text-decoration: line-through; }

@@ -64,6 +64,11 @@ export interface MetaSesionCli {
   cuenta?: string
   /** Resumen de la sesión anterior que aún no llegó a una sesión nueva (la ejecución que lo llevaba falló antes de guardarla). */
   pendiente?: string
+  /**
+   * Último resumen con el que se abrió una sesión nueva. La siguiente rotación lo recibe junto a los turnos recientes: el digest
+   * solo alcanza a los últimos turnos, y sin él el objetivo y las decisiones del principio se perdían a la segunda rotación.
+   */
+  resumen?: string
   rotaciones: number
   /** Huella del último contexto dinámico (memoria, tareas, git) enviado a esta sesión: solo se reenvía si cambió. */
   hashDinamico?: string
@@ -217,11 +222,15 @@ export const PROMPT_RESUMEN = [
   'Resume esta conversación entre un usuario y un asistente de programación para que OTRO asistente pueda continuarla sin ver el historial.',
   'Usa este formato, en español, máximo ~600 palabras, sin relleno:',
   '## Objetivo\n## Decisiones y hechos clave\n## Archivos y comandos relevantes\n## Estado actual\n## Pendiente',
-  'Conserva rutas, nombres, errores y valores exactos que sigan importando; descarta lo ya resuelto sin consecuencias. No inventes nada que no esté en la conversación.'
+  'Conserva rutas, nombres, errores y valores exactos que sigan importando; descarta lo ya resuelto sin consecuencias. No inventes nada que no esté en la conversación.',
+  'Si hay un <resumen_anterior>, es lo ocurrido ANTES de los turnos de <conversacion>: intégralo en el resumen nuevo (objetivo, decisiones y pendientes que sigan vigentes); ante una contradicción manda lo más reciente.'
 ].join('\n')
 
 /** Resumen de emergencia si el modelo no responde: la cola del digest. */
-export const resumenDeRespaldo = (digest: string, max = 6_000): string => (digest.length > max ? `…${digest.slice(-max)}` : digest)
+export const resumenDeRespaldo = (digest: string, max = 6_000, anterior?: string): string => {
+  const cola = digest.length > max ? `…${digest.slice(-max)}` : digest
+  return anterior?.trim() ? `## Resumen anterior\n${anterior.trim().slice(0, 3_000)}\n\n## Turnos recientes\n${cola}` : cola
+}
 
 /** Bloque que se antepone al primer mensaje de la sesión nueva. */
 export const bloqueContextoPrevio = (resumen: string, motivo: MotivoRotacion): string =>

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import type { PendienteClonar } from '@shared/equipos'
+import type { DiagnosticoPendiente, PendienteClonar } from '@shared/equipos'
 import { leerPreferencias } from '../github/preferencias'
 import { mensajeDe } from '../tareas/useTareas'
-import { IconoCarpeta, IconoCerrar } from './Iconos'
+import { IconoBasura, IconoCarpeta, IconoCerrar } from './Iconos'
 import { confirmar } from '../confirmar'
 
 interface Props {
@@ -14,7 +14,7 @@ interface Props {
   onTerminado: () => void
 }
 
-type Estado = { fase: 'espera' } | { fase: 'clonando' } | { fase: 'enlazando' } | { fase: 'ok'; ruta: string; enlazado?: boolean } | { fase: 'error'; mensaje: string }
+type Estado = { fase: 'espera' } | { fase: 'clonando' } | { fase: 'enlazando' } | { fase: 'eliminando' } | { fase: 'eliminado' } | { fase: 'ok'; ruta: string; enlazado?: boolean } | { fase: 'error'; mensaje: string }
 
 const REQUIERE_CONFIRMACION = 'REQUIERE_CONFIRMACION:'
 
@@ -40,6 +40,17 @@ export function ModalClonarPendientes({ pendientes, inicial, onCerrar, onTermina
   const [estados, setEstados] = useState<Record<string, Estado>>({})
   const [trabajando, setTrabajando] = useState(false)
   const [terminado, setTerminado] = useState(false)
+  const [diagnostico, setDiagnostico] = useState<Record<string, DiagnosticoPendiente>>()
+
+  useEffect(() => {
+    let vivo = true
+    eq('diagnosticoPendientes', {})
+      .then((d) => vivo && setDiagnostico(d))
+      .catch(() => undefined) // sin pistas: el modal sigue funcionando igual
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   useEffect(() => {
     const tecla = (e: KeyboardEvent): void => {
@@ -84,6 +95,38 @@ export function ModalClonarPendientes({ pendientes, inicial, onCerrar, onTermina
         r = await eq('enlazarPendiente', { proyectoId: p.id, ruta: elegida, confirmar: true })
       }
       setEstados((e) => ({ ...e, [p.id]: { fase: 'ok', ruta: r.ruta, enlazado: true } }))
+      setMarcados((m) => {
+        const n = new Set(m)
+        n.delete(p.id)
+        return n
+      })
+      onTerminado()
+    } catch (err) {
+      setEstados((e) => ({ ...e, [p.id]: { fase: 'error', mensaje: mensajeDe(err) } }))
+    } finally {
+      setTrabajando(false)
+    }
+  }
+
+  /** Borra el proyecto de la cuenta (no toca carpetas): para los que quedaron huérfanos o duplicados. */
+  const eliminar = async (p: PendienteClonar): Promise<void> => {
+    if (trabajando) return
+    const d = diagnostico?.[p.id]
+    const pista = d?.equipos.length
+      ? `Ojo: está en ${d.equipos.length === 1 ? 'otra computadora' : `${d.equipos.length} computadoras`} (${d.equipos.map((x) => x.nombre).join(', ')}). Allí dejará de funcionar.`
+      : 'Ninguna computadora lo tiene: parece huérfano.'
+    const sigue = await confirmar({
+      titulo: `¿Eliminar «${p.nombre}» de tu cuenta?`,
+      tono: 'peligro',
+      etiqueta: 'Eliminar de la cuenta',
+      texto: `Se borra del servidor con su tablero, conversaciones y trazas, en todos los equipos. No se borra ninguna carpeta ni repositorio.\n\n${pista}${d?.parecido ? `\n\nSe parece a «${d.parecido}», que ya está aquí: probablemente es un duplicado.` : ''}`
+    })
+    if (!sigue) return
+    setTrabajando(true)
+    setEstados((e) => ({ ...e, [p.id]: { fase: 'eliminando' } }))
+    try {
+      await eq('quitarPendiente', { proyectoId: p.id })
+      setEstados((e) => ({ ...e, [p.id]: { fase: 'eliminado' } }))
       setMarcados((m) => {
         const n = new Set(m)
         n.delete(p.id)
@@ -149,19 +192,33 @@ export function ModalClonarPendientes({ pendientes, inicial, onCerrar, onTermina
         <ul className="cp-lista" aria-label="Proyectos por clonar">
           {pendientes.map((p) => {
             const e = estados[p.id]
+            const d = diagnostico?.[p.id]
+            const hecho = e?.fase === 'ok' || e?.fase === 'eliminado'
             return (
-              <li key={p.id} className={`cp-fila${e?.fase === 'ok' ? ' ok' : ''}`}>
+              <li key={p.id} className={`cp-fila${e?.fase === 'ok' ? ' ok' : ''}${e?.fase === 'eliminado' ? ' eliminado' : ''}`}>
                 <label className="cp-marca">
-                  <input type="checkbox" checked={marcados.has(p.id)} onChange={() => alternar(p.id)} disabled={trabajando || e?.fase === 'ok' || !p.repo} title={p.repo ? undefined : 'Sin repositorio: solo se puede enlazar su carpeta'} />
+                  <input type="checkbox" checked={marcados.has(p.id)} onChange={() => alternar(p.id)} disabled={trabajando || hecho || !p.repo} title={p.repo ? undefined : 'Sin repositorio: solo se puede enlazar su carpeta'} />
                   <span className="cp-nombre">{p.nombre}</span>
                 </label>
                 <span className="mono cp-repo" title={p.repo}>{p.repo ? p.repo.replace(/^(https?:\/\/|git@)/, '').replace(/\.git$/, '') : 'sin repositorio'}</span>
-                {(e?.fase === 'clonando' || e?.fase === 'enlazando') && <span className="spinner" aria-label={e.fase === 'clonando' ? 'Clonando' : 'Enlazando'} />}
+                {(e?.fase === 'clonando' || e?.fase === 'enlazando' || e?.fase === 'eliminando') && <span className="spinner" aria-label={e.fase === 'clonando' ? 'Clonando' : e.fase === 'enlazando' ? 'Enlazando' : 'Eliminando'} />}
+                {e?.fase === 'eliminado' && <span className="chip">eliminado</span>}
                 {e?.fase === 'ok' && <span className="chip chip-ok" title={e.ruta}>{e.enlazado ? '✓ enlazado' : '✓ clonado'}</span>}
-                {e?.fase !== 'ok' && (
+                {!hecho && (
                   <button type="button" className="cp-usar" onClick={() => void usarCarpeta(p)} disabled={trabajando} title="Ya tienes este proyecto en este equipo: elige su carpeta y se enlaza, sin clonar">
                     <IconoCarpeta /> Ya la tengo aquí
                   </button>
+                )}
+                {!hecho && (
+                  <button type="button" className="icono cp-eliminar" onClick={() => void eliminar(p)} disabled={trabajando} title="Eliminar de tu cuenta (huérfano o duplicado)" aria-label={`Eliminar ${p.nombre} de tu cuenta`}>
+                    <IconoBasura />
+                  </button>
+                )}
+                {!hecho && d && (
+                  <span className={`cp-pista${!d.equipos.length || d.parecido ? ' sospechoso' : ''}`}>
+                    {d.equipos.length ? `En ${d.equipos.map((x) => x.nombre).join(', ')}` : 'Ninguna computadora lo tiene'}
+                    {d.parecido ? ` · ¿duplicado de «${d.parecido}»?` : ''}
+                  </span>
                 )}
                 {e?.fase === 'error' && <span className="chip api-estado-servidor" title={e.mensaje}>falló</span>}
                 {e?.fase === 'error' && <span className="cp-error">{e.mensaje}</span>}

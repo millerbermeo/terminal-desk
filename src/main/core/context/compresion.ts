@@ -44,14 +44,16 @@ export function podarResultados(mensajes: readonly Mensaje[], recientes: number,
 }
 
 /**
- * Primer índice >= desde donde se puede cortar: un mensaje del usuario SIN resultados de herramienta
- * (así nunca se separa un tool_use de su tool_result). -1 si no existe.
+ * Índice donde se puede cortar: un mensaje del usuario SIN resultados de herramienta (así nunca se separa un tool_use de su
+ * tool_result). Primero el más cercano desde `desde` hacia delante (conserva lo mínimo); si no hay —a mitad de un turno largo
+ * todo lo reciente son llamadas a herramientas—, el más cercano hacia atrás: se conserva el turno en curso entero y se resume
+ * lo anterior (antes no se resumía nada y el contexto seguía creciendo hasta que la API lo rechazaba). -1 si no existe.
  */
 export function puntoDeCorte(mensajes: readonly Mensaje[], desde: number): number {
-  for (let i = Math.max(1, desde); i < mensajes.length; i++) {
-    const m = mensajes[i]!
-    if (m.rol === 'user' && !m.contenido.some(esResultado)) return i
-  }
+  const vale = (i: number): boolean => mensajes[i]!.rol === 'user' && !mensajes[i]!.contenido.some(esResultado)
+  const inicio = Math.max(1, desde)
+  for (let i = inicio; i < mensajes.length; i++) if (vale(i)) return i
+  for (let i = Math.min(inicio, mensajes.length) - 1; i >= 1; i--) if (vale(i)) return i
   return -1
 }
 
@@ -61,7 +63,8 @@ function transcribir(mensajes: readonly Mensaje[]): string {
     .map((m) => {
       const cuerpo = m.contenido
         .map((b) => {
-          if (b.tipo === 'texto') return recorte(b.texto)
+          // Un resumen anterior ya es lo condensado de muchos turnos: recortarlo perdía lo más antiguo en cada compresión sucesiva.
+          if (b.tipo === 'texto') return b.texto.startsWith(MARCA_RESUMEN) ? b.texto : recorte(b.texto)
           if (b.tipo === 'herramienta_uso') return `(usa ${b.nombre} ${recorte(JSON.stringify(b.entrada))})`
           if (b.tipo === 'imagen' || b.tipo === 'documento') return `(adjunto ${b.tipo}: ${b.nombre})`
           return `(resultado${b.error ? ' con error' : ''}: ${recorte(b.texto)})`
@@ -75,7 +78,8 @@ function transcribir(mensajes: readonly Mensaje[]): string {
 const PROMPT_RESUMEN =
   'Resume la conversación para que otro asistente pueda continuarla sin perder nada importante. ' +
   'Incluye, en español y de forma concisa: objetivo del usuario, decisiones tomadas, archivos leídos o modificados (con rutas), ' +
-  'hallazgos relevantes, errores encontrados y tareas pendientes. No inventes nada.'
+  'hallazgos relevantes, errores encontrados y tareas pendientes. Si la conversación empieza con un resumen anterior, intégralo ' +
+  '(no lo descartes; ante una contradicción manda lo más reciente). No inventes nada.'
 
 /** Compresión automática de la conversación antes de enviarla al modelo. */
 export class CompresorContexto {

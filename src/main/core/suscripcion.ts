@@ -380,6 +380,8 @@ interface MensajeCli {
   request_id?: string
   request?: { subtype?: string; tool_name?: string; input?: Record<string, unknown> }
   subtype?: string
+  /** `system` / `compact_boundary`: el CLI compactó el contexto. */
+  compact_metadata?: { trigger?: string; pre_tokens?: number; post_tokens?: number }
   session_id?: string
   uuid?: string
   model?: string
@@ -474,8 +476,10 @@ export interface SalidaEjecucion {
   /** Tokens del contexto en la última llamada (lo que se reenviará en la próxima ejecución de esta sesión). */
   contexto: number
   ventana?: number
-  /** Imágenes que entraron al contexto en esta ejecución. */
+  /** Imágenes que entraron al contexto en esta ejecución (si el CLI compactó, solo las posteriores). */
   imagenes: number
+  /** El CLI compactó el contexto durante esta ejecución: lo anterior (imágenes incluidas) ya no se reenvía. */
+  compactado?: boolean
   /** Acumulado que informó el CLI por modelo (para restárselo la próxima vez); ausente si no llegó a informarlo. */
   acumulado?: Record<string, AcumuladoModelo>
 }
@@ -628,6 +632,7 @@ export class LectorTurno {
   private usoModelos: UsoPorModelo[] = []
   private herramientas = 0
   private imagenes = 0
+  private compactado = false
   private acumulado: Record<string, AcumuladoModelo> | undefined
   private final: { error?: string; texto?: string; uso?: UsoCli; esError: boolean } | undefined
   private cortado: string | undefined
@@ -685,6 +690,14 @@ export class LectorTurno {
       }
       case 'system':
         if (m.subtype === 'init' && typeof m.model === 'string') this.modelo = m.model
+        // Compactación automática del CLI (la conversación principal, no la de un subagente): se le cuenta al usuario y las
+        // imágenes vistas hasta aquí dejan de pesar (sin esto se seguían sumando y forzaban una rotación que ya no hacía falta).
+        if (m.subtype === 'compact_boundary' && propio) {
+          this.compactado = true
+          this.imagenes = 0
+          const c = m.compact_metadata
+          o.alEvento({ tipo: 'contexto', estrategia: 'resumen', tokensAntes: c?.pre_tokens ?? 0, tokensDespues: c?.post_tokens ?? 0 })
+        }
         return
       case 'rate_limit_event': {
         const i = m.rate_limit_info
@@ -782,6 +795,7 @@ export class LectorTurno {
       contexto,
       ...(this.ventana ? { ventana: this.ventana } : {}),
       imagenes: this.imagenes,
+      ...(this.compactado ? { compactado: true } : {}),
       ...(this.acumulado ? { acumulado: this.acumulado } : {})
     }
   }

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
-import type { ArchivoEquipo, AvisoEquipo, EquipoProyecto, EstadoArchivoEquipo, NombreOperacionEquipos, OperacionesEquipos, PendienteClonar } from '@shared/equipos'
+import { basename, dirname, join } from 'node:path'
+import type { ArchivoEquipo, AvisoEquipo, DiagnosticoPendiente, EquipoProyecto, EstadoArchivoEquipo, NombreOperacionEquipos, OperacionesEquipos, PendienteClonar } from '@shared/equipos'
 import type { ArchivoCambio, CodigoEstado, Commit, EstadoGit } from '@shared/versiones'
 
 /** Lo que usa de git: el estado de la carpeta, su último commit y consultar el remoto. */
@@ -21,7 +21,7 @@ export interface DepsEquipos {
   /** Nombre por defecto de este equipo (el del sistema). */
   nombreSistema: string
   /** Proyectos de la cuenta que tienen carpeta en este equipo. */
-  proyectos(): Promise<{ id: string; ruta: string }[]>
+  proyectos(): Promise<{ id: string; ruta: string; nombre?: string }[]>
   repositorio(ruta: string): RepoEquipos
   pendientes(): Promise<PendienteClonar[]>
   clonarProyecto(e: { proyectoId: string; repo: string; carpetaPadre: string; protocolo?: 'https' | 'ssh' }): Promise<{ ruta: string }>
@@ -321,6 +321,46 @@ export class ServicioEquipos {
     await this.d.alClonar?.(p.id).catch(() => undefined) // baja su tablero, conversaciones y trazas
     return r
   }
+
+  /** Pistas para decidir si un pendiente es basura: si alguna computadora lo tiene y si se parece a uno que ya está aquí. */
+  async diagnosticoPendientes(): Promise<Record<string, DiagnosticoPendiente>> {
+    const [pendientes, locales, yo] = await Promise.all([this.d.pendientes(), this.d.proyectos(), this.equipo()])
+    const { devices } = await this.d.servidor.get<{ devices: FilaServidor[] }>('/devices').catch(() => ({ devices: [] as FilaServidor[] }))
+    const r: Record<string, DiagnosticoPendiente> = {}
+    for (const p of pendientes) {
+      const equipos = devices
+        .filter((f) => f.projectId === p.id && f.deviceId !== yo.id)
+        .map((f) => ({ nombre: f.deviceName, actualizado: new Date(f.updatedAt).toISOString() }))
+        .sort((a, b) => b.actualizado.localeCompare(a.actualizado))
+      const parecido = locales.find((l) => seParecen(p.nombre, l.nombre ?? '') || seParecen(p.nombre, basename(l.ruta)))
+      r[p.id] = { equipos, ...(parecido ? { parecido: parecido.nombre ?? basename(parecido.ruta) } : {}) }
+    }
+    return r
+  }
+
+  /** Solo borra proyectos SIN carpeta en este equipo: uno que está aquí se quita desde su tarjeta. */
+  async quitarPendiente(proyectoId: string): Promise<{ ok: true }> {
+    if (!(await this.d.pendientes()).some((x) => x.id === proyectoId)) throw new Error('Ese proyecto tiene carpeta en este equipo: quítalo desde «Configurar proyectos».')
+    await this.d.servidor.delete(`/projects/${encodeURIComponent(proyectoId)}`)
+    return { ok: true }
+  }
+}
+
+const normalizar = (s: string): string =>
+  s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim()
+
+/** «Backend» ≈ «Backend Devops» o carpeta `backend`; «Agente» ≈ «Agent Devops». Palabras cortas no cuentan (evita falsos parecidos). */
+function seParecen(pendiente: string, local: string): boolean {
+  const a = normalizar(pendiente)
+  const b = normalizar(local)
+  if (!a || !b) return false
+  if (a === b) return true
+  if (a.length < 4) return false
+  return b.split(/[\s_.-]+/).some((t) => t.length >= 4 && (t === a || a.startsWith(t) || t.startsWith(a)))
 }
 
 type Entrada<K extends NombreOperacionEquipos> = OperacionesEquipos[K]['entrada']
@@ -342,7 +382,9 @@ const OPERACIONES: Implementaciones = {
   enlazarPendiente: (s, _d, e) => {
     if (typeof e.ruta !== 'string' || !e.ruta.trim() || e.ruta.length > 1000) return Promise.reject(new Error('Falta la carpeta.'))
     return s.enlazarPendiente({ proyectoId: id(e.proyectoId, 'el proyecto'), ruta: e.ruta, ...(e.confirmar === true ? { confirmar: true } : {}) })
-  }
+  },
+  diagnosticoPendientes: (s) => s.diagnosticoPendientes(),
+  quitarPendiente: (s, _d, e) => s.quitarPendiente(id(e.proyectoId, 'el proyecto'))
 }
 
 /** Operaciones de equipos de la interfaz. El renderer manda ids de proyecto y de equipo, nunca rutas. */

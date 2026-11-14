@@ -3,7 +3,7 @@
    proyectos (lo único que crece y se desplaza) y navegación plegable con la cuenta al pie.
    Todo va bajo `.sidebar` para no depender del orden de las capas históricas. */
 
-.sidebar { width: 256px; background: var(--material-grueso); backdrop-filter: var(--desenfoque-grueso); border-right-color: var(--borde-tenue); }
+.sidebar { width: 282px; background: var(--material-grueso); backdrop-filter: var(--desenfoque-grueso); border-right-color: var(--borde-tenue); }
 .sidebar::after { display: none; }
 
 /* marca: sin brillos ni texto en degradado */
