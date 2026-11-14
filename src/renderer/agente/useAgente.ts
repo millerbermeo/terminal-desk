@@ -108,6 +108,9 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
   const claveActiva = `asistente:activa:${opciones.clave ?? 'global'}`
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [sesionId, setSesionId] = useState<string | undefined>()
+  /** Contexto compactado traído de otra conversación: viaja (oculto) con el primer mensaje de la nueva. */
+  const [herencia, setHerencia] = useState<Herencia | undefined>()
+  const [traspasando, setTraspasando] = useState(false)
   const guardados = useRef(0) // cuántos turnos terminados ya están guardados
   const [contextoEstimado, setContextoEstimado] = useState<number | undefined>() // al retomar una conversación, hasta que haya un dato real
   const ref = useRef<Turno[]>([]) // fuente de verdad: los efectos secundarios no van dentro de actualizadores de estado
@@ -215,11 +218,14 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
         // Las salidas de comandos `/` recientes se adjuntan al mensaje para que el agente sepa qué pasó.
         // Un comando oficial de Claude Code (`/compact`…) va solo: cualquier texto delante dejaría de ser un comando.
         const contexto = solicitud.prompt.startsWith('/') ? '' : salidasPendientes.current.splice(0).join('\n\n')
+        const heredado = !sesionId && herencia && !solicitud.prompt.startsWith('/') ? herencia : undefined
         const { ejecucionId, sesionId: sid } = await window.api.core.ejecutar({
           ...solicitud,
           ...(contexto ? { prompt: `${contexto}\n\n${solicitud.prompt}` } : {}),
-          ...(sesionId ? { sesionId } : {})
+          ...(sesionId ? { sesionId } : {}),
+          ...(heredado ? { contextoPrevio: heredado.resumen } : {})
         })
+        if (heredado) setHerencia(undefined)
         setSesionId(sid)
         etiquetarEjecucion(ejecucionId, destino)
         const previos = huerfanos.current.get(ejecucionId) ?? []
@@ -231,7 +237,7 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
         if (--enVuelo.current === 0) huerfanos.current.clear()
       }
     },
-    [actualizar, sesionId]
+    [actualizar, sesionId, herencia]
   )
 
   /**
@@ -303,12 +309,31 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
 
   /** La conversación actual queda en el historial; se empieza una nueva en blanco. */
   const nuevaConversacion = useCallback((): void => {
+    setHerencia(undefined)
     guardarActiva(claveActiva, undefined)
     setSesionId(undefined)
     setContextoEstimado(undefined)
     guardados.current = 0
     actualizar(() => [])
   }, [actualizar, claveActiva])
+
+  /**
+   * «Nueva con contexto»: resume la conversación actual (lo importante) y empieza otra en blanco que lo recibe con el primer
+   * mensaje. La actual queda en el historial. Lanza si no se pudo resumir (la actual sigue abierta).
+   */
+  const nuevaConContexto = useCallback(async (): Promise<void> => {
+    if (!sesionId) throw new Error('Esta conversación aún no tiene nada guardado que pasar.')
+    setTraspasando(true)
+    try {
+      const r = await window.api.core.traspasar(sesionId)
+      nuevaConversacion()
+      setHerencia({ resumen: r.resumen, titulo: r.titulo, conModelo: r.conModelo })
+    } catch (err) {
+      throw new Error((err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
+    } finally {
+      setTraspasando(false)
+    }
+  }, [nuevaConversacion, sesionId])
 
   /** Retoma una conversación del historial (el modelo continúa con su contexto). */
   const abrirSesion = useCallback(
@@ -340,7 +365,14 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
   const tokensSesion = turnos.reduce((s, t) => s + t.eventos.reduce((x, e) => (e.tipo === 'fin' ? x + e.resultado.uso.tokensEntrada + e.resultado.uso.tokensSalida : x), 0), 0)
   return {
     contexto,
-    tokensSesion, turnos, enCurso, sesionId, enviar, preguntarAhora, ejecutarComando, avisar, cancelar, nuevaConversacion, abrirSesion, borrarSesion }
+    tokensSesion, turnos, enCurso, sesionId, enviar, preguntarAhora, ejecutarComando, avisar, cancelar, nuevaConversacion, abrirSesion, borrarSesion,
+    herencia, traspasando, nuevaConContexto, quitarHerencia: () => setHerencia(undefined), editarHerencia: (resumen: string) => setHerencia((h) => (h ? { ...h, resumen } : h)) }
+}
+
+export interface Herencia {
+  resumen: string
+  titulo: string
+  conModelo: boolean
 }
 
 export type Agente = ReturnType<typeof useAgente>

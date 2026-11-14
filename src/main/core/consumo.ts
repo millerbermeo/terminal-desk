@@ -115,7 +115,7 @@ export const umbralesDeEntorno = (env: NodeJS.ProcessEnv = process.env): Umbrale
  */
 export const maxContinuarAutomatico = (env: NodeJS.ProcessEnv = process.env): number => entero(env.ODESK_MAX_CONTINUAR_AUTO, 6)
 
-export type MotivoRotacion = 'contexto' | 'imagenes' | 'inactividad' | 'modelo' | 'cuenta'
+export type MotivoRotacion = 'contexto' | 'imagenes' | 'inactividad' | 'modelo' | 'cuenta' | 'traspaso'
 
 /**
  * ¿Conviene abrir una sesión nueva con un resumen en vez de reanudar? (Un umbral en 0 lo desactiva.)
@@ -236,7 +236,9 @@ export const resumenDeRespaldo = (digest: string, max = 6_000, anterior?: string
 export const bloqueContextoPrevio = (resumen: string, motivo: MotivoRotacion): string =>
   [
     `<contexto_previo motivo="${motivo}">`,
-    'Esta conversación venía de una sesión anterior que se cerró para no seguir arrastrando un contexto enorme (cada llamada lo reenvía entero y cuesta tokens).',
+    motivo === 'traspaso'
+      ? 'El usuario abrió esta conversación nueva y trajo el contexto compactado de otra conversación anterior (no ves su historial).'
+      : 'Esta conversación venía de una sesión anterior que se cerró para no seguir arrastrando un contexto enorme (cada llamada lo reenvía entero y cuesta tokens).',
     'Resumen de lo hablado y hecho hasta ahora; si necesitas un detalle que no esté aquí, vuelve a leer el archivo o a ejecutar el comando en vez de suponerlo:',
     resumen.trim(),
     '</contexto_previo>'

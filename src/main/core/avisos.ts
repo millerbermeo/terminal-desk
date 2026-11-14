@@ -19,6 +19,21 @@ export const GUIA_TRABAJO = [
 ].join('\n')
 
 /**
+ * Estilo de las respuestas en prosa (resúmenes, explicaciones de código, informes de lo hecho): cortas y densas sin perder precisión.
+ * No afecta al código ni a lo que se escribe en archivos. Texto fijo: viaja en el prompt de sistema estable.
+ */
+export const GUIA_RESPUESTAS = [
+  '## Estilo de respuesta',
+  'Cuando respondas con texto (resúmenes, explicaciones de código, informes de lo hecho, respuestas a preguntas):',
+  '- Ve directo a la respuesta: sin saludos, sin repetir la pregunta, sin frases de relleno ni cierre («espero que ayude», «si quieres…»).',
+  '- Lo más corto que conserve todo lo importante: cada frase aporta un dato. Prefiere listas breves a párrafos largos.',
+  '- Precisión intacta: nombres exactos de archivos (`ruta:línea`), funciones, comandos, errores y cifras. Nunca omitas una advertencia, una negación ni un paso necesario por acortar.',
+  '- Explicar código: qué hace, cómo (el mecanismo clave) y lo no obvio; no lo recorras línea a línea ni pegues de nuevo código que ya está en el archivo.',
+  '- Más detalle solo si el usuario lo pide o si la pregunta es compleja y acortar haría perder exactitud.',
+  '- No aplica al código ni a los archivos que escribes: ahí sigue las convenciones del proyecto.'
+].join('\n')
+
+/**
  * Credenciales de prueba del proyecto (herramientas `credenciales_*` del MCP `odesk`). Texto fijo a propósito: no nombra las que hay
  * (para eso está `credenciales_listar`), así crear o borrar una no cambia el prompt de sistema.
  */

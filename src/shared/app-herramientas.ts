@@ -2,8 +2,9 @@ import type { DefHerramientaTareas } from './tareas-herramientas'
 
 /**
  * Herramientas para manejar la propia aplicación desde cualquier asistente (el Asistente de Odesk, Claude Code en una terminal ✦ o un
- * cliente MCP externo como Claude Desktop, VS Code o Cursor): proyectos y grupos, terminales, servicios de arranque, conversaciones del
- * Asistente, ajustes, consumo e historial local de archivos. Lo que cierra, para, quita o restaura pide confirmación en Odesk
+ * cliente MCP externo como Claude Desktop, VS Code o Cursor): proyectos y grupos, terminales, servicios de arranque (lanzar y configurar),
+ * conversaciones del Asistente, comandos «/», agentes y skills, ajustes, consumo, historial local de archivos, mis equipos, cliente API,
+ * chat entre cuentas y notificaciones. Lo que cierra, para, quita o restaura pide confirmación en Odesk
  * (`confirmacionApp`), venga de donde venga.
  */
 const t = (description: string): { type: string; description: string } => ({ type: 'string', description })
@@ -208,6 +209,180 @@ export const HERRAMIENTAS_APP: readonly DefHerramientaTareas[] = [
     descripcion: 'Restaura un archivo a una versión del historial local (antes guarda el estado actual, así que se puede deshacer). Pide confirmación en Odesk.',
     esquema: { type: 'object', properties: { proyecto_id: PROYECTO, ruta: t('Ruta del archivo'), version: t('Id de la versión (historial_versiones)') }, required: ['ruta', 'version'] },
     riesgo: 'escritura'
+  },
+  // ── Proyectos: nombre y grupo ──
+  {
+    nombre: 'proyecto_renombrar',
+    descripcion: 'Cambia el nombre de un proyecto en la cuenta (lo ven todos los equipos).',
+    esquema: { type: 'object', properties: { proyecto_id: PROYECTO, nombre: t('Nombre nuevo') }, required: ['nombre'] },
+    riesgo: 'escritura'
+  },
+  {
+    nombre: 'proyecto_mover_grupo',
+    descripcion: 'Mueve un proyecto a otro grupo (odesk_proyectos da los ids de grupo) o lo deja sin grupo.',
+    esquema: { type: 'object', properties: { proyecto_id: PROYECTO, grupo_id: t('Id del grupo; vacío o «ninguno» = sin grupo') } },
+    riesgo: 'escritura'
+  },
+  // ── Servicios de arranque: configurar ──
+  {
+    nombre: 'servicio_guardar',
+    descripcion:
+      'Crea o edita un comando de arranque del proyecto (se guarda en la cuenta: lo ven todos los equipos). Con id edita ese; sin id crea uno nuevo. Solo cambia los campos que mandes.',
+    esquema: {
+      type: 'object',
+      properties: {
+        proyecto_id: PROYECTO,
+        id: t('Id del comando a editar (servicios_listar); sin él se crea'),
+        nombre: t('Nombre corto (p. ej. «api», «web»)'),
+        comando: t('Comando de una línea tal como se escribiría en la terminal'),
+        cwd: t('Subcarpeta del proyecto donde se ejecuta (relativa; vacío = raíz)'),
+        puerto: n('Puerto que abre (sirve para saber cuándo está listo y detectar conflictos)'),
+        esperar: { type: 'string', description: 'Cómo saber que está listo', enum: ['puerto', 'texto', 'tiempo', 'nada'] },
+        texto_listo: t('Con esperar=texto: texto de la salida que indica que está listo'),
+        espera_ms: n('Pausa (tiempo) o máximo de espera (puerto/texto), en ms'),
+        siempre: b('Lanzarlo solo cada vez que se abre el proyecto')
+      },
+      required: ['nombre', 'comando']
+    },
+    riesgo: 'escritura'
+  },
+  {
+    nombre: 'servicio_eliminar',
+    descripcion: 'Borra un comando de arranque del proyecto (de la cuenta). Pide confirmación en Odesk.',
+    esquema: { type: 'object', properties: { proyecto_id: PROYECTO, id: t('Id del comando (servicios_listar)') }, required: ['id'] },
+    riesgo: 'escritura'
+  },
+  // ── Comandos propios «/» del Asistente ──
+  {
+    nombre: 'comandos_listar',
+    descripcion: 'Comandos propios del Asistente («/nombre»): los globales y los del proyecto, con su tipo (prompt o ejecutable) y descripción.',
+    esquema: { type: 'object', properties: { proyecto_id: t('Proyecto (si se omite, solo los globales)') } },
+    riesgo: 'lectura'
+  },
+  {
+    nombre: 'comando_guardar',
+    descripcion:
+      'Crea o reemplaza un comando propio «/nombre» del Asistente. tipo=prompt: plantilla de texto ($ARGUMENTOS = lo que se escriba detrás). tipo=ejecutable: programa y argumentos fijos (pide confirmación en Odesk).',
+    esquema: {
+      type: 'object',
+      properties: {
+        proyecto_id: t('Proyecto (si se omite, el comando es global)'),
+        nombre: t('Nombre: a-z, 0-9, «-» y «_»'),
+        descripcion: t('Qué hace'),
+        tipo: { type: 'string', enum: ['prompt', 'ejecutable'], description: 'prompt o ejecutable' },
+        plantilla: t('tipo=prompt: el texto del prompt'),
+        comando: lista('tipo=ejecutable: [programa, ...argumentos fijos]'),
+        argumentos: b('tipo=ejecutable: admite argumentos extra detrás del nombre')
+      },
+      required: ['nombre', 'descripcion', 'tipo']
+    },
+    riesgo: 'escritura'
+  },
+  {
+    nombre: 'comando_eliminar',
+    descripcion: 'Borra un comando propio «/nombre» del Asistente. Pide confirmación en Odesk.',
+    esquema: { type: 'object', properties: { proyecto_id: t('Proyecto (si se omite, uno global)'), nombre: t('Nombre del comando') }, required: ['nombre'] },
+    riesgo: 'escritura'
+  },
+  // ── Agentes y skills de Claude Code (biblioteca de la cuenta) ──
+  {
+    nombre: 'agentes_listar',
+    descripcion: 'Biblioteca de agentes y skills de Claude Code de la cuenta: nombre, tipo, descripción, ámbito y en qué proyectos o grupos están activos. Con proyecto_id, cuáles se cargan en ese proyecto.',
+    esquema: { type: 'object', properties: { proyecto_id: t('Proyecto (opcional)') } },
+    riesgo: 'lectura'
+  },
+  {
+    nombre: 'agente_activar',
+    descripcion: 'Activa o desactiva un agente o skill COMPARTIDO de la biblioteca en un proyecto o en un grupo (los de ámbito proyecto ya van siempre con su proyecto).',
+    esquema: {
+      type: 'object',
+      properties: {
+        recurso_id: t('Id del agente o skill (agentes_listar)'),
+        destino: { type: 'string', enum: ['proyecto', 'grupo'], description: 'Dónde activarlo' },
+        destino_id: t('Id del proyecto o del grupo (si destino=proyecto y se omite, el de esta conversación)'),
+        activo: b('true para activar, false para desactivar')
+      },
+      required: ['recurso_id', 'destino', 'activo']
+    },
+    riesgo: 'escritura'
+  },
+  // ── Mis equipos ──
+  {
+    nombre: 'equipos_estado',
+    descripcion:
+      'Qué hay en los otros equipos (computadoras) de la cuenta: con proyecto_id, la rama, el commit, los cambios sin guardar y los commits sin enviar de cada equipo en ese proyecto; sin él, el resumen de avisos de todos los proyectos.',
+    esquema: { type: 'object', properties: { proyecto_id: t('Proyecto (opcional)') } },
+    riesgo: 'lectura'
+  },
+  // ── Cliente API (colecciones de peticiones HTTP de Odesk) ──
+  {
+    nombre: 'api_colecciones',
+    descripcion: 'Colecciones de peticiones HTTP guardadas en el cliente API de Odesk (ids, nombre, método y URL) y los entornos (nombres de variables, sin valores) con el activo.',
+    esquema: { type: 'object', properties: {} },
+    riesgo: 'lectura'
+  },
+  {
+    nombre: 'api_enviar',
+    descripcion:
+      'Envía una petición guardada del cliente API de Odesk con las variables del entorno activo y devuelve estado, cabeceras y cuerpo (recortado). Útil para probar endpoints con la configuración que ya tiene el usuario.',
+    esquema: {
+      type: 'object',
+      properties: { coleccion_id: t('Id de la colección (api_colecciones)'), peticion_id: t('Id de la petición guardada') },
+      required: ['coleccion_id', 'peticion_id']
+    },
+    riesgo: 'ejecucion'
+  },
+  {
+    nombre: 'api_guardar_peticion',
+    descripcion: 'Guarda (crea o reemplaza) una petición HTTP en una colección del cliente API de Odesk. Sin coleccion_id crea la colección «coleccion_nombre».',
+    esquema: {
+      type: 'object',
+      properties: {
+        coleccion_id: t('Colección existente (opcional)'),
+        coleccion_nombre: t('Nombre de la colección nueva si no hay coleccion_id'),
+        id: t('Id de la petición a reemplazar (opcional)'),
+        nombre: t('Nombre de la petición'),
+        metodo: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'], description: 'Método HTTP' },
+        url: t('URL (admite {{variables}} del entorno)'),
+        cabeceras: { type: 'object', description: 'Cabeceras { nombre: valor } (valores en texto)' },
+        cuerpo_json: t('Cuerpo JSON en texto (opcional)')
+      },
+      required: ['nombre', 'metodo', 'url']
+    },
+    riesgo: 'escritura'
+  },
+  // ── Chat entre cuentas ──
+  {
+    nombre: 'chat_contactos',
+    descripcion: 'Contactos del chat de Odesk (entre cuentas): aceptados, solicitudes recibidas y enviadas, con su usuarioId y si están en línea.',
+    esquema: { type: 'object', properties: {} },
+    riesgo: 'lectura'
+  },
+  {
+    nombre: 'chat_conversaciones',
+    descripcion: 'Conversaciones del chat de Odesk: con quién, último mensaje, no leídos. Da los ids para chat_leer y chat_enviar.',
+    esquema: { type: 'object', properties: {} },
+    riesgo: 'lectura'
+  },
+  {
+    nombre: 'chat_leer',
+    descripcion: 'Lee los últimos mensajes de una conversación del chat de Odesk (no los marca como leídos).',
+    esquema: { type: 'object', properties: { conversacion: t('Id de la conversación (chat_conversaciones)'), limite: n('Cuántos mensajes del final (por defecto 30, máx. 100)') }, required: ['conversacion'] },
+    riesgo: 'lectura'
+  },
+  {
+    nombre: 'chat_enviar',
+    descripcion:
+      'Envía un mensaje de texto, en nombre del usuario, a un contacto del chat de Odesk. Indica conversacion o usuario_id (de chat_contactos). Siempre pide confirmación en Odesk: lo recibe otra persona.',
+    esquema: { type: 'object', properties: { conversacion: t('Id de la conversación'), usuario_id: t('O el usuarioId del contacto'), texto: t('Mensaje') }, required: ['texto'] },
+    riesgo: 'ejecucion'
+  },
+  // ── Avisos ──
+  {
+    nombre: 'notificar',
+    descripcion: 'Muestra una notificación del sistema al usuario (p. ej. al terminar una tarea larga o si necesita su atención).',
+    esquema: { type: 'object', properties: { titulo: t('Título corto'), cuerpo: t('Texto (máx. 300 caracteres)') }, required: ['cuerpo'] },
+    riesgo: 'lectura'
   }
 ]
 
@@ -232,10 +407,35 @@ export function confirmacionApp(nombre: string, e: Record<string, unknown>): str
       return `Restaurar ${String(e.ruta)} a la versión ${String(e.version)} (el estado actual se guarda antes).`
     case 'ajustes_fijar':
       return e.autonomia === 'autonomo' ? 'Poner el Asistente en modo «Autónomo» (ejecuta comandos y edita sin preguntar).' : undefined
+    case 'servicio_eliminar':
+      return `Borrar el comando de arranque ${String(e.id)} del proyecto (de la cuenta).`
+    case 'comando_eliminar':
+      return `Borrar el comando «/${String(e.nombre)}»${e.proyecto_id ? ' del proyecto' : ' global'}.`
+    case 'comando_guardar':
+      return e.tipo === 'ejecutable' ? `Guardar el comando «/${String(e.nombre)}» que ejecuta: ${Array.isArray(e.comando) ? e.comando.map(String).join(' ') : ''}` : undefined
+    case 'chat_enviar': {
+      const texto = String(e.texto ?? '')
+      return `Enviar por el chat, en tu nombre, este mensaje${e.usuario_id ? ` al contacto ${String(e.usuario_id)}` : ''}:\n«${texto.length > 400 ? texto.slice(0, 400) + '…' : texto}»`
+    }
     default:
       return undefined
   }
 }
 
 /** Herramientas que pueden quedarse esperando a la persona: el cliente MCP les da más tiempo. */
-export const PUEDEN_CONFIRMAR = new Set(['proyecto_quitar', 'terminal_cerrar', 'servicios_detener', 'servicios_reiniciar', 'historial_restaurar', 'ajustes_fijar', 'servicios_arrancar', 'proyecto_clonar', 'terminal_esperar'])
+export const PUEDEN_CONFIRMAR = new Set([
+  'proyecto_quitar',
+  'terminal_cerrar',
+  'servicios_detener',
+  'servicios_reiniciar',
+  'historial_restaurar',
+  'ajustes_fijar',
+  'servicios_arrancar',
+  'proyecto_clonar',
+  'terminal_esperar',
+  'servicio_eliminar',
+  'comando_eliminar',
+  'comando_guardar',
+  'chat_enviar',
+  'api_enviar'
+])

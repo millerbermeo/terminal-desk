@@ -2,7 +2,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { GUIA_TRABAJO } from '../src/main/core/avisos'
+import { GUIA_RESPUESTAS, GUIA_TRABAJO } from '../src/main/core/avisos'
 import { crearEjecutorOdesk, herramientasOdesk } from '../src/main/core/herramientas-odesk'
 import { MemoriaLargoPlazo } from '../src/main/core/memory/largo-plazo'
 import { permisosCli } from '../src/main/core/suscripcion'
@@ -69,5 +69,11 @@ describe('memoria de largo plazo para la IA en suscripción (MCP odesk)', () => 
     expect(GUIA_TRABAJO).toContain('TodoWrite')
     expect(GUIA_TRABAJO).toContain('memoria_guardar')
     expect(GUIA_TRABAJO.length).toBeLessThan(2400)
+  })
+
+  it('la guía de respuestas pide brevedad sin perder precisión y no toca el código', () => {
+    expect(GUIA_RESPUESTAS).toContain('Precisión intacta')
+    expect(GUIA_RESPUESTAS).toContain('No aplica al código')
+    expect(GUIA_RESPUESTAS.length).toBeLessThan(1200)
   })
 })

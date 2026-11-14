@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -228,12 +228,28 @@ describe('proceso persistente del CLI', () => {
     pool.cerrarTodos()
   })
 
-  it('el primer envío de un turno sin eco no se reenvía solo (su id sirve para deshacer)', async () => {
+  it('el primer envío de un turno sin eco se reenvía una vez con otro uuid y vuelve a emitir `inicio` con él (para deshacer)', async () => {
+    await writeFile(volcado, '')
+    await rm(volcado + '.mudo1', { force: true })
+    const pool = new ProcesosCli(4, 60_000)
+    const inicios: (string | undefined)[] = []
+    const r = await ejecutarEnProceso(pool, 'c-mudo-1o', opciones({ prompt: 'MUDO1 primero', mensajeId: 'u-primero', alEvento: (e) => void (e.tipo === 'inicio' && inicios.push((e as { mensajeId?: string }).mensajeId)) }).o)
+    expect(r.resultado.estado).toBe('completado')
+    const l = await lineas()
+    expect(l.filter((x) => x.arranque)).toHaveLength(2)
+    const uuids = l.filter((x) => x.usuario).map((x) => x.uuid)
+    expect(uuids[0]).toBe('u-primero')
+    expect(uuids[1]).not.toBe('u-primero')
+    expect(inicios).toEqual(['u-primero', uuids[1]])
+    pool.cerrarTodos()
+  })
+
+  it('si el reintento tampoco tiene eco, el turno termina con error (solo un reintento)', async () => {
     await writeFile(volcado, '')
     const pool = new ProcesosCli(4, 60_000)
-    const r = await ejecutarEnProceso(pool, 'c-mudo-1o', opciones({ prompt: 'MUDO' }).o)
+    const r = await ejecutarEnProceso(pool, 'c-mudo-2', opciones({ prompt: 'MUDO' }).o)
     expect(r.resultado.estado).toBe('error')
-    expect((await lineas()).filter((x) => x.arranque)).toHaveLength(1)
+    expect((await lineas()).filter((x) => x.arranque)).toHaveLength(2)
     pool.cerrarTodos()
   })
 

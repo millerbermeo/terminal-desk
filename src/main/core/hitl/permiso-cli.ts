@@ -8,6 +8,7 @@ import { esDestructiva } from '../guardrails/destructivo'
 import type { PuertaHumana, SolicitudHumana } from '../orchestrator/puerta'
 import { decidir, reglaDe } from '../permisos/reglas'
 import type { PeticionPermiso, RespuestaPermiso } from '../suscripcion'
+import { armarSudo, olvidarSolicitudSudo, registrarSolicitudSudo, reescribirSudo, sinSudo, tomarPasswordSudo, usaSudo } from './sudo'
 
 export interface DepsPermisoCli {
   puerta: PuertaHumana
@@ -70,6 +71,16 @@ function traducir(p: PeticionPermiso): { llamada: LlamadaHerramienta; descripcio
   }
 }
 
+/** Motivo destructivo de un `Bash` (en un comando compuesto, cualquier tramo cuenta). */
+function razonDestructiva(llamada: LlamadaHerramienta, linea: string | null, simple: boolean): string | null {
+  return (
+    esDestructiva(llamada.nombre, llamada.entrada) ??
+    (linea !== null && !simple
+      ? linea.split(/&&|\|\||[;|\n]/).map((t) => t.trim().split(/\s+/)).map(([comando = '', ...args]) => esDestructiva('ejecutar_comando', { comando, args })).find(Boolean) ?? null
+      : null)
+  )
+}
+
 /**
  * Responde a lo que el CLI de suscripción no puede decidir solo (`--permission-prompt-tool stdio`): las preguntas con opciones
  * (`AskUserQuestion`) y los permisos para escribir, ejecutar o usar herramientas. Mismas garantías que en modo API: los guardrails y
@@ -95,6 +106,47 @@ export function crearPermisoCli(d: DepsPermisoCli): (p: PeticionPermiso) => Prom
       if (bloqueo) return { permitir: false, mensaje: `Bloqueado: ${bloqueo}` }
       const regla = simple ? decidir(await d.reglas(), llamada) : null
       if (regla === 'denegar') return { permitir: false, mensaje: 'Una regla de permisos de este proyecto lo deniega.' }
+      // `sudo`: el CLI no tiene terminal donde pedir la contraseña. Se pide en el modal (en cualquier modo de autonomía: hace
+      // falta una persona) y el comando se reescribe a `sudo -A` con el ayudante de la app (`./sudo.ts`).
+      if (p.herramienta === 'Bash' && process.platform !== 'win32' && usaSudo(texto(p.entrada.command))) {
+        const linea = texto(p.entrada.command).trim()
+        const interior = sinSudo(linea)
+        if (d.autonomia === 'autonomo') {
+          const motivo = motivoBloqueoAutonomo(interior)
+          if (motivo) {
+            d.alEvento({ ejecucionId: d.ejecucionId, agente: 'asistente', profundidad: 0, tipo: 'guardrail', herramienta: 'Bash', motivo } as EventoAgente)
+            return { permitir: false, mensaje: `Bloqueado en modo autónomo: ${motivo}. No lo intentes de otra forma.` }
+          }
+        }
+        const [c = '', ...a] = interior.split(/\s+/)
+        const razon = razonDestructiva({ id: 'cli', nombre: 'ejecutar_comando', entrada: { comando: c, args: a } }, interior, !META_SHELL.test(interior) && !/['"]/.test(interior))
+        let sid = ''
+        try {
+          const dec = await d.puerta.solicitar(
+            {
+              clase: 'accion',
+              contenido: descripcion,
+              detalle: `El asistente necesita permisos de administrador (sudo) para este comando${razon ? ` — ACCIÓN DESTRUCTIVA: ${razon}` : ''}`,
+              herramienta: 'Bash',
+              sudo: true,
+              ...(razon ? { destructivo: true } : {})
+            },
+            (id, s) => {
+              sid = id
+              registrarSolicitudSudo(id)
+              alSolicitar(id, s)
+            },
+            d.senal
+          )
+          const password = sid ? tomarPasswordSudo(sid) : undefined
+          if (!dec.aprobado) return { permitir: false, mensaje: dec.comentario ? `El usuario denegó los permisos de administrador: ${dec.comentario}` : 'El usuario denegó los permisos de administrador (sudo). No lo intentes de otra forma.' }
+          if (!password) return { permitir: false, mensaje: 'No se recibió la contraseña de administrador.' }
+          const { askpass, token } = await armarSudo(password, d.senal)
+          return { permitir: true, entrada: { ...p.entrada, command: reescribirSudo(linea, askpass, token) } }
+        } finally {
+          if (sid) olvidarSolicitudSudo(sid)
+        }
+      }
       if (d.autonomia === 'autonomo' && p.herramienta === 'Bash') {
         const motivo = motivoBloqueoAutonomo(texto(p.entrada.command))
         if (!motivo) return { permitir: true }
@@ -104,12 +156,7 @@ export function crearPermisoCli(d: DepsPermisoCli): (p: PeticionPermiso) => Prom
           mensaje: `Bloqueado en modo autónomo: ${motivo}. No lo intentes de otra forma; si de verdad hace falta, explícale al usuario qué comando debe ejecutar él y por qué.`
         }
       }
-      // En un comando compuesto, cualquier tramo destructivo cuenta.
-      const razon =
-        esDestructiva(llamada.nombre, llamada.entrada) ??
-        (p.herramienta === 'Bash' && !simple
-          ? texto(p.entrada.command).split(/&&|\|\||[;|\n]/).map((t) => t.trim().split(/\s+/)).map(([comando = '', ...args]) => esDestructiva('ejecutar_comando', { comando, args })).find(Boolean) ?? null
-          : null)
+      const razon = razonDestructiva(llamada, p.herramienta === 'Bash' ? texto(p.entrada.command) : null, simple)
       if (!razon && regla === 'permitir') return { permitir: true }
       if (!razon && recordadas.has(p.herramienta)) return { permitir: true }
 

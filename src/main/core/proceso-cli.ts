@@ -279,9 +279,9 @@ export class ProcesosCli {
 
 /**
  * Igual que `ejecutarSuscripcion`, pero en el proceso persistente de la conversación (se lanza si hace falta; si se había cerrado, se repite una vez).
- * - Si el CLI no repitió el mensaje (sin eco) y el envío no es el primero del turno (`omitirInicio`: continuación automática, cambio de
- *   cuenta), se reenvía una vez en un proceso nuevo que reanuda la sesión, con otro uuid (el CLI ignora en silencio uno ya visto).
- *   El primer envío no: su id es el que sirve para deshacer, y el usuario ve el error y puede reenviarlo.
+ * - Si el CLI no repitió el mensaje (sin eco), se reenvía una vez en un proceso nuevo que reanuda la sesión, con otro uuid (el CLI ignora
+ *   en silencio uno ya visto). Si era el primer envío del turno, el reintento emite otra vez `inicio` con el id nuevo (el que sirve para
+ *   deshacer); en las continuaciones (`omitirInicio`) no. Si el reintento tampoco tiene eco, el turno termina con el error.
  * - Tras un corte por el límite de pasos el proceso se cierra: el turno interrumpido puede seguir cerrándose y tragarse el siguiente mensaje
  *   (la continuación automática); el siguiente envío reanuda la sesión en un proceso limpio.
  */
@@ -299,10 +299,12 @@ export async function ejecutarEnProceso(pool: ProcesosCli, clave: string, o: Opc
     } catch (err) {
       if (err instanceof ProcesoCerrado) iniciado ||= err.iniciado
       if (err instanceof SinEco) {
-        iniciado = true
         pool.cerrar(clave)
-        if (intento === 0 && o.omitirInicio && !o.senal.aborted) {
+        if (intento === 0 && !o.senal.aborted) {
+          // Sin eco el CLI no tomó nada (se mató sin haber empezado): se reenvía en un proceso nuevo con otro uuid. Si era el primer envío,
+          // el reintento vuelve a emitir `inicio` con el id nuevo: la interfaz se queda con ese y «Deshacer cambios» sigue funcionando.
           entrada = { ...o, mensajeId: randomUUID() }
+          iniciado = Boolean(o.omitirInicio) || !o.mensajeId
           continue
         }
         return err.salida

@@ -619,8 +619,9 @@ describe('seguridad de las herramientas', () => {
 
   it('no hay herramientas para borrar, descartar, forzar ni fusionar pull requests', () => {
     const nombres = HERRAMIENTAS_ODESK.map((h) => h.nombre)
-    // Única excepción: las credenciales de prueba se gestionan desde el chat; eliminar una siempre pide confirmación (`esDestructiva`).
-    expect(nombres.filter((n) => /borrar|eliminar|descartar|forzar|reset|fusionar|merge|delete/i.test(n))).toEqual(['credenciales_eliminar'])
+    // Excepciones: configuración de Odesk que se gestiona desde el chat (credenciales de prueba, comandos de arranque, comandos «/»).
+    // Borrar cualquiera pide confirmación siempre (`esDestructiva` / `confirmacionApp`); nada de git ni GitHub.
+    expect(nombres.filter((n) => /borrar|eliminar|descartar|forzar|reset|fusionar|merge|delete/i.test(n)).sort()).toEqual(['comando_eliminar', 'credenciales_eliminar', 'servicio_eliminar'])
     expect(new Set(nombres).size).toBe(nombres.length)
     for (const h of [...HERRAMIENTAS_GIT, ...HERRAMIENTAS_GITHUB]) expect(['lectura', 'escritura', 'ejecucion']).toContain(h.riesgo)
     expect(HERRAMIENTAS_GIT.filter((h) => h.riesgo === 'ejecucion').map((h) => h.nombre).sort()).toEqual(['git_enviar', 'git_traer'])

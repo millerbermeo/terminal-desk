@@ -429,7 +429,44 @@ const controlApp = new ControlApp({
   cuentas: { estado: () => nucleo.cuentaEstado(), activar: (id) => nucleo.cuentaActivar(id) },
   consumo: () => nucleo.medidor.resumen(),
   historial: (op, entrada) => ejecutarOperacionHistorial(historial, op, entrada),
-  interfaz: (a) => avisarPrincipal(Canales.iaAccion, a)
+  interfaz: (a) => avisarPrincipal(Canales.iaAccion, a),
+  proyectosEdicion: { renombrar: (id, nombre) => renombrarProyecto(id, nombre), moverGrupo: (id, grupoId) => moverProyectoAGrupo(id, grupoId) },
+  arranqueConfig: {
+    guardar: (proyectoId, comando) => operarArranque('guardar', { proyectoId, comando }),
+    eliminar: (proyectoId, id) => operarArranque('eliminar', { proyectoId, id })
+  },
+  comandos: {
+    listar: (ambito) => nucleo.comandos.listar(ambito),
+    guardar: (c, ambito) => nucleo.comandos.guardar(c, ambito),
+    eliminar: (nombre, ambito) => nucleo.comandos.eliminar(nombre, ambito)
+  },
+  agentes: { biblioteca: () => leerBiblioteca(), activar: (destino, id, activo) => activarRecurso(destino, id, activo) },
+  equipos: (op, entrada) => ejecutarOperacionEquipos(equipos, depsEquipos, op, entrada),
+  api: (op, entrada) => ejecutarOperacionApi(servicioApi, op, entrada),
+  chat: async (op, entrada) => {
+    const r = await ejecutarOperacionChat(servicioChat, op, entrada)
+    if (!r.ok) throw new Error(r.mensaje)
+    return r.valor
+  },
+  notificar: (titulo, cuerpo) => {
+    if (!Notification.isSupported()) return false
+    const aviso = new Notification({ title: titulo.slice(0, 120), body: cuerpo.slice(0, 300), icon: icono })
+    avisosVivos.add(aviso)
+    const soltar = (): void => void avisosVivos.delete(aviso)
+    aviso.on('close', soltar)
+    aviso.on('failed', soltar)
+    aviso.on('click', () => {
+      soltar()
+      if (principal && !principal.isDestroyed()) {
+        if (principal.isMinimized()) principal.restore()
+        principal.show()
+        principal.focus()
+      }
+    })
+    setTimeout(soltar, 10 * 60_000).unref()
+    aviso.show()
+    return true
+  }
 })
 nucleo.conectarApp(controlApp, confirmarEnOdesk)
 nucleo.alEscribirIA = (momento, proyectoId, ruta, meta) => {

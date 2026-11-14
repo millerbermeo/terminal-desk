@@ -77,6 +77,7 @@ export const Canales = {
   coreMcpReiniciar: 'core:mcp-reiniciar',
   coreEvento: 'core:evento',
   coreResponder: 'core:responder',
+  coreSudoVerificar: 'core:sudo-verificar',
   coreWorktreesListar: 'core:worktrees-listar',
   coreWorktreeDescartar: 'core:worktree-descartar',
   coreWorktreePublicar: 'core:worktree-publicar',
@@ -138,6 +139,7 @@ export const Canales = {
   corePermisosEliminar: 'core:permisos-eliminar',
   coreSesionesListar: 'core:sesiones-listar',
   coreSesionObtener: 'core:sesion-obtener',
+  coreTraspasar: 'core:traspasar',
   coreSesionTranscripcion: 'core:sesion-transcripcion',
   coreSesionBorrar: 'core:sesion-borrar',
   coreMemoriaListar: 'core:memoria-listar',
@@ -294,6 +296,8 @@ export interface ApiCentro {
     rebobinar(sesionId: string, mensajeId: string, soloVer: boolean): Promise<{ puede: boolean; archivos: string[]; error?: string }>
     /** Responde a una `solicitud_humana` (aprobar/rechazar un plan o un resultado). */
     responder(solicitudId: string, decision: DecisionHumana): Promise<boolean>
+    /** Verifica la contraseña de administrador de una solicitud `sudo` y la deja lista para ese comando (no se guarda). */
+    sudoVerificar(solicitudId: string, password: string): Promise<{ ok: true } | { ok: false; motivo: 'incorrecta' | 'no-disponible' | 'expirada' }>
     worktreesListar(proyectoId: string): Promise<InfoWorktree[]>
     /** Elimina el worktree y su rama (se pierde lo no integrado): la UI debe confirmarlo. */
     worktreeDescartar(proyectoId: string, id: string): Promise<InfoWorktree[]>
@@ -348,6 +352,8 @@ export interface ApiCentro {
     sesionesListar(proyectoId?: string): Promise<ResumenSesion[]>
     /** Lo que se veía en pantalla en una conversación guardada, para retomarla. */
     sesionObtener(sesionId: string): Promise<SesionGuardada | undefined>
+    /** Resume una conversación para empezar otra con ese contexto (lo importante, compactado). */
+    traspasar(sesionId: string): Promise<{ resumen: string; titulo: string; conModelo: boolean }>
     /** Guarda lo que se ve en pantalla (turnos terminados) de una conversación. */
     sesionTranscripcion(sesionId: string, turnos: TurnoGuardado[], proyectoId?: string): Promise<void>
     /** Elimina una conversación del historial. */
