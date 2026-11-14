@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { EstadoBoveda, ResultadoBoveda } from '@shared/sesion'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { EstadoBoveda, ResultadoBoveda, SesionDispositivo } from '@shared/sesion'
+import { fechaRelativa } from '@shared/versiones'
+import { confirmar } from '../confirmar'
 import { IconoCerrar } from './Iconos'
 
 interface Props {
@@ -14,10 +16,12 @@ export function Cuenta({ email, onCerrarSesion, onCerrarTodas, onCerrar }: Props
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
   const [aviso, setAviso] = useState('')
+  /** Con un diálogo de confirmación abierto, Esc lo cierra a él, no al panel. */
+  const confirmando = useRef(false)
 
   useEffect(() => {
     const tecla = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && !enviando) onCerrar()
+      if (e.key === 'Escape' && !enviando && !confirmando.current) onCerrar()
     }
     window.addEventListener('keydown', tecla)
     return () => window.removeEventListener('keydown', tecla)
@@ -61,6 +65,7 @@ export function Cuenta({ email, onCerrarSesion, onCerrarTodas, onCerrar }: Props
         <CambiarPassword enviando={enviando} correr={correr} />
         <Sincronizacion enviando={enviando} correr={correr} />
         <BovedaClaves enviando={enviando} correr={correr} />
+        <Dispositivos enviando={enviando} correr={correr} confirmando={confirmando} />
 
         <h4 style={{ margin: 0 }}>Sesión</h4>
         <div className="cfg-acciones">
@@ -77,6 +82,142 @@ export function Cuenta({ email, onCerrarSesion, onCerrarTodas, onCerrar }: Props
 }
 
 type Correr = (fn: () => Promise<{ ok: boolean; mensaje?: string } | void>, exito?: string, fallo?: string) => Promise<boolean>
+
+/** Sistema legible a partir de `process.platform` (o del user-agent si la sesión no vino de la app). */
+function sistemaDe(d: SesionDispositivo): string {
+  const p = d.platform ?? ''
+  if (p === 'linux') return 'Linux'
+  if (p === 'darwin') return 'macOS'
+  if (p === 'win32') return 'Windows'
+  if (p) return p
+  const ua = d.userAgent ?? ''
+  if (/windows/i.test(ua)) return 'Windows'
+  if (/mac os|macintosh/i.test(ua)) return 'macOS'
+  if (/android/i.test(ua)) return 'Android'
+  if (/iphone|ipad|ios/i.test(ua)) return 'iOS'
+  if (/linux/i.test(ua)) return 'Linux'
+  return ''
+}
+
+/** Nombre a mostrar: el del equipo; si la sesión no vino de la app, qué la abrió. */
+function nombreDe(d: SesionDispositivo): string {
+  if (d.deviceName) return d.deviceName
+  const ua = d.userAgent ?? ''
+  if (/electron|odesk/i.test(ua)) return 'Odesk (equipo sin identificar)'
+  if (/chrome|firefox|safari|edg/i.test(ua)) return 'Navegador'
+  if (/node|undici|curl|postman|insomnia/i.test(ua)) return 'Cliente de API'
+  return 'Equipo sin identificar'
+}
+
+/**
+ * «Dispositivos conectados»: cada sesión abierta de la cuenta (equipo, sistema, versión, IP, última actividad) con la opción de
+ * cerrarla tras confirmar. La de este equipo no se cierra aquí: para eso está «Cerrar sesión».
+ */
+function Dispositivos({ enviando, correr, confirmando }: { enviando: boolean; correr: Correr; confirmando: { current: boolean } }) {
+  const [lista, setLista] = useState<SesionDispositivo[] | null>(null)
+  const [error, setError] = useState('')
+  const [cerrando, setCerrando] = useState<string | null>(null)
+
+  const cargar = useCallback(async () => {
+    try {
+      setLista(await window.api.sesion.cuenta('dispositivos', {}))
+      setError('')
+    } catch {
+      setError('No se pudo cargar la lista de dispositivos.')
+    }
+  }, [])
+  useEffect(() => void cargar(), [cargar])
+
+  const preguntar = async (o: Parameters<typeof confirmar>[0]): Promise<boolean> => {
+    confirmando.current = true
+    try {
+      return await confirmar(o)
+    } finally {
+      confirmando.current = false
+    }
+  }
+
+  const cerrar = async (d: SesionDispositivo): Promise<void> => {
+    const sistema = sistemaDe(d)
+    const detalle = [sistema, d.ip ? `IP ${d.ip}` : '', `activo ${fechaRelativa(d.lastSeenAt)}`].filter(Boolean).join(' · ')
+    const ok = await preguntar({
+      titulo: `Cerrar sesión en «${nombreDe(d)}»`,
+      tono: 'peligro',
+      etiqueta: 'Cerrar sesión',
+      texto: `${detalle}\n\nEse dispositivo dejará de tener acceso a tu cuenta al momento: tendrá que volver a iniciar sesión.\n\nSi no lo reconoces, cambia también tu contraseña.`
+    })
+    if (!ok) return
+    setCerrando(d.id)
+    await correr(() => window.api.sesion.cuenta('cerrarDispositivo', { id: d.id }).then(() => undefined), `Sesión cerrada en «${nombreDe(d)}».`, 'No se pudo cerrar la sesión de ese dispositivo.')
+    setCerrando(null)
+    await cargar()
+  }
+
+  const otros = lista?.filter((d) => !d.actual) ?? []
+  const cerrarOtros = async (): Promise<void> => {
+    const ok = await preguntar({
+      titulo: 'Cerrar sesión en los demás dispositivos',
+      tono: 'peligro',
+      etiqueta: `Cerrar ${otros.length === 1 ? '1 sesión' : `${otros.length} sesiones`}`,
+      texto: `Se cerrará la sesión en ${otros.length === 1 ? '1 dispositivo' : `${otros.length} dispositivos`}. Este equipo sigue conectado.\n\nCada uno tendrá que volver a iniciar sesión.`
+    })
+    if (!ok) return
+    await correr(
+      () => window.api.sesion.cuenta('cerrarOtros', {}).then((r) => ({ ok: true, mensaje: r.cerradas === 1 ? 'Se cerró 1 sesión.' : `Se cerraron ${r.cerradas} sesiones.` })),
+      '',
+      'No se pudo cerrar la sesión en los demás dispositivos.'
+    )
+    await cargar()
+  }
+
+  return (
+    <section className="cta-dispositivos" aria-label="Dispositivos conectados">
+      <div className="cta-dispositivos-cab">
+        <h4 style={{ margin: 0 }}>Dispositivos conectados</h4>
+        <button type="button" className="enlace" onClick={() => void cargar()} disabled={enviando}>
+          Actualizar
+        </button>
+      </div>
+      {error && <p className="tareas-error-texto">{error}</p>}
+      {!lista && !error && <p className="modal-texto">Cargando…</p>}
+      {lista && (
+        <ul className="cta-dispositivos-lista">
+          {lista.map((d) => {
+            const sistema = sistemaDe(d)
+            return (
+              <li key={d.id} className={d.actual ? 'actual' : ''}>
+                <div className="cta-disp-info">
+                  <div className="cta-disp-nombre">
+                    <strong>{nombreDe(d)}</strong>
+                    {d.actual && <span className="chip">Este equipo</span>}
+                  </div>
+                  <div className="cta-disp-meta">
+                    {[sistema, d.appVersion ? `v${d.appVersion}` : '', d.ip ?? ''].filter(Boolean).join(' · ')}
+                  </div>
+                  <div className="cta-disp-meta" title={`Inició sesión: ${new Date(d.createdAt).toLocaleString()}\nÚltima actividad: ${new Date(d.lastSeenAt).toLocaleString()}`}>
+                    {d.actual ? 'Activo ahora' : `Activo ${fechaRelativa(d.lastSeenAt)}`} · sesión desde {new Date(d.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
+                {!d.actual && (
+                  <button type="button" className="peligro" disabled={enviando || cerrando === d.id} onClick={() => void cerrar(d)}>
+                    {cerrando === d.id ? 'Cerrando…' : 'Cerrar sesión'}
+                  </button>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {otros.length > 1 && (
+        <div className="cfg-acciones">
+          <button type="button" disabled={enviando} onClick={() => void cerrarOtros()}>
+            Cerrar sesión en los demás ({otros.length})
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
 
 function CambiarPassword({ enviando, correr }: { enviando: boolean; correr: Correr }) {
   const [actual, setActual] = useState('')
