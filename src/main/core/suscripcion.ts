@@ -1,3 +1,4 @@
+import { CREDENCIALES_SIEMPRE_CONFIRMAN, sinValoresCredencial } from '@shared/credenciales-herramientas'
 import { execFile, spawn } from 'node:child_process'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -264,7 +265,7 @@ export function permisosCli(autonomia: ModoAutonomia, verificaciones: string[], 
   if (conHerramientas) {
     for (const h of HERRAMIENTAS_ODESK) {
       const permitida = h.riesgo === 'lectura' || (h.riesgo === 'escritura' && autonomia !== 'preguntar') || (h.riesgo === 'ejecucion' && autonomia === 'autonomo')
-      if (permitida) permitidas.push(PREFIJO_MCP + h.nombre)
+      if (permitida && !CREDENCIALES_SIEMPRE_CONFIRMAN.includes(h.nombre)) permitidas.push(PREFIJO_MCP + h.nombre)
     }
   }
   // Servidores externos: mismas reglas que las herramientas de la app (`mcp__<servidor>` permite todas las del servidor).
@@ -712,7 +713,8 @@ export class LectorTurno {
         }
         for (const b of bloques) {
           if (b.type !== 'tool_use' || !b.id) continue
-          const llamada = { id: b.id, nombre: b.name ?? 'herramienta', entrada: b.input ?? {} }
+          // Los valores de una credencial que se guarda no pasan a los eventos (conversación, trazas, bitácora).
+          const llamada = { id: b.id, nombre: b.name ?? 'herramienta', entrada: sinValoresCredencial(b.name ?? '', b.input ?? {}) }
           this.llamadas.set(b.id, llamada)
           this.herramientas++
           o.alEvento({ tipo: 'herramienta_inicio', llamada })

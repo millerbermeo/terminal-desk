@@ -35,6 +35,18 @@ describe('cliente del servidor', () => {
     })
   })
 
+  it('un corte del servidor no tumba las lecturas: se sigue con lo último que respondió', async () => {
+    srv.caido = true
+    proyectos.olvidarProyectos()
+    try {
+      expect((await proyectos.leerProyectos()).proyectos).toEqual([{ id: 'a1', nombre: 'Uno', ruta: '/tmp/uno', grupo: 'g1' }])
+      // Lo que escribe no se da por hecho: falla y lo dice.
+      await expect(m.servidor.post('/projects', { name: 'x' })).rejects.toThrow(/No se pudo conectar/)
+    } finally {
+      srv.caido = false
+    }
+  })
+
   it('cerrar sesión olvida el token', async () => {
     await m.servidor.cerrar()
     expect((await m.servidor.estado()).activa).toBe(false)

@@ -18,6 +18,9 @@ export class ErrorServidor extends Error {
 }
 
 /** No hay sesión (o el token venció): la interfaz debe mostrar la pantalla de acceso. */
+/** No hubo respuesta (sin red, servidor caído o reiniciándose) o el servidor falló por dentro: lo último que se leyó sigue valiendo. */
+export const esFalloDeConexion = (e: unknown): boolean => e instanceof ErrorServidor && !(e instanceof ErrorSesion) && (e.estado === undefined || e.estado >= 500)
+
 export class ErrorSesion extends ErrorServidor {
   constructor(mensaje = 'Inicia sesión para continuar') {
     super(mensaje, 401)
@@ -37,6 +40,14 @@ export interface RespuestaPaso {
 }
 
 const TIEMPO_MAX_MS = 15_000
+/** Pausas antes de reintentar una lectura que falló por la red (ms). */
+const ESPERAS_REINTENTO = process.env.VITEST ? [1, 1] : [300, 1200]
+
+/** Causa técnica de un `fetch` fallido (`ECONNRESET`, `ENOTFOUND`…), para el registro. */
+const causaDe = (err: unknown): string => {
+  const c = (err as { cause?: { code?: string; message?: string } } | undefined)?.cause
+  return c?.code ?? c?.message ?? (err instanceof Error ? err.message : String(err))
+}
 
 const limpiarUrl = (u: string): string => u.trim().replace(/\/+$/, '')
 
@@ -239,19 +250,30 @@ export class ClienteServidor {
     if (!servidorSeguro(this.url) && process.env.ODESK_PERMITIR_HTTP !== '1') {
       throw new ErrorServidor(`El servidor ${this.url} no usa https: no se envían contraseñas ni tokens sin cifrar. Usa una dirección https://.`)
     }
-    let res: Response
-    try {
-      res = await fetch(this.url + ruta, {
-        method: metodo,
-        headers: {
-          ...(binario ? { 'content-type': binario.tipo, ...binario.cabeceras } : cuerpo !== undefined ? { 'content-type': 'application/json' } : {}),
-          ...(conSesion && this.token ? { authorization: `Bearer ${this.token}` } : {})
-        },
-        ...(binario ? { body: new Uint8Array(binario.datos) } : cuerpo !== undefined ? { body: JSON.stringify(cuerpo) } : {}),
-        signal: AbortSignal.timeout(espera)
-      })
-    } catch {
-      throw new ErrorServidor(`No se pudo conectar con el servidor (${this.url}). ¿Está en marcha?`)
+    // Un corte puntual (conexión en reposo que el servidor ya cerró, cambio de red, reinicio del servidor) no debe tumbar la operación:
+    // las lecturas se reintentan. Lo que escribe no se repite (podría aplicarse dos veces), y un tiempo agotado tampoco (ya esperó de sobra).
+    const intentos = metodo === 'GET' ? ESPERAS_REINTENTO.length + 1 : 1
+    let res: Response | undefined
+    for (let i = 0; !res; i++) {
+      try {
+        res = await fetch(this.url + ruta, {
+          method: metodo,
+          headers: {
+            ...(binario ? { 'content-type': binario.tipo, ...binario.cabeceras } : cuerpo !== undefined ? { 'content-type': 'application/json' } : {}),
+            ...(conSesion && this.token ? { authorization: `Bearer ${this.token}` } : {})
+          },
+          ...(binario ? { body: new Uint8Array(binario.datos) } : cuerpo !== undefined ? { body: JSON.stringify(cuerpo) } : {}),
+          signal: AbortSignal.timeout(espera)
+        })
+      } catch (err) {
+        const agotado = err instanceof Error && err.name === 'TimeoutError'
+        if (i + 1 < intentos && !agotado) {
+          await new Promise((r) => setTimeout(r, ESPERAS_REINTENTO[i]))
+          continue
+        }
+        console.warn(`Servidor: ${metodo} ${ruta.split('?')[0]} falló (${causaDe(err)})`)
+        throw new ErrorServidor(`No se pudo conectar con el servidor (${this.url}). ¿Está en marcha?`)
+      }
     }
     if (res.status === 401 && conSesion) {
       await this.olvidar() // token vencido o revocado

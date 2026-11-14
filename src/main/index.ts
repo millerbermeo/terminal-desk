@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, session, shell, webContents } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification, session, shell, webContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { homedir, hostname } from 'node:os'
 import { join } from 'node:path'
@@ -32,7 +32,7 @@ import { cambiarPerfil } from './perfiles'
 import { Boveda } from './servidor/boveda'
 import { seccionesSecretas } from './servidor/secretos'
 import { FuenteArchivos, FuenteTareas, SincronizadorCuenta } from './servidor/sync-cuenta'
-import { DIR, MIGRACION_DATOS, rutasLocales, agregarProyectos, carpetaDeProyecto, cambiarCarpetaProyecto, enlazarCarpetaExistente, eliminarGrupo, eliminarProyecto, moverProyectoAGrupo, leerProyectos, proyectosSinCarpeta, sugerirRutas, validarRuta } from './proyectos'
+import { DIR, MIGRACION_DATOS, rutasLocales, agregarProyectos, carpetaDeProyecto, cambiarCarpetaProyecto, enlazarCarpetaExistente, eliminarGrupo, eliminarProyecto, moverProyectoAGrupo, renombrarProyecto, leerProyectos, proyectosSinCarpeta, sugerirRutas, validarRuta } from './proyectos'
 import { configurarMcpTareas } from './core/tareas/mcp-config'
 import { ejecutarOperacionGit } from './core/git/operaciones'
 import { appendFile, readFile, writeFile } from 'node:fs/promises'
@@ -191,6 +191,8 @@ const terminales = new GestorTerminales({
 })
 
 /** Comandos de arranque de cada proyecto: las terminales las abre main y la interfaz las adjunta a la pestaña del proyecto (`arranque:terminal`). */
+/** Notificaciones del sistema a la vista (ver `notificacion:mostrar`). */
+const avisosVivos = new Set<Notification>()
 const avisarPrincipal = (canal: string, carga: unknown): void => {
   if (principal && !principal.isDestroyed()) principal.webContents.send(canal, carga)
 }
@@ -314,7 +316,7 @@ const depsEquipos: DepsEquipos = {
   servidor,
   archivo: join(DIR, 'equipo.json'),
   nombreSistema: hostname() || 'Este equipo',
-  proyectos: async () => (await leerProyectos()).proyectos.map((p) => ({ id: p.id, ruta: p.ruta })),
+  proyectos: async () => (await leerProyectos()).proyectos.filter((p) => !p.local).map((p) => ({ id: p.id, ruta: p.ruta })),
   repositorio: (ruta) => new Repositorio(ruta, nucleo.github.credencialesPara),
   pendientes: proyectosSinCarpeta,
   clonarProyecto: (e) => nucleo.github.clonarProyecto(e),
@@ -572,10 +574,36 @@ function registrarIpc(): void {
   ipcMain.handle(Canales.historialOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionHistorial(historial, op, entrada))
   const voz = new ServicioVoz(servidor)
   ipcMain.handle(Canales.vozEstado, () => voz.estado())
-  ipcMain.handle(Canales.vozTranscribir, (_e, audio: unknown, mime: unknown, duracionMs: unknown, mejorar: unknown) =>
-    voz.transcribir(audio instanceof Uint8Array ? audio : new Uint8Array(0), String(mime ?? ''), Number(duracionMs) || 0, mejorar !== false)
+  ipcMain.handle(Canales.vozTranscribir, (_e, audio: unknown, mime: unknown, duracionMs: unknown) =>
+    voz.transcribir(audio instanceof Uint8Array ? audio : new Uint8Array(0), String(mime ?? ''), Number(duracionMs) || 0)
   )
   ipcMain.handle(Canales.arranqueOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionArranque(arranque, op as never, entrada as never))
+  // Notificación del sistema pedida por la interfaz (el Asistente terminó). Al pulsarla, la ventana que la pidió vuelve al frente y se le
+  // dice de qué chat era. Se guarda la referencia: sin ella el recolector de basura se la lleva y el clic no llega.
+  ipcMain.handle(Canales.notificacionMostrar, (e, n: { titulo?: unknown; cuerpo?: unknown; clave?: unknown }) => {
+    if (!Notification.isSupported()) return false
+    const emisor = e.sender
+    const aviso = new Notification({ title: String(n?.titulo ?? 'Odesk Agent').slice(0, 120), body: String(n?.cuerpo ?? '').slice(0, 300), icon: icono })
+    const clave = typeof n?.clave === 'string' ? n.clave.slice(0, 300) : undefined
+    avisosVivos.add(aviso)
+    const soltar = (): void => void avisosVivos.delete(aviso)
+    aviso.on('close', soltar)
+    aviso.on('failed', soltar)
+    aviso.on('click', () => {
+      soltar()
+      if (emisor.isDestroyed()) return
+      const w = BrowserWindow.fromWebContents(emisor)
+      if (w && !w.isDestroyed()) {
+        if (w.isMinimized()) w.restore()
+        w.show()
+        w.focus()
+      }
+      emisor.send(Canales.notificacionClic, clave)
+    })
+    setTimeout(soltar, 10 * 60_000).unref() // algunos escritorios no avisan del cierre
+    aviso.show()
+    return true
+  })
   ipcMain.handle(Canales.credencialesOperar, (_e, op: 'listar' | 'guardar' | 'eliminar', entrada: unknown) => ejecutarOperacionCredenciales(op, entrada as never))
   ipcMain.handle(Canales.equiposOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionEquipos(equipos, depsEquipos, op, entrada))
   ipcMain.handle(Canales.apiOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionApi(servicioApi, op, entrada))
@@ -624,6 +652,7 @@ function registrarIpc(): void {
     return datos
   })
   ipcMain.handle(Canales.proyectosMoverGrupo, (_e, id: string, grupoId: string | null) => moverProyectoAGrupo(String(id), grupoId ? String(grupoId) : null))
+  ipcMain.handle(Canales.proyectosRenombrar, (_e, id: string, nombre: string) => renombrarProyecto(String(id), String(nombre ?? '')))
   ipcMain.handle(Canales.proyectosCambiarCarpeta, async (_e, id: string, ruta: string, confirmar?: boolean) => {
     const r = await cambiarCarpetaProyecto({ proyectoId: String(id), ruta: String(ruta ?? ''), ...(confirmar === true ? { confirmar: true } : {}) })
     return { datos: await leerProyectos(), ...(r.aviso ? { aviso: r.aviso } : {}) }

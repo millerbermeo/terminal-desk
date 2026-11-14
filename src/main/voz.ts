@@ -30,15 +30,16 @@ export class ServicioVoz {
     }
   }
 
-  async transcribir(audio: Uint8Array, mime: string, duracionMs: number, mejorar: boolean): Promise<ResultadoVoz> {
+  async transcribir(audio: Uint8Array, mime: string, duracionMs: number): Promise<ResultadoVoz> {
     // Defensa local: no se sube nada que el backend vaya a rechazar.
     if (!(audio instanceof Uint8Array) || audio.byteLength === 0) return { ok: false, codigo: 'VOZ_VACIO', mensaje: 'La grabación está vacía.' }
     if (audio.byteLength > LIMITES_GRABACION.maxBytes) return { ok: false, codigo: 'VOZ_TAMANO', mensaje: 'La grabación es demasiado grande.' }
     if (!/^audio\/[a-z0-9.+-]+(;.*)?$/i.test(mime)) return { ok: false, codigo: 'VOZ_FORMATO', mensaje: 'Formato de audio no admitido.' }
     const tipo = mime.split(';')[0]!
     try {
-      const r = await this.cliente.binario<{ texto: string; original: string; mejorado: boolean }>(`/voz/transcribir${mejorar ? '' : '?mejorar=0'}`, audio, tipo, { 'x-duracion-ms': String(Math.round(duracionMs)) })
-      return { ok: true, texto: r.texto, original: r.original, mejorado: r.mejorado }
+      // Solo transcripción literal: nunca se pide al servidor que reescriba el texto con un modelo.
+      const r = await this.cliente.binario<{ texto: string }>('/voz/transcribir', audio, tipo, { 'x-duracion-ms': String(Math.round(duracionMs)) })
+      return { ok: true, texto: r.texto }
     } catch (err) {
       return fallo(err)
     }

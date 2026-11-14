@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type ReactNode, useRef } from 'react'
 import type { DatosProyectos } from '@shared/modelos'
 import { useAgente } from '../agente/useAgente'
 import { ChatAgente } from './ChatAgente'
@@ -29,7 +29,9 @@ interface Props {
 
 /** Asistente de desarrollo: conversación con agentes, trazas, memoria, ramas aisladas y evals. */
 export function Asistente({ datos, visible }: Props) {
-  const agente = useAgente() // siempre montado: la conversación y sus eventos no se pierden al cambiar de pantalla
+  const visibleRef = useRef(visible)
+  visibleRef.current = visible
+  const agente = useAgente({ aLaVista: () => visibleRef.current }) // siempre montado: la conversación y sus eventos no se pierden al cambiar de pantalla
   const [pestana, setPestana] = useState<Pestana>('chat')
   return (
     <main className="asistente" style={{ display: visible ? 'flex' : 'none' }}>

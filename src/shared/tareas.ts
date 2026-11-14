@@ -41,6 +41,12 @@ export const ESTADOS_POR_DEFECTO: readonly EstadoTarea[] = [
 
 export type Autor = 'usuario' | 'ia'
 
+/** Quién se encarga de la tarea (sin responsable = sin asignar). */
+export type Responsable = 'usuario' | 'ia'
+export const RESPONSABLES: readonly Responsable[] = ['usuario', 'ia']
+export const NOMBRE_RESPONSABLE: Record<Responsable, string> = { usuario: 'Yo', ia: 'IA' }
+export const MAX_ESTIMACION = 999
+
 export interface ItemLista {
   id: string
   texto: string
@@ -75,6 +81,12 @@ export interface Tarea {
   color?: ColorTarea
   proyectoId?: string
   grupoId?: string
+  /** Quién la hace (usuario o IA); vacío = sin asignar. */
+  responsable?: Responsable
+  /** Estimación en puntos (0–999). */
+  estimacion?: number
+  /** Hito, sprint o versión a la que pertenece (texto libre, hasta 60 caracteres). */
+  hito?: string
   etiquetas: string[]
   creada: number
   actualizada: number
@@ -130,6 +142,8 @@ export interface FiltroTareas {
   categoria?: CategoriaEstado
   prioridad?: Prioridad
   etiqueta?: string
+  responsable?: Responsable | 'sin'
+  hito?: string
   texto?: string
   /** Solo tareas que no están terminadas ni descartadas. */
   abiertas?: boolean
@@ -274,6 +288,8 @@ export function filtrarTareas(todas: readonly Tarea[], estados: readonly EstadoT
     if (f.categoria && categoriaDe(estados, t.estado) !== f.categoria) return false
     if (f.prioridad && t.prioridad !== f.prioridad) return false
     if (f.etiqueta && !t.etiquetas.includes(f.etiqueta)) return false
+    if (f.responsable && (f.responsable === 'sin' ? t.responsable !== undefined : t.responsable !== f.responsable)) return false
+    if (f.hito !== undefined && (t.hito ?? '') !== f.hito) return false
     if (f.abiertas && !estaAbierta(t, estados)) return false
     if (f.disponibles && (!estaAbierta(t, estados) || categoriaDe(estados, t.estado) === 'bloqueada' || dependenciasAbiertas(t, todas, estados).length > 0)) return false
     if (texto && !`#${t.numero} ${t.titulo} ${t.descripcion} ${t.notasTecnicas} ${t.etiquetas.join(' ')}`.toLowerCase().includes(texto)) return false
@@ -335,6 +351,9 @@ export interface DatosNuevaTarea {
   grupoId?: string
   estado?: string
   etiquetas?: string[]
+  responsable?: Responsable
+  estimacion?: number
+  hito?: string
   inicio?: number
   vence?: number
   criterios?: string[]
@@ -352,6 +371,12 @@ export interface ParcheTarea {
   /** `null` quita el color. */
   color?: ColorTarea | null
   etiquetas?: string[]
+  /** `null` deja la tarea sin asignar. */
+  responsable?: Responsable | null
+  /** `null` quita la estimación. */
+  estimacion?: number | null
+  /** `null` o vacío quita el hito. */
+  hito?: string | null
   inicio?: number | null
   vence?: number | null
   notasTecnicas?: string
@@ -381,7 +406,7 @@ export interface OperacionesTareas {
   mover: { entrada: { tarea: string; estado: string; antesDe?: string; motivo?: string }; salida: Tarea }
   comentar: { entrada: { tarea: string; texto: string }; salida: Tarea }
   item: {
-    entrada: { tarea: string; lista: 'criterios' | 'checklist'; accion: 'anadir' | 'marcar' | 'quitar' | 'editar'; texto?: string; itemId?: string; hecho?: boolean }
+    entrada: { tarea: string; lista: 'criterios' | 'checklist'; accion: 'anadir' | 'marcar' | 'quitar' | 'editar' | 'mover'; texto?: string; itemId?: string; hecho?: boolean; /** Posición destino (0 = primero) para `mover`. */ indice?: number }
     salida: Tarea
   }
   dependencias: { entrada: { tarea: string; dependeDe: string[] }; salida: Tarea }

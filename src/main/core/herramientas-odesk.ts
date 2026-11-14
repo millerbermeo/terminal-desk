@@ -1,5 +1,5 @@
 import { isAbsolute, resolve } from 'node:path'
-import type { CredencialEfectiva } from '@shared/credenciales'
+import type { CambioCredencial, CredencialEfectiva, CredencialPrueba, TipoAmbitoCredenciales } from '@shared/credenciales'
 import type { ResultadoHerramienta } from '@shared/core/herramientas'
 import { esArchivoSensible } from '@shared/github'
 import { HERRAMIENTAS_APP, confirmacionApp } from '@shared/app-herramientas'
@@ -35,6 +35,11 @@ export interface ServiciosOdesk {
   credenciales?: ProveedorCredenciales
   /** Credenciales de prueba locales del proyecto (y su grupo). */
   credencialesPrueba?: (proyectoId: string) => Promise<CredencialEfectiva[]>
+  /** Crear, actualizar y eliminar credenciales de prueba (herramientas `credenciales_guardar` / `credenciales_eliminar`). */
+  credencialesGestion?: {
+    guardar(proyectoId: string, cambio: CambioCredencial, ambito?: TipoAmbitoCredenciales): Promise<{ credencial: CredencialPrueba; ambito: TipoAmbitoCredenciales; creada: boolean }>
+    eliminar(proyectoId: string, nombre: string, ambito?: TipoAmbitoCredenciales): Promise<{ ambito: TipoAmbitoCredenciales } | undefined>
+  }
   /** Memoria de largo plazo (herramientas `memoria_*`). */
   memoria?: MemoriaLargoPlazo
   /** Navegador integrado (solo con la app abierta; en tests o sin ventanas no existe). */
@@ -176,6 +181,28 @@ async function ejecutarCredenciales(s: ServiciosOdesk, nombre: string, entrada: 
   const e = (entrada ?? {}) as Entrada
   const proyectoId = (typeof e.proyecto_id === 'string' && e.proyecto_id ? e.proyecto_id : ctx.proyectoId) ?? ''
   if (!proyectoId) return { texto: 'Indica proyecto_id (usa listar_proyectos): esta conversación no está ligada a un proyecto.', error: true }
+  const ambito = e.ambito === 'grupo' || e.ambito === 'proyecto' ? e.ambito : undefined
+  if (nombre === 'credenciales_guardar' || nombre === 'credenciales_eliminar') {
+    if (!s.credencialesGestion) return { texto: 'Las credenciales de prueba no se pueden modificar desde aquí.', error: true }
+    try {
+      if (nombre === 'credenciales_eliminar') {
+        const r = await s.credencialesGestion.eliminar(proyectoId, String(e.nombre), ambito)
+        return r ? { texto: `Credencial «${String(e.nombre)}» eliminada (${r.ambito}).` } : { texto: `No hay una credencial llamada «${String(e.nombre)}».`, error: true }
+      }
+      const cambio: CambioCredencial = {
+        nombre: String(e.nombre),
+        ...(Array.isArray(e.campos) ? { campos: e.campos as NonNullable<CambioCredencial['campos']> } : {}),
+        ...(Array.isArray(e.quitar_campos) ? { quitarCampos: lista(e.quitar_campos) } : {}),
+        ...(typeof e.notas === 'string' ? { notas: e.notas } : {}),
+        ...(typeof e.nombre_nuevo === 'string' ? { nombreNuevo: e.nombre_nuevo } : {})
+      }
+      const r = await s.credencialesGestion.guardar(proyectoId, cambio, ambito)
+      // Sin valores: la respuesta queda en la conversación.
+      return { texto: aTexto({ [r.creada ? 'creada' : 'actualizada']: r.credencial.nombre, ambito: r.ambito, campos: r.credencial.campos.map((f) => (f.secreto ? `${f.clave} (secreto)` : f.clave)) }) }
+    } catch (err) {
+      return { texto: (err as Error).message.replace(/^Credenciales: /, ''), error: true }
+    }
+  }
   const todas = await (s.credencialesPrueba ?? (async () => []))(proyectoId)
   if (nombre === 'credenciales_listar') {
     if (!todas.length) return { texto: 'No hay credenciales de prueba guardadas en este equipo para este proyecto.' }

@@ -34,7 +34,7 @@ const leerPadre = (): string => {
  * proyecto (conservan su tablero, conversaciones y trazas).
  */
 export function ModalClonarPendientes({ pendientes, inicial, onCerrar, onTerminado }: Props) {
-  const [marcados, setMarcados] = useState<Set<string>>(() => new Set(inicial ? [inicial] : pendientes.map((p) => p.id)))
+  const [marcados, setMarcados] = useState<Set<string>>(() => new Set(inicial ? (pendientes.some((p) => p.id === inicial && p.repo) ? [inicial] : []) : pendientes.filter((p) => p.repo).map((p) => p.id)))
   const [carpeta, setCarpeta] = useState(leerPadre)
   const [protocolo, setProtocolo] = useState<'https' | 'ssh'>(() => leerPreferencias().protocolo)
   const [estados, setEstados] = useState<Record<string, Estado>>({})
@@ -142,7 +142,7 @@ export function ModalClonarPendientes({ pendientes, inicial, onCerrar, onTermina
           </button>
         </div>
         <p className="modal-texto">
-          Estos proyectos están en otros equipos de tu cuenta y aún no tienen carpeta aquí. Clónalos, o, si ya los tienes en este equipo, usa «Ya la tengo aquí» para
+          Estos proyectos están en tu cuenta (con su grupo) y aún no tienen carpeta aquí. No hace falta volver a agregarlos ni asignarlos a un grupo: clónalos, o, si ya los tienes en este equipo, usa «Ya la tengo aquí» para
           enlazar su carpeta sin clonar. En los dos casos conservan su tablero, conversaciones y trazas.
         </p>
 
@@ -152,10 +152,10 @@ export function ModalClonarPendientes({ pendientes, inicial, onCerrar, onTermina
             return (
               <li key={p.id} className={`cp-fila${e?.fase === 'ok' ? ' ok' : ''}`}>
                 <label className="cp-marca">
-                  <input type="checkbox" checked={marcados.has(p.id)} onChange={() => alternar(p.id)} disabled={trabajando || e?.fase === 'ok'} />
+                  <input type="checkbox" checked={marcados.has(p.id)} onChange={() => alternar(p.id)} disabled={trabajando || e?.fase === 'ok' || !p.repo} title={p.repo ? undefined : 'Sin repositorio: solo se puede enlazar su carpeta'} />
                   <span className="cp-nombre">{p.nombre}</span>
                 </label>
-                <span className="mono cp-repo" title={p.repo}>{p.repo.replace(/^(https?:\/\/|git@)/, '').replace(/\.git$/, '')}</span>
+                <span className="mono cp-repo" title={p.repo}>{p.repo ? p.repo.replace(/^(https?:\/\/|git@)/, '').replace(/\.git$/, '') : 'sin repositorio'}</span>
                 {(e?.fase === 'clonando' || e?.fase === 'enlazando') && <span className="spinner" aria-label={e.fase === 'clonando' ? 'Clonando' : 'Enlazando'} />}
                 {e?.fase === 'ok' && <span className="chip chip-ok" title={e.ruta}>{e.enlazado ? '✓ enlazado' : '✓ clonado'}</span>}
                 {e?.fase !== 'ok' && (

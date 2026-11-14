@@ -69,6 +69,11 @@ export interface MetaSesionCli {
   hashDinamico?: string
   /** Aviso para el modelo en el próximo mensaje (p. ej. «el usuario deshizo los cambios de archivos»). */
   aviso?: string
+  /**
+   * Preguntas laterales («Preguntar ahora») con su respuesta, hechas mientras corría una tarea: el CLI de la conversación no las vio.
+   * Se le entregan delante del siguiente mensaje para que lo dicho ahí cuente en el hilo principal.
+   */
+  laterales?: string[]
   /** Ya se le puso título a la conversación. */
   titulado?: boolean
 }
@@ -239,3 +244,22 @@ export const presupuestoTurnoUsd = (env: NodeJS.ProcessEnv = process.env): numbe
 export const AVISO_CONTEXTO = 110_000
 /** Gasto de una sola ejecución (USD a precio de lista) a partir del cual se avisa. */
 export const AVISO_COSTO_TURNO = 1.5
+
+const MAX_LATERALES = 6
+
+/** Anota en la ficha una pregunta lateral respondida (se conservan las últimas; pregunta y respuesta recortadas). */
+export function conLateral(m: MetaSesionCli, pregunta: string, respuesta: string): MetaSesionCli {
+  const una = (t: string, max: number): string => (t.trim().length > max ? `${t.trim().slice(0, max)}…` : t.trim())
+  return { ...m, laterales: [...(m.laterales ?? []), `Usuario: ${una(pregunta, 600)}\nRespuesta: ${una(respuesta, 1500)}`].slice(-MAX_LATERALES) }
+}
+
+/** Bloque para el modelo con las preguntas laterales que aún no vio; vacío si no hay. */
+export function bloqueLaterales(laterales: readonly string[] | undefined): string {
+  if (!laterales?.length) return ''
+  return [
+    '<preguntas_laterales>',
+    'Mientras trabajabas en el mensaje anterior, el usuario hizo estas preguntas aparte y otro asistente (que no eras tú) las respondió con un resumen de tu actividad. Tú no las viste. Tenlas en cuenta: lo que el usuario pidió o aclaró ahí cuenta, y si una respuesta afirmó algo que no es cierto, corrígelo.',
+    ...laterales.map((l, i) => `${i + 1}. ${l}`),
+    '</preguntas_laterales>'
+  ].join('\n')
+}

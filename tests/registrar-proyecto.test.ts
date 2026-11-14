@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -87,5 +88,51 @@ describe('claveRepo', () => {
     for (const u of ['https://github.com/Ana/Web.git', 'git@github.com:ana/web.git', 'git@github-miller:ana/web', 'ssh://git@github.com/ana/web.git/', 'https://github.com/ana/web']) expect(proyectos.claveRepo(u), u).toBe(k)
     expect(proyectos.claveRepo('')).toBeUndefined()
     expect(proyectos.claveRepo('solo-un-nombre')).toBeUndefined()
+  })
+})
+
+describe('proyecto local (sin cuenta ni seguimiento remoto)', () => {
+  it('se apunta solo en este equipo: id local-…, sin .odesk/project.json y sin llamar al servidor para crearlo', async () => {
+    const dir = join(casa, 'solo-aqui')
+    await mkdir(dir)
+    const antes = (await proyectos.leerProyectos()).proyectos.filter((p) => !p.local).length
+    const r = await proyectos.agregarProyectos({ modo: 'local', proyectos: [{ nombre: 'Solo aquí', ruta: dir }] })
+    expect(r.errores).toEqual([])
+    const p = r.datos.proyectos.find((x) => x.ruta === dir)
+    expect(p?.local).toBe(true)
+    expect(p?.id).toMatch(/^local-/)
+    expect(existsSync(join(dir, '.odesk'))).toBe(false)
+    expect(r.datos.proyectos.filter((x) => !x.local).length).toBe(antes)
+    expect(await proyectos.carpetaDeProyecto(p!.id)).toBe(dir)
+    const repetido = await proyectos.agregarProyectos({ modo: 'local', proyectos: [{ nombre: 'Otra vez', ruta: dir }] })
+    expect(repetido.errores[0]?.mensaje).toMatch(/Ya agregado/)
+    const sin = await proyectos.eliminarProyecto(p!.id)
+    expect(sin.proyectos.some((x) => x.id === p!.id)).toBe(false)
+    expect(existsSync(dir)).toBe(true)
+  })
+})
+
+describe('nombres de proyecto únicos', () => {
+  it('no deja crear un proyecto con el nombre de otro (sin importar mayúsculas) ni dos iguales en la misma solicitud', async () => {
+    const a = join(casa, 'dup-a')
+    const b = join(casa, 'dup-b')
+    const c = join(casa, 'dup-c')
+    for (const d of [a, b, c]) await mkdir(d)
+    const uno = await proyectos.agregarProyectos({ modo: 'local', proyectos: [{ nombre: 'Tienda', ruta: a }] })
+    expect(uno.errores).toEqual([])
+    const igual = await proyectos.agregarProyectos({ modo: 'local', proyectos: [{ nombre: '  tienda ', ruta: b }] })
+    expect(igual.errores[0]?.mensaje).toMatch(/Ya existe un proyecto llamado/)
+    const mismaSolicitud = await proyectos.agregarProyectos({ modo: 'local', proyectos: [{ nombre: 'Blog', ruta: b }, { nombre: 'blog', ruta: c }] })
+    expect(mismaSolicitud.errores[0]?.mensaje).toMatch(/repetido en el formulario/)
+  })
+
+  it('renombrar: cambia el nombre (local y de la cuenta) y rechaza el de otro proyecto', async () => {
+    const d = join(casa, 'ren-a')
+    await mkdir(d)
+    const r = await proyectos.agregarProyectos({ modo: 'local', proyectos: [{ nombre: 'Para renombrar', ruta: d }] })
+    const id = r.datos.proyectos.find((p) => p.ruta === d)!.id
+    await expect(proyectos.renombrarProyecto(id, 'Tienda')).rejects.toThrow(/Ya existe/)
+    expect((await proyectos.renombrarProyecto(id, 'Nuevo nombre')).proyectos.find((p) => p.id === id)?.nombre).toBe('Nuevo nombre')
+    expect((await proyectos.renombrarProyecto(id, 'Nuevo nombre')).proyectos.filter((p) => p.id === id)).toHaveLength(1)
   })
 })

@@ -1,3 +1,4 @@
+import { sinValoresCredencial } from '@shared/credenciales-herramientas'
 import { randomUUID } from 'node:crypto'
 import type { BloqueContenido, EventoAgente, Mensaje, ResultadoAgente } from '@shared/core/agente'
 import type { LlamadaHerramienta, ResultadoHerramienta, Riesgo } from '@shared/core/herramientas'
@@ -152,8 +153,8 @@ export class Harness {
         alPaso: (numero) => emitir({ tipo: 'paso', numero }),
         alDelta: (delta) => emitir({ tipo: 'texto_delta', texto: delta }),
         alTexto: (texto) => emitir({ tipo: 'texto', texto }),
-        alHerramientaInicio: (llamada) => emitir({ tipo: 'herramienta_inicio', llamada }),
-        alHerramientaFin: (llamada, res) => emitir({ tipo: 'herramienta_fin', llamada, resultado: res })
+        alHerramientaInicio: (llamada) => emitir({ tipo: 'herramienta_inicio', llamada: { ...llamada, entrada: sinValoresCredencial(llamada.nombre, llamada.entrada) } }),
+        alHerramientaFin: (llamada, res) => emitir({ tipo: 'herramienta_fin', llamada: { ...llamada, entrada: sinValoresCredencial(llamada.nombre, llamada.entrada) }, resultado: res })
       },
       [...historial, { rol: 'user', contenido: [...(profundidad === 0 ? (p.bloquesUsuario ?? []) : []), { tipo: 'texto', texto: prompt }] }]
     )

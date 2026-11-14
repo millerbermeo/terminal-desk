@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { basename, join } from 'node:path'
-import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import type { BibliotecaAgentes, Recurso } from '@shared/modelos'
 import type { DestinoActivacion, ResultadoRecurso } from '@shared/ipc'
 import { activosDe, slug } from '@shared/agentes'
@@ -9,7 +9,8 @@ import { AJUSTES_CONSUMO, COMANDOS_BLOQUEADOS } from './core/suscripcion'
 import { pluginGuardia } from './guardia'
 import { cavemanEnAjustes, pluginCavemanLigero } from './caveman'
 import { configMcpTareas } from './core/tareas/mcp-config'
-import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
+import { ErrorServidor, ErrorSesion, esFalloDeConexion, servidor } from './servidor/cliente'
+import type { RecursoGuia } from './core/avisos'
 
 const SESIONES = join(DIR, 'sesiones')
 const MODELOS = new Set(['', 'inherit', 'sonnet', 'opus', 'haiku'])
@@ -45,9 +46,21 @@ function aRecurso(r: RecursoApi): Recurso {
   }
 }
 
-/** Biblioteca de agentes y skills de la cuenta, desde el servidor. */
+let ultimaBiblioteca: { datos: BibliotecaApi; usuario: string | undefined } | undefined
+
+/** Biblioteca de agentes y skills de la cuenta, desde el servidor (o la última leída, si ahora mismo no responde). */
 export async function leerBiblioteca(): Promise<BibliotecaAgentes> {
-  const b = await servidor.get<BibliotecaApi>('/agentes')
+  let b: BibliotecaApi
+  try {
+    const usuario = (await servidor.estado()).email // antes de pedir: si la cuenta cambia durante la petición, no se etiqueta con la nueva
+    b = await servidor.get<BibliotecaApi>('/agentes')
+    ultimaBiblioteca = { datos: b, usuario }
+  } catch (err) {
+    // Sin conexión se sigue con la última biblioteca leída: si no, el Asistente arrancaría el mensaje SIN sus agentes y skills, y al
+    // cambiar el plugin se relanzaría el proceso del CLI (se pierde la caché de toda la conversación).
+    if (!esFalloDeConexion(err) || !ultimaBiblioteca || ultimaBiblioteca.usuario !== (await servidor.estado()).email) throw err
+    b = ultimaBiblioteca.datos
+  }
   const activaciones: BibliotecaAgentes['activaciones'] = { proyectos: {}, grupos: {} }
   for (const a of b.activations) {
     const mapa = a.targetType === 'grupo' ? activaciones.grupos : activaciones.proyectos
@@ -231,7 +244,9 @@ async function construirPlugin(proyectoId: string, conMcp = true): Promise<{ dir
   const mcp = conMcp ? configMcpTareas(proyectoId) : undefined
   if (activos.length === 0 && !mcp) return null
   const archivos = archivosPlugin(proyecto.nombre, activos, mcp)
-  const recursos = { agentes: activos.some((r) => r.tipo === 'agente'), skills: activos.some((r) => r.tipo === 'skill') }
+  const nombres = new Map([...nombresUnicos(activos.filter((r) => r.tipo === 'agente')), ...nombresUnicos(activos.filter((r) => r.tipo === 'skill'))])
+  const lista = activos.map((r): RecursoGuia => ({ tipo: r.tipo, nombre: nombres.get(r.id) ?? r.nombre, descripcion: r.descripcion }))
+  const recursos: RecursosAsistente = { agentes: activos.some((r) => r.tipo === 'agente'), skills: activos.some((r) => r.tipo === 'skill'), ...(lista.length ? { lista } : {}) }
 
   const hash = createHash('sha1').update(JSON.stringify(archivos)).digest('hex').slice(0, 10)
   const dir = join(SESIONES, `${slug(proyecto.id) || 'proyecto'}-${hash}`)
@@ -303,18 +318,53 @@ export async function comandoConAgentes(comando: string, proyectoId?: string): P
 export interface RecursosAsistente {
   agentes: boolean
   skills: boolean
+  /** Cada agente y skill con su descripción («cuándo usarlo»): con ella `guiaRecursos` arma la tabla de decisión del prompt de sistema. */
+  lista?: RecursoGuia[]
 }
 
 /** Agentes y skills que el propio repo trae en `.claude/` (el CLI los carga con `--setting-sources project`). */
 export async function recursosDeCarpeta(ruta: string): Promise<RecursosAsistente> {
   const entradas = (d: string) => readdir(d, { withFileTypes: true }).catch(() => [])
-  const agentes = (await entradas(join(ruta, '.claude', 'agents'))).some((e) => e.isFile() && e.name.endsWith('.md'))
-  let skills = false
-  for (const e of await entradas(join(ruta, '.claude', 'skills'))) {
-    if (e.isDirectory() && (await stat(join(ruta, '.claude', 'skills', e.name, 'SKILL.md')).catch(() => undefined))) skills = true
-    if (skills) break
+  const lista: RecursoGuia[] = []
+  for (const e of await entradas(join(ruta, '.claude', 'agents'))) {
+    if (!e.isFile() || !e.name.endsWith('.md')) continue
+    const c = await cabeceraDe(join(ruta, '.claude', 'agents', e.name))
+    lista.push({ tipo: 'agente', nombre: c.name || e.name.slice(0, -3), descripcion: c.description ?? '' })
   }
-  return { agentes, skills }
+  for (const e of await entradas(join(ruta, '.claude', 'skills'))) {
+    if (!e.isDirectory()) continue
+    const archivo = join(ruta, '.claude', 'skills', e.name, 'SKILL.md')
+    if (!(await stat(archivo).catch(() => undefined))) continue
+    const c = await cabeceraDe(archivo)
+    lista.push({ tipo: 'skill', nombre: c.name || e.name, descripcion: c.description ?? '' })
+  }
+  return { agentes: lista.some((r) => r.tipo === 'agente'), skills: lista.some((r) => r.tipo === 'skill'), ...(lista.length ? { lista } : {}) }
+}
+
+/** `name` y `description` de la cabecera (frontmatter) de un agente o skill del repo; vacío si no tiene o no se puede leer. */
+async function cabeceraDe(archivo: string): Promise<{ name?: string; description?: string }> {
+  try {
+    const texto = (await readFile(archivo, 'utf8')).slice(0, 8000)
+    const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(texto)
+    if (!m) return {}
+    const valor = (clave: string): string | undefined => {
+      const l = new RegExp(`^${clave}:[ \\t]*(.*)$`, 'm').exec(m[1]!)?.[1]?.trim()
+      if (!l) return undefined
+      if (l.startsWith('"')) {
+        try {
+          return String(JSON.parse(l))
+        } catch {
+          /* no era JSON: se usa tal cual */
+        }
+      }
+      return l.replace(/^['"]|['"]$/g, '')
+    }
+    const name = valor('name')
+    const description = valor('description')
+    return { ...(name ? { name } : {}), ...(description ? { description } : {}) }
+  } catch {
+    return {}
+  }
 }
 
 /**
@@ -328,7 +378,8 @@ export async function pluginAgentesAsistente(proyectoId?: string, ruta?: string)
   try {
     const p = await construirPlugin(proyectoId, false)
     if (!p) return { recursos: repo }
-    return { dir: p.dir, recursos: { agentes: repo.agentes || p.recursos.agentes, skills: repo.skills || p.recursos.skills } }
+    const lista = [...(p.recursos.lista ?? []), ...(repo.lista ?? [])]
+    return { dir: p.dir, recursos: { agentes: repo.agentes || p.recursos.agentes, skills: repo.skills || p.recursos.skills, ...(lista.length ? { lista } : {}) } }
   } catch (err) {
     console.error('No se pudieron preparar los agentes del Asistente:', err)
     return { recursos: repo }

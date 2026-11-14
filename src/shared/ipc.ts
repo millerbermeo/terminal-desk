@@ -49,6 +49,7 @@ export const Canales = {
   proyectosEliminar: 'proyectos:eliminar',
   proyectosCambiarCarpeta: 'proyectos:cambiar-carpeta',
   proyectosMoverGrupo: 'proyectos:mover-grupo',
+  proyectosRenombrar: 'proyectos:renombrar',
   grupoEliminar: 'grupo:eliminar',
   terminalCrear: 'terminal:crear',
   terminalEscribir: 'terminal:escribir',
@@ -102,6 +103,8 @@ export const Canales = {
   arranqueTerminal: 'arranque:terminal',
   /** main → interfaz: un asistente maneja Odesk por MCP (abrir proyecto, mostrar terminal, mandar mensaje al Asistente…). */
   iaAccion: 'ia:accion',
+  notificacionMostrar: 'notificacion:mostrar',
+  notificacionClic: 'notificacion:clic',
   mcpExterno: 'mcp:externo',
   historialOperar: 'historial:operar',
   navegadorAbrir: 'navegador:abrir',
@@ -187,6 +190,8 @@ export interface NuevoProyecto {
 }
 
 export interface SolicitudAgregar {
+  /** `compartido` (por defecto): se registra en la cuenta, con `.odesk/project.json` y seguimiento remoto. `local`: solo en este equipo, sin nada de eso. */
+  modo?: 'compartido' | 'local'
   grupoId?: string // grupo existente
   grupoNuevo?: string // o nombre de grupo a crear
   proyectos: NuevoProyecto[]
@@ -364,11 +369,16 @@ export interface ApiCentro {
   historial: {
     operar<K extends NombreOperacionHistorial>(op: K, entrada: OperacionesHistorial[K]['entrada']): Promise<OperacionesHistorial[K]['salida']>
   }
-  /** Dictado por voz: el backend transcribe (Groq) y mejora el texto; la interfaz lo deja en el campo sin enviarlo. */
+  /** Dictado por voz: el backend transcribe (Groq, solo transcripción literal) y la interfaz deja el texto en el campo para editarlo, sin enviarlo. */
   voz: {
     /** ¿Está configurado el dictado en el servidor? (clave de Groq presente y válida). */
     estado(): Promise<EstadoVoz>
-    transcribir(audio: Uint8Array, mime: string, duracionMs: number, mejorar: boolean): Promise<ResultadoVoz>
+    transcribir(audio: Uint8Array, mime: string, duracionMs: number): Promise<ResultadoVoz>
+  }
+  /** Notificaciones del sistema (el Asistente terminó de responder). Al pulsar una, la ventana vuelve al frente y `onClic` dice de qué chat era. */
+  notificaciones: {
+    mostrar(n: AvisoSistema): Promise<boolean>
+    onClic(cb: (clave: string | undefined) => void): () => void
   }
   /** Un asistente maneja Odesk por MCP: main pide a la interfaz abrir, mostrar o mandar cosas. Y la instalación del MCP «odesk» en clientes externos. */
   ia: {
@@ -463,6 +473,8 @@ export interface ApiCentro {
     cambiarCarpeta(id: string, ruta: string, confirmar?: boolean): Promise<{ datos: DatosProyectos; aviso?: string }>
     /** Pasa un proyecto a otro grupo (`null` = «Sin grupo»). */
     moverAGrupo(id: string, grupoId: string | null): Promise<DatosProyectos>
+    /** Cambia el nombre de un proyecto (no se admiten nombres repetidos). */
+    renombrar(id: string, nombre: string): Promise<DatosProyectos>
     eliminarGrupo(id: string): Promise<DatosProyectos>
   }
   /** Anota un suceso técnico (error de la interfaz…) en el registro local y, si hay sesión, en la cuenta. Nunca lanza. */
@@ -490,4 +502,11 @@ export interface ApiCentro {
     onDatos(cb: (e: DatosTerminal) => void): () => void
     onSalida(cb: (e: SalidaTerminal) => void): () => void
   }
+}
+
+/** Una notificación del sistema. `clave` identifica el chat de origen (la de `useAgente`; sin ella, la pantalla «Asistente»). */
+export interface AvisoSistema {
+  titulo: string
+  cuerpo: string
+  clave?: string
 }

@@ -1,3 +1,4 @@
+import { sinValoresCredencial } from '@shared/credenciales-herramientas'
 import type { EventoAgente, PreguntaUsuario } from '@shared/core/agente'
 import type { LlamadaHerramienta } from '@shared/core/herramientas'
 import type { NuevaRegla, ReglaPermiso } from '@shared/core/permisos'
@@ -64,7 +65,8 @@ function traducir(p: PeticionPermiso): { llamada: LlamadaHerramienta; descripcio
     case 'NotebookEdit':
       return { llamada: { id, nombre: 'escribir_archivo', entrada: { ruta: texto(e.file_path) || texto(e.notebook_path), contenido: '' } }, descripcion: `${p.herramienta} ${texto(e.file_path) || texto(e.notebook_path)}\n\n${recortar(JSON.stringify(e, null, 2))}`, simple: true }
     default:
-      return { llamada: { id, nombre: p.herramienta, entrada: e }, descripcion: `${p.herramienta}\n${recortar(JSON.stringify(e, null, 2))}`, simple: true }
+      // (La confirmación queda en la conversación: una credencial que se guarda se muestra sin sus valores.)
+      return { llamada: { id, nombre: p.herramienta, entrada: e }, descripcion: `${p.herramienta}\n${recortar(JSON.stringify(sinValoresCredencial(p.herramienta, e), null, 2))}`, simple: true }
   }
 }
 

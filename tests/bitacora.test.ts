@@ -22,6 +22,21 @@ describe('Bitacora', () => {
     expect(t).toContain('→ ERROR: denegado')
   })
 
+  it('lleva el plan vigente y lo que está ejecutando ahora mismo', () => {
+    const b = new Bitacora()
+    b.registrar({ tipo: 'inicio', prompt: 'Migra las imágenes' })
+    b.registrar({ tipo: 'herramienta_inicio', llamada: { id: 't1', nombre: 'TodoWrite', entrada: { todos: [{ content: 'Leer el código', status: 'completed' }, { content: 'Migrar', status: 'in_progress' }, { content: 'Probar', status: 'pending' }] } } })
+    b.registrar({ tipo: 'herramienta_fin', llamada: { id: 't1', nombre: 'TodoWrite', entrada: {} }, resultado: { texto: 'ok' } })
+    b.registrar({ tipo: 'herramienta_inicio', llamada: { id: 'b1', nombre: 'Bash', entrada: { command: 'pnpm test' } } })
+    const t = b.texto()
+    expect(t).toContain('[x] Leer el código')
+    expect(t).toContain('[>] Migrar')
+    expect(t).toContain('[ ] Probar')
+    expect(t).toContain('Ejecutando ahora mismo (sin terminar): Bash: pnpm test')
+    b.registrar({ tipo: 'herramienta_fin', llamada: { id: 'b1', nombre: 'Bash', entrada: {} }, resultado: { texto: 'pasa' } })
+    expect(b.texto()).not.toContain('Ejecutando ahora mismo')
+  })
+
   it('avisa de un paso largo en curso', () => {
     const b = new Bitacora()
     b.registrar({ tipo: 'inicio', prompt: 'x' })

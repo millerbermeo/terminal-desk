@@ -15,7 +15,7 @@ interface Props {
   visible?: boolean
 }
 
-/** Credenciales de prueba de ESTE equipo, por proyecto o por grupo: el asistente las consulta con `credenciales_listar/obtener`. */
+/** Credenciales de prueba de ESTE equipo, por proyecto o por grupo: el asistente las consulta con `credenciales_listar/obtener` y las gestiona con `credenciales_guardar/eliminar`. */
 export function CredencialesAgente({ datos, visible = true }: Props) {
   const [elegida, setClave] = useState('')
   // Los proyectos pueden cargarse después de montar el panel: mientras no haya una elección válida se usa el primero.
@@ -63,7 +63,8 @@ export function CredencialesAgente({ datos, visible = true }: Props) {
       <p className="cfg-intro">
         Datos para <strong>probar en local</strong> (usuarios, claves de sandbox, URLs, tokens…). Se guardan <strong>solo en este equipo</strong>
         (<code>~/.odesk-agent/credenciales/</code>): no se sincronizan con tu cuenta ni con otros PCs, así que cada equipo tiene las suyas. El asistente puede
-        consultarlas por su cuenta; entregarle los valores pide tu confirmación salvo en modo Autónomo. No guardes aquí credenciales de producción.
+        consultarlas por su cuenta (entregarle los valores pide tu confirmación salvo en modo Autónomo) y también crearlas, cambiarlas o borrarlas si se lo pides
+        en el chat: guardar pide confirmación en modo Preguntar y borrar, siempre. No guardes aquí credenciales de producción.
       </p>
       <div className="ag-opciones">
         <select value={clave} onChange={(e) => setClave(e.target.value)} aria-label="Proyecto o grupo">

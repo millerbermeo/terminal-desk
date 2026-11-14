@@ -167,3 +167,18 @@ describe('MetaSesionesCli', () => {
     expect(await m.obtener('a')).toBeUndefined()
   })
 })
+
+describe('preguntas laterales en la ficha de la conversación', () => {
+  it('se anotan recortadas, se conservan las últimas y se entregan como bloque', async () => {
+    const { conLateral, bloqueLaterales, metaVacia } = await import('../src/main/core/consumo')
+    let m = metaVacia()
+    expect(bloqueLaterales(m.laterales)).toBe('')
+    for (let i = 1; i <= 8; i++) m = conLateral(m, `pregunta ${i}`, i === 8 ? 'r'.repeat(5000) : `respuesta ${i}`)
+    expect(m.laterales).toHaveLength(6)
+    expect(m.laterales![0]).toContain('pregunta 3')
+    expect(m.laterales![5]!.length).toBeLessThan(1700)
+    const b = bloqueLaterales(m.laterales)
+    expect(b).toMatch(/^<preguntas_laterales>[\s\S]*<\/preguntas_laterales>$/)
+    expect(b).toContain('1. Usuario: pregunta 3\nRespuesta: respuesta 3')
+  })
+})

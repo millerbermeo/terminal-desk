@@ -6,9 +6,15 @@ export const LIMITES_GRABACION = {
   maxBytes: 5 * 1024 * 1024,
   /** Menos de esto es un clic sin querer: no se envía. */
   minMs: 700,
-  /** Opus mono a 24 kbps: voz clara y ~180 KB por minuto. */
-  bitsPorSegundo: 24_000
+  /** Opus mono a 64 kbps: voz nítida (los consonantes se entienden) y ~480 KB por minuto; 3 min caben en `maxBytes`. */
+  bitsPorSegundo: 64_000,
+  /** Margen que se sigue grabando tras pulsar «Terminar»: así no se come la última palabra. */
+  colaMs: 350,
+  /** Espera con el micrófono ya abierto antes de empezar a grabar: el control automático de ganancia necesita ese instante y sin él se pierde el comienzo. */
+  calentamientoMs: 250
 }
+/** Si en los primeros segundos no se oye nada por encima de esto (0–1), se avisa de que el micrófono no capta sonido. */
+export const UMBRAL_SONIDO = 0.03
 
 /** Formatos que graba Chromium, del más eficiente al menos; el primero que admita MediaRecorder. */
 export const FORMATOS_GRABACION = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm', 'audio/mp4'] as const
@@ -31,7 +37,8 @@ export type CodigoVoz =
 
 export type EstadoVoz = { ok: true; maxSegundos: number; maxBytes: number } | { ok: false; codigo: CodigoVoz; mensaje: string }
 
-export type ResultadoVoz = { ok: true; texto: string; original: string; mejorado: boolean } | { ok: false; codigo: CodigoVoz; mensaje: string }
+/** Solo la transcripción literal: el texto no pasa por ninguna IA de redacción. */
+export type ResultadoVoz = { ok: true; texto: string } | { ok: false; codigo: CodigoVoz; mensaje: string }
 
 /** Errores de configuración del servidor: la interfaz muestra las instrucciones y no deja grabar. */
 export const esErrorConfiguracion = (c: CodigoVoz): boolean => c === 'VOZ_SIN_CLAVE' || c === 'VOZ_CLAVE_INVALIDA'

@@ -125,9 +125,18 @@ export interface UsuarioGitHub {
   nombre?: string
 }
 
+/** Una cuenta de GitHub vinculada en este equipo (nunca incluye el token). */
+export interface CuentaVinculada {
+  usuario: string
+  activa: boolean
+  renovable: boolean
+}
+
 export interface EstadoGitHub {
   conectado: boolean
   usuario?: UsuarioGitHub
+  /** Todas las cuentas vinculadas (la activa es la que usan la interfaz, la IA y git). */
+  cuentas?: CuentaVinculada[]
   /** El token se guardó cifrado en el equipo; si no, solo vive en memoria hasta cerrar la aplicación. */
   persistente: boolean
   host: string
@@ -206,7 +215,12 @@ export interface OperacionesGitHub {
   /** Espera (consultando a GitHub) a que el usuario autorice el código y guarda el token cifrado. Se cancela con `dispositivoCancelar`. */
   dispositivoEsperar: { entrada: Record<string, never>; salida: EstadoGitHub }
   dispositivoCancelar: { entrada: Record<string, never>; salida: { ok: true } }
+  /** Quita la cuenta activa (las demás siguen vinculadas y la primera pasa a ser la activa). */
   desconectar: { entrada: Record<string, never>; salida: EstadoGitHub }
+  /** Cambia la cuenta de GitHub activa entre las vinculadas. */
+  cambiarCuenta: { entrada: { usuario: string }; salida: EstadoGitHub }
+  /** Quita una cuenta vinculada (activa o no). */
+  quitarCuenta: { entrada: { usuario: string }; salida: EstadoGitHub }
   /** Tus repositorios (100 por página, los más recientes primero). */
   repos: { entrada: { texto?: string; pagina?: number }; salida: RepoGitHub[] }
   /** Perfil, método de conexión, permisos del token, caducidad y límite de peticiones de la cuenta conectada. */

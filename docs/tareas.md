@@ -29,6 +29,18 @@ Pantalla **Tareas** (barra lateral): gestión de tareas por grupos y proyectos q
 - **Contexto**: al lanzar el Asistente en un proyecto se añade al prompt un resumen acotado de sus tareas abiertas y las reglas de trabajo (consultar antes de implementar, marcar en curso, completar solo con criterios cumplidos, documentar decisiones).
 - **Comandos**: `/plan <funcionalidad>` (descompone en tareas con criterios y dependencias, sin implementar) y `/tareas` (revisión: bloqueos, mal definidas, siguiente paso).
 
+## Vista de Tareas (diseño interactivo)
+
+Componentes en `src/renderer/components/tareas/` (orquesta `components/Tareas.tsx`; el panel de detalle es `components/TareaDetalle.tsx`); la lógica pura está en `src/shared/tareas-vista.ts` (con tests en `tests/tareas-vista.test.ts`).
+
+- **Vistas**: Tablero, Lista, Calendario, Cronograma, Mis tareas, Resumen y Actividad. La pestaña, filtros, agrupación, densidad y columnas se recuerdan por equipo (`localStorage`, `renderer/tareas/vista.ts`).
+- **Tablero**: crear en cada columna, columnas plegables, límite de trabajo por columna (aviso en rojo), carriles con «Agrupar por» (arrastrar entre carriles cambia prioridad, responsable, hito o proyecto), indicador de posición al arrastrar y auto-scroll. Tarjetas con progreso, responsable, estimación y chips clicables (prioridad, fecha).
+- **Lista**: celdas editables en línea, orden por columna, grupos plegables, columnas a elegir, selección múltiple (casillas, Ctrl/Mayús+clic, Espacio) y barra de acciones masivas.
+- **Calendario**: por vencimiento; arrastrar reprograma. **Cronograma**: barras de inicio a vencimiento (mover y redimensionar arrastrando) con flechas de dependencia.
+- **Menú contextual** (clic derecho o «⋯»), **atajos** (`?` los muestra) y avisos con **Deshacer** (Ctrl+Z) para cambios de estado, prioridad, fecha, responsable… (`Tareas.tsx#inversoDe`).
+- **Detalle**: panel lateral con propiedades editables, subtareas con reordenar/editar/convertir en tarea, comentarios, actividad y «Guardado ✓».
+- **Modelo**: `Tarea.responsable` (`usuario`/`ia`), `estimacion` (puntos) y `hito` son opcionales (las tareas antiguas siguen valiendo); la IA los lee y fija con las herramientas de tareas. Las subtareas y criterios se reordenan con `item` → `mover`.
+
 ## Fuera de alcance (a propósito)
 
-Usuarios y responsables, permisos por usuario, diagrama de Gantt, plantillas de proyecto, tareas recurrentes y estimaciones: la app es de un solo usuario y no hacen falta para que el sistema funcione.
+Varios usuarios (el responsable es solo «yo» o «la IA»), permisos por usuario, plantillas de proyecto y tareas recurrentes.

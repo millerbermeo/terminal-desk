@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises'
@@ -83,6 +83,37 @@ describe('lógica pura de GitHub', () => {
 
 describe('almacén del token', () => {
   const falso = (disponible: boolean): Cifrador => ({ disponible: () => disponible, cifrar: (t) => Buffer.from([...t].reverse().join('')).toString('base64'), descifrar: (c) => [...Buffer.from(c, 'base64').toString()].reverse().join('') })
+
+  it('varias cuentas: cada una por usuario, una activa; cambiar, quitar y migrar el archivo antiguo', async () => {
+    const dir = await carpeta()
+    const archivo = join(dir, 'github.json')
+    const a = new AlmacenToken(archivo, falso(true))
+    await a.guardar('tok_ana', 'ana')
+    await a.guardar('tok_bob', 'bob') // la nueva pasa a ser la activa
+    expect((await a.leer())?.usuario).toBe('bob')
+    expect(await a.listar()).toEqual([{ usuario: 'ana', activa: false, renovable: false }, { usuario: 'bob', activa: true, renovable: false }])
+    await a.guardar('tok_ana2', 'ANA', {}, { activar: false }) // actualiza sin cambiar la activa
+    expect((await a.leer())?.usuario).toBe('bob')
+    expect(await a.activar('ana')).toBe(true)
+    expect((await new AlmacenToken(archivo, falso(true)).leer())?.token).toBe('tok_ana2')
+    expect(await a.activar('nadie')).toBe(false)
+    expect(readFileSync(archivo, 'utf8')).not.toContain('tok_')
+    await a.borrar() // quita solo la activa
+    expect((await a.leer())?.usuario).toBe('bob')
+    expect(await a.quitar('bob')).toBe(true)
+    expect(existsSync(archivo)).toBe(false)
+  })
+
+  it('lee el archivo de una sola cuenta (versión 1) y lo conserva al añadir otra', async () => {
+    const dir = await carpeta()
+    const archivo = join(dir, 'github.json')
+    const c = falso(true)
+    writeFileSync(archivo, JSON.stringify({ version: 1, cifrado: c.cifrar('tok_viejo'), usuario: 'ana' }))
+    const a = new AlmacenToken(archivo, c)
+    expect((await a.leer())?.token).toBe('tok_viejo')
+    await a.guardar('tok_bob', 'bob')
+    expect((await a.listar()).map((x) => x.usuario)).toEqual(['ana', 'bob'])
+  })
 
   it('con cifrado: se guarda cifrado en un archivo 0600 y se recupera; nunca en claro', async () => {
     const dir = await carpeta()
@@ -588,7 +619,8 @@ describe('seguridad de las herramientas', () => {
 
   it('no hay herramientas para borrar, descartar, forzar ni fusionar pull requests', () => {
     const nombres = HERRAMIENTAS_ODESK.map((h) => h.nombre)
-    expect(nombres.filter((n) => /borrar|eliminar|descartar|forzar|reset|fusionar|merge|delete/i.test(n))).toEqual([])
+    // Única excepción: las credenciales de prueba se gestionan desde el chat; eliminar una siempre pide confirmación (`esDestructiva`).
+    expect(nombres.filter((n) => /borrar|eliminar|descartar|forzar|reset|fusionar|merge|delete/i.test(n))).toEqual(['credenciales_eliminar'])
     expect(new Set(nombres).size).toBe(nombres.length)
     for (const h of [...HERRAMIENTAS_GIT, ...HERRAMIENTAS_GITHUB]) expect(['lectura', 'escritura', 'ejecucion']).toContain(h.riesgo)
     expect(HERRAMIENTAS_GIT.filter((h) => h.riesgo === 'ejecucion').map((h) => h.nombre).sort()).toEqual(['git_enviar', 'git_traer'])

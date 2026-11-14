@@ -112,6 +112,7 @@ export function GitHubCuenta({ datos, onDatos }: Props) {
   const [clonar, setClonar] = useState<{ repo?: string } | null>(null)
   const [clientId, setClientId] = useState('')
   const [editandoOauth, setEditandoOauth] = useState(false)
+  const [anadiendo, setAnadiendo] = useState(false)
 
   const error = (clave: string) => (e: unknown): void => setErrores((x) => ({ ...x, [clave]: mensajeDe(e) }))
 
@@ -174,12 +175,57 @@ export function GitHubCuenta({ datos, onDatos }: Props) {
     })
     if (!ok) return
     try {
-      setEstado(await gh('desconectar', {}))
+      const e = await gh('desconectar', {})
+      setEstado(e)
       setCuenta(null)
       setOrgs(null)
       setActividad(null)
       setRepos(null)
-      setAviso(cambiarCuenta ? 'Desconectado: conecta la otra cuenta.' : 'GitHub desconectado.')
+      if (e.conectado) {
+        setAviso(`Cuenta quitada: ahora la activa es @${e.usuario?.usuario ?? 'otra'}.`)
+        void cargar()
+      } else setAviso(cambiarCuenta ? 'Desconectado: conecta la otra cuenta.' : 'GitHub desconectado.')
+    } catch (e) {
+      setFallo(mensajeDe(e))
+    }
+  }
+
+  const cambiarActiva = async (usuario: string): Promise<void> => {
+    try {
+      setFallo('')
+      const e = await gh('cambiarCuenta', { usuario })
+      setEstado(e)
+      setCuenta(null)
+      setOrgs(null)
+      setActividad(null)
+      setRepos(null)
+      setAviso(`Ahora usas @${usuario}.`)
+      void cargar()
+    } catch (e) {
+      setFallo(mensajeDe(e))
+    }
+  }
+
+  const quitarCuenta = async (usuario: string): Promise<void> => {
+    const ok = await confirmar({
+      titulo: `¿Quitar la cuenta @${usuario}?`,
+      etiqueta: 'Quitar',
+      tono: 'aviso',
+      texto: 'Se borra su acceso guardado en este equipo; tus repositorios y proyectos no se tocan. Para revocarlo del todo, hazlo también en GitHub → Settings.'
+    })
+    if (!ok) return
+    try {
+      setFallo('')
+      const e = await gh('quitarCuenta', { usuario })
+      setEstado(e)
+      setAviso(`Cuenta @${usuario} quitada.`)
+      if (e.conectado) void cargar()
+      else {
+        setCuenta(null)
+        setOrgs(null)
+        setActividad(null)
+        setRepos(null)
+      }
     } catch (e) {
       setFallo(mensajeDe(e))
     }
@@ -307,12 +353,47 @@ export function GitHubCuenta({ datos, onDatos }: Props) {
         </Tarjeta>
 
         <Tarjeta
+          titulo="Cuentas de GitHub"
+          derecha={<button onClick={() => setAnadiendo((v) => !v)}>{anadiendo ? 'Cancelar' : '＋ Añadir cuenta'}</button>}
+        >
+          <ul className="gc-cuentas">
+            {(estado.cuentas ?? []).map((k) => (
+              <li key={k.usuario} className="td-fila">
+                <Avatar url={`https://avatars.githubusercontent.com/${encodeURIComponent(k.usuario)}?size=40`} nombre={k.usuario} />
+                <span className="mono">@{k.usuario}</span>
+                {k.activa && <span className="chip chip-ok">activa</span>}
+                <span className="ag-espacio" />
+                {!k.activa && <button onClick={() => void cambiarActiva(k.usuario)}>Usar esta</button>}
+                <button className="peligro" onClick={() => void quitarCuenta(k.usuario)}>
+                  Quitar
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="vc-nota">La cuenta activa es la que usan esta sección, el asistente y git (enviar/traer por https). Para añadir otra por código, antes cambia de cuenta en github.com en tu navegador.</p>
+          {anadiendo && (
+            <ConectarGitHub
+              gha={estado}
+              onError={setFallo}
+              onEstado={(e, conectado) => {
+                setEstado(e)
+                if (conectado) {
+                  setAnadiendo(false)
+                  setAviso(`Cuenta @${e.usuario?.usuario ?? 'nueva'} vinculada y activa.`)
+                  setCuenta(null)
+                  void cargar()
+                }
+              }}
+            />
+          )}
+        </Tarjeta>
+
+        <Tarjeta
           titulo="Conexión"
           derecha={
             <span className="gc-acciones">
-              <button onClick={() => void desconectar(true)}>Cambiar de cuenta</button>
               <button className="peligro" onClick={() => void desconectar(false)}>
-                Desconectar
+                Quitar esta cuenta
               </button>
             </span>
           }

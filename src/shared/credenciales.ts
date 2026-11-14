@@ -64,3 +64,34 @@ export function limpiarCredencial(v: unknown, id: string, ahora: number): Creden
   const notas = cadena(o.notas, MAX_NOTAS).trim()
   return { id, nombre, ...(notas ? { notas } : {}), campos, actualizada: typeof o.actualizada === 'number' ? o.actualizada : ahora }
 }
+
+/** Lo que la IA manda a `credenciales_guardar`: crea, o actualiza por nombre conservando lo que no se menciona. */
+export interface CambioCredencial {
+  nombre: string
+  campos?: { clave: string; valor: string; secreto?: boolean }[]
+  quitarCampos?: string[]
+  notas?: string
+  nombreNuevo?: string
+}
+
+const PARECE_SECRETO = /pass|clave|contrase|secret|token|api[_-]?key|\bkey\b|pwd|pin\b|private/i
+
+/**
+ * Aplica un cambio de la IA sobre la credencial que ya existía (o ninguna): los campos mandados sustituyen a los del mismo nombre
+ * (sin distinguir mayúsculas) o se añaden; el resto se conserva. Un campo nuevo sin `secreto` se marca según su nombre.
+ */
+export function aplicarCambioCredencial(previa: CredencialPrueba | undefined, c: CambioCredencial): EntradaCredencial {
+  const quitar = new Set((c.quitarCampos ?? []).map((k) => k.trim().toLowerCase()))
+  const campos = (previa?.campos ?? []).filter((f) => !quitar.has(f.clave.toLowerCase())).map((f) => ({ ...f }))
+  for (const n of c.campos ?? []) {
+    const clave = n.clave.trim()
+    if (!clave) continue
+    const i = campos.findIndex((f) => f.clave.toLowerCase() === clave.toLowerCase())
+    const secreto = n.secreto ?? (i >= 0 ? campos[i]!.secreto === true : PARECE_SECRETO.test(clave))
+    const campo: CampoCredencial = { clave: i >= 0 ? campos[i]!.clave : clave, valor: n.valor, ...(secreto ? { secreto: true } : {}) }
+    if (i >= 0) campos[i] = campo
+    else campos.push(campo)
+  }
+  const notas = c.notas !== undefined ? c.notas : previa?.notas
+  return { ...(previa ? { id: previa.id } : {}), nombre: (c.nombreNuevo ?? '').trim() || previa?.nombre || c.nombre, ...(notas ? { notas } : {}), campos }
+}

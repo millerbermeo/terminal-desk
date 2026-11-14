@@ -307,7 +307,8 @@ export class ServicioEquipos {
 
   async clonarPendiente(e: OperacionesEquipos['clonarPendiente']['entrada']): Promise<{ ruta: string }> {
     const p = (await this.d.pendientes()).find((x) => x.id === e.proyectoId)
-    if (!p) throw new Error('Ese proyecto ya está en este equipo o no tiene repositorio.')
+    if (!p) throw new Error('Ese proyecto ya está en este equipo.')
+    if (!p.repo) throw new Error('Este proyecto no tiene repositorio: no se puede clonar. Elige su carpeta con «Ya la tengo aquí».')
     const r = await this.d.clonarProyecto({ proyectoId: p.id, repo: p.repo, carpetaPadre: e.carpetaPadre, ...(e.protocolo ? { protocolo: e.protocolo } : {}) })
     await this.d.alClonar?.(p.id).catch(() => undefined)
     return r
@@ -315,7 +316,7 @@ export class ServicioEquipos {
 
   async enlazarPendiente(e: OperacionesEquipos['enlazarPendiente']['entrada']): Promise<{ ruta: string }> {
     const p = (await this.d.pendientes()).find((x) => x.id === e.proyectoId)
-    if (!p) throw new Error('Ese proyecto ya está en este equipo o no tiene repositorio.')
+    if (!p) throw new Error('Ese proyecto ya está en este equipo.')
     const r = await this.d.enlazarCarpeta({ proyectoId: p.id, ruta: e.ruta, repo: p.repo, ...(e.confirmar ? { confirmar: true } : {}) })
     await this.d.alClonar?.(p.id).catch(() => undefined) // baja su tablero, conversaciones y trazas
     return r

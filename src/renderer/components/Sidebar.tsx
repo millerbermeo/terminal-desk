@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { trabajandoAhora, type AvisoEquipo, type PendienteClonar } from '@shared/equipos'
-import type { DatosProyectos, Proyecto, ProveedorEstado } from '@shared/modelos'
+import { proyectosConNombreRepetido, type DatosProyectos, type Proyecto, type ProveedorEstado } from '@shared/modelos'
 import logo from '../assets/logo.png'
-import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoBuscar, IconoGitHub, IconoGlobo, IconoLibro, IconoMas, IconoNube, IconoPanelLateral, IconoRama, IconoRayo, IconoTareas, IconoUsuario } from './Iconos'
+import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoBuscar, IconoGitHub, IconoGlobo, IconoInicio, IconoLibro, IconoMas, IconoNube, IconoPanelLateral, IconoRama, IconoRayo, IconoTareas, IconoUsuario } from './Iconos'
 
 interface Props {
   datos: DatosProyectos
@@ -104,7 +104,7 @@ function useBarraCompacta(): [boolean, boolean, () => void] {
   return [manual || estrecho, estrecho, alternar]
 }
 
-export type Vista = 'terminales' | 'servicios' | 'config' | 'github' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones' | 'api' | 'navegador' | 'guia'
+export type Vista = 'inicio' | 'terminales' | 'servicios' | 'config' | 'github' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones' | 'api' | 'navegador' | 'guia'
 
 interface MenuIA {
   proyecto: Proyecto
@@ -159,6 +159,10 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
     }
   }, [menu])
   const sinGrupo = datos.proyectos.filter((p) => !p.grupo || !datos.grupos.some((g) => g.id === p.grupo))
+  // Los proyectos de la cuenta que aún no tienen carpeta aquí se muestran en SU grupo (el de la cuenta): no hay que volver a asignarlos.
+  const repetidos = useMemo(() => proyectosConNombreRepetido(datos.proyectos), [datos.proyectos])
+  const faltanDe = (gid: string): PendienteClonar[] => pendientes.filter((p) => p.grupoId === gid)
+  const faltanSinGrupo = pendientes.filter((p) => !p.grupoId || !datos.grupos.some((g) => g.id === p.grupoId))
 
   const alternar = (id: string): void =>
     setCerrados((c) => {
@@ -168,9 +172,10 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
     })
 
   const q = filtro.trim().toLowerCase()
-  const seccion = (id: string, nombre: string, todos: Proyecto[]) => {
+  const seccion = (id: string, nombre: string, todos: Proyecto[], faltan: PendienteClonar[] = []) => {
     const proyectos = q ? todos.filter((p) => p.nombre.toLowerCase().includes(q)) : todos
-    if (q && proyectos.length === 0) return null
+    const sinCarpeta = q ? faltan.filter((p) => p.nombre.toLowerCase().includes(q)) : faltan
+    if (q && proyectos.length === 0 && sinCarpeta.length === 0) return null
     return (
     <section key={id} className={cerrados.has(id) && !q ? 'cerrada' : ''}>
       <div className="seccion-cab">
@@ -195,9 +200,10 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
           {proyectos.map((p) => (
             <li key={p.id}>
               <div className="fila-proyecto">
-                <button className="item" title={p.ruta} onClick={() => onAbrir(p)}>
+                <button className={`item${repetidos.has(p.id) ? ' nombre-repetido' : ''}`} title={repetidos.has(p.id) ? `${p.ruta}\nNombre repetido: edítalo en Configurar proyectos (Editar)` : p.ruta} onClick={() => onAbrir(p)}>
                   <IconoCarpeta />
                   <span className="item-nombre">{p.nombre}</span>
+                  {repetidos.has(p.id) && <span className="chip chip-repetido">repetido</span>}
                   {avisosPorProyecto[p.id]?.length > 0 && (
                     <span
                       className={`aviso-equipo${avisosPorProyecto[p.id]!.some((a) => trabajandoAhora(a)) ? ' vivo' : ''}`}
@@ -237,7 +243,20 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
               </div>
             </li>
           ))}
-          {proyectos.length === 0 && <li className="item-vacio">Sin proyectos</li>}
+          {sinCarpeta.map((p) => (
+            <li key={`pend-${p.id}`}>
+              <button
+                className="item item-pendiente"
+                title={`${p.nombre}: ya está en este grupo de tu cuenta pero aún no tiene carpeta en este equipo. Clic para ${p.repo ? 'clonarlo o enlazar su carpeta' : 'enlazar su carpeta'}.`}
+                onClick={() => onClonarPendientes(p.id)}
+              >
+                <IconoNube />
+                <span className="item-nombre">{p.nombre}</span>
+                <span className="chip item-clonar">{p.repo ? 'clonar' : 'enlazar'}</span>
+              </button>
+            </li>
+          ))}
+          {proyectos.length === 0 && sinCarpeta.length === 0 && <li className="item-vacio">Sin proyectos</li>}
         </ul>
       </div>
     </section>
@@ -268,6 +287,10 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
           <IconoAbrirTodas />
         </button>
       </div>
+      <button className={`item item-config item-inicio${vista === 'inicio' ? ' activo' : ''}`} onClick={() => onVista('inicio')} title="Resumen general: tareas, cambios, servicios y consumo de IA" aria-current={vista === 'inicio' ? 'page' : undefined}>
+        <span className="item-icono"><IconoInicio /></span>
+        <span className="txt">Inicio</span>
+      </button>
       <div className="proyectos-cab">
         <span className="nav-etiqueta">Proyectos</span>
         <button className="icono" onClick={onAbrirCarpeta} title="Abrir carpeta: elegirla con el explorador de archivos y agregarla como proyecto" aria-label="Abrir carpeta">
@@ -291,32 +314,21 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
       </div>
       <nav className="lista">
         {datos.grupos.map((g) =>
-          seccion(g.id, g.nombre, datos.proyectos.filter((p) => p.grupo === g.id))
+          seccion(g.id, g.nombre, datos.proyectos.filter((p) => p.grupo === g.id), faltanDe(g.id))
         )}
-        {sinGrupo.length > 0 && seccion('__sin-grupo__', 'Sin grupo', sinGrupo)}
+        {(sinGrupo.length > 0 || faltanSinGrupo.length > 0) && seccion('__sin-grupo__', 'Sin grupo', sinGrupo, faltanSinGrupo)}
         {pendientes.length > 0 && !q && (
           <section className="en-cuenta">
             <div className="seccion-cab">
               <div className="seccion-toggle en-cuenta-tit">
                 <IconoNube />
-                <span className="seccion-nombre">En tu cuenta</span>
+                <span className="seccion-nombre">Faltan en este equipo</span>
                 <span className="contador">{pendientes.length}</span>
               </div>
-              <button className="icono abrir-todas" title="Clonar todos los proyectos que faltan en este equipo" aria-label="Clonar todos los proyectos que faltan" onClick={() => onClonarPendientes()}>
+              <button className="icono abrir-todas" title="Clonar o enlazar los proyectos de tu cuenta que faltan en este equipo" aria-label="Clonar o enlazar los proyectos que faltan" onClick={() => onClonarPendientes()}>
                 <IconoAbrirTodas />
               </button>
             </div>
-            <ul>
-              {pendientes.map((p) => (
-                <li key={p.id}>
-                  <button className="item item-pendiente" title={`${p.nombre}: está en otro equipo de tu cuenta. Clic para clonarlo aquí o, si ya lo tienes en este equipo, enlazar su carpeta.`} onClick={() => onClonarPendientes(p.id)}>
-                    <IconoNube />
-                    <span className="item-nombre">{p.nombre}</span>
-                    <span className="chip item-clonar">clonar</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
           </section>
         )}
       </nav>
@@ -332,7 +344,7 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
               <button
                 key={i.vista}
                 className={`item item-config${vista === i.vista ? ' activo' : ''}`}
-                onClick={() => onVista(vista === i.vista ? 'terminales' : i.vista)}
+                onClick={() => onVista(vista === i.vista ? 'inicio' : i.vista)}
                 title={i.titulo ?? i.texto}
                 aria-current={vista === i.vista ? 'page' : undefined}
               >

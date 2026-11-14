@@ -8,6 +8,7 @@ import { IconoCerrar, IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, Ico
 import { Sidebar, type Vista } from './components/Sidebar'
 import { Asistente } from './components/Asistente'
 import { Tareas } from './components/Tareas'
+import { Inicio } from './components/Inicio'
 import { Versiones } from './components/Versiones'
 import { Api } from './components/Api'
 import { Navegador } from './components/Navegador'
@@ -67,6 +68,19 @@ const nuevaVentana = (id: string, nombre: string, terminales: TerminalInfo[] = [
   reiniciarLayout: 0,
   personalizado: false
 })
+/** Carpeta padre común de varias rutas (o undefined si solo comparten «/»). */
+const raizComun = (rutas: string[]): string | undefined => {
+  const partes = rutas.map((r) => r.split('/').filter(Boolean))
+  const base = partes[0] ?? []
+  let n = base.length
+  for (const q of partes) {
+    let i = 0
+    while (i < n && i < q.length && q[i] === base[i]) i++
+    n = i
+  }
+  return n > 0 ? '/' + base.slice(0, n).join('/') : undefined
+}
+
 const nuevaTerminal = (titulo: string, cwd?: string, proveedorId?: string, proyectoId?: string): TerminalInfo => ({
   id: `t${++contador}`,
   titulo,
@@ -110,7 +124,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   }
   const [ventanas, setVentanas] = useState<Ventana[]>([])
   const [ventanaActiva, setVentanaActiva] = useState<string | null>(null)
-  const [vista, setVista] = useState<Vista>('terminales')
+  const [vista, setVista] = useState<Vista>('inicio')
   const [guiaAbierta, setGuiaAbierta] = useState(false)
   if (vista === 'guia' && !guiaAbierta) setGuiaAbierta(true)
   const solicitudes = useSolicitudes()
@@ -355,6 +369,16 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     [agregar]
   )
 
+  // Asistente en la carpeta raíz común de los proyectos del grupo (opcional; solo con 2+ proyectos).
+  const agregarAsistenteRaiz = useCallback(
+    (v: Ventana, raiz: string) => {
+      setMenuNueva(null)
+      const titulo = tituloUnico('Raíz · Asistente', v.terminales)
+      agregar(v.id, v.nombre, [{ ...nuevaTerminal(titulo, raiz), vista: 'asistente' }])
+    },
+    [agregar]
+  )
+
   // Terminal suelta: en la pestaña activa (o en una pestaña "Terminales" si no hay ninguna).
   const abrirLibre = useCallback(() => {
     const destino = ventanas.find((v) => v.id === ventanaActiva)
@@ -432,6 +456,24 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     if (a.tipo === 'asistente-enviar') encolarExterno(p.id, a.mensaje)
   }
   useEffect(() => window.api.ia.onAccion((a) => void accionIa.current(a)), [])
+
+  // Clic en una notificación del Asistente: se va al chat de donde salió. La clave es la de su conversación: `<proyecto>` (celda del
+  // proyecto), `<proyecto>#<pestaña duplicada>` o nada (pantalla «Asistente»). Si la celda ya no existe, se queda donde estaba.
+  const irAChat = useRef<(clave: string | undefined) => void>(() => undefined)
+  irAChat.current = (clave) => {
+    if (!clave) return setVista('asistente')
+    const [proyectoId, extraId] = clave.split('#')
+    for (const v of ventanasRef.current) {
+      const t = extraId
+        ? v.terminales.find((x) => x.proyectoId === proyectoId && x.extras?.some((e) => e.id === extraId))
+        : (v.terminales.find((x) => x.proyectoId === proyectoId && x.vista === 'asistente') ?? v.terminales.find((x) => x.proyectoId === proyectoId && !x.proveedorId && !x.arranque))
+      if (!t) continue
+      cambiar(v.id, (x) => ({ ...x, activa: t.id, terminales: x.terminales.map((y) => (y.id === t.id ? { ...y, vista: 'asistente', extraActiva: extraId } : y)) }))
+      setVentanaActiva(v.id)
+      return setVista('terminales')
+    }
+  }
+  useEffect(() => window.api.notificaciones.onClic((clave) => irAChat.current(clave)), [])
 
   const cerrarVentana = useCallback(
     (id: string) => {
@@ -600,6 +642,21 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
           }}
         />
       )}
+      <Inicio
+        datos={datos}
+        visible={vista === 'inicio'}
+        terminalesAbiertas={ventanas.reduce((a, v) => a + v.terminales.length, 0)}
+        serviciosActivos={servicios.length}
+        solicitudesAsistente={solicitudes.length}
+        pendientesClonar={pendientes.length}
+        {...(email ? { email } : {})}
+        onVista={setVista}
+        onAbrirProyecto={(p) => {
+          abrirProyecto(p)
+          setVista('terminales')
+        }}
+        onAgregar={() => setModalAgregar({ rutas: [] })}
+      />
       {vista === 'config' && <ConfigProyectos datos={datos} onDatos={setDatos} />}
       {vista === 'agentes' && <ConfigAgentes datos={datos} biblioteca={biblioteca} onBiblioteca={setBiblioteca} />}
       {vista === 'github' && <GitHubCuenta datos={datos} onDatos={setDatos} />}
@@ -726,6 +783,16 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
                         <IconoTerminal />
                         <span>Terminal vacía (carpeta personal)</span>
                       </button>
+                      {(() => {
+                        const ps = datos.proyectos.filter((p) => claveDe(p).id === v.id)
+                        const raiz = ps.length >= 2 ? raizComun(ps.map((p) => p.ruta)) : undefined
+                        return raiz ? (
+                          <button role="menuitem" onClick={() => agregarAsistenteRaiz(v, raiz)} title={raiz}>
+                            <IconoTerminal />
+                            <span>Asistente en la raíz de los proyectos</span>
+                          </button>
+                        ) : null
+                      })()}
                     </div>
                   )}
                 </div>
