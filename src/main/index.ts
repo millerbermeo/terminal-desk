@@ -20,6 +20,8 @@ import { instalarZoom } from './zoom'
 import { repararWorktrees } from './core/git/reparar'
 import { ejecutarOperacionGitHub } from './github/operaciones'
 import { ServicioEquipos, ejecutarOperacionEquipos, type DepsEquipos } from './servidor/equipos'
+import { ConexionChat } from './chat/conexion'
+import { ServicioChat, ejecutarOperacionChat } from './chat/servicio'
 import { Repositorio } from './core/git/repositorio'
 import { importarProyectosLocales } from './servidor/importar'
 import { iniciarSesionGoogle } from './servidor/google'
@@ -324,6 +326,22 @@ const depsEquipos: DepsEquipos = {
   alClonar: async (id) => void (await nucleo.hidratar(id))
 }
 const equipos = new ServicioEquipos(depsEquipos)
+// Chat entre cuentas: un WebSocket con el servidor (se abre al haber sesión) y las operaciones que pide la interfaz.
+const conexionChat = new ConexionChat({
+  url: () => servidor.url,
+  token: () => servidor.tokenActual(),
+  alEvento: (e) => avisarPrincipal(Canales.chatEvento, e)
+})
+const servicioChat = new ServicioChat(servidor, {
+  conexion: conexionChat,
+  guardarArchivo: async (nombre, datos) => {
+    const opciones = { title: 'Guardar archivo', defaultPath: join(app.getPath('downloads'), nombre) }
+    const r = principal && !principal.isDestroyed() ? await dialog.showSaveDialog(principal, opciones) : await dialog.showSaveDialog(opciones)
+    if (r.canceled || !r.filePath) return false
+    await writeFile(r.filePath, datos)
+    return true
+  }
+})
 
 /**
  * Historial local de versiones de los archivos de cada proyecto (independiente de git). Cada versión lleva quién (usuario de GitHub, cuenta)
@@ -460,12 +478,14 @@ async function pasadaCuenta(): Promise<{ ok: boolean; mensaje: string }> {
 
 function iniciarBucleCuenta(): void {
   detenerBucleCuenta()
+  conexionChat.iniciar()
   void sincronizarCuenta()
   bucleCuenta = setInterval(() => void sincronizarCuenta(), CADA_MS)
   bucleCuenta.unref()
 }
 
 function detenerBucleCuenta(): void {
+  conexionChat.detener()
   if (bucleCuenta) clearInterval(bucleCuenta)
   bucleCuenta = undefined
 }
@@ -605,6 +625,7 @@ function registrarIpc(): void {
     return true
   })
   ipcMain.handle(Canales.credencialesOperar, (_e, op: 'listar' | 'guardar' | 'eliminar', entrada: unknown) => ejecutarOperacionCredenciales(op, entrada as never))
+  ipcMain.handle(Canales.chatOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionChat(servicioChat, op, entrada))
   ipcMain.handle(Canales.equiposOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionEquipos(equipos, depsEquipos, op, entrada))
   ipcMain.handle(Canales.apiOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionApi(servicioApi, op, entrada))
   ipcMain.handle(Canales.navegadorAbrir, (_e, url: string) => navegador.abrir(String(url)))

@@ -18,7 +18,9 @@ mac:
   target: dmg
   # Dictado por voz del Asistente: sin esto macOS niega el micrófono a la app empaquetada.
   extendInfo:
-    NSMicrophoneUsageDescription: Odesk Agent usa el micrófono solo mientras dictas un mensaje al Asistente.
+    NSMicrophoneUsageDescription: Odesk Agent usa el micrófono solo mientras dictas un mensaje al Asistente, grabas una nota de voz o estás en una llamada del chat.
+    # Chat entre cuentas: notas de voz, llamadas y videollamadas.
+    NSCameraUsageDescription: Odesk Agent usa la cámara solo mientras estás en una videollamada del chat.
 win:
   icon: icon.ico
   target: nsis

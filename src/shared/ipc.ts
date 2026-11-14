@@ -16,6 +16,7 @@ import type { EstadoArranque, NombreOperacionArranque, OperacionesArranque, Term
 import type { EstadoVoz, ResultadoVoz } from './voz'
 import type { NombreOperacionCredenciales, OperacionesCredenciales } from './credenciales'
 import type { NombreOperacionEquipos, OperacionesEquipos } from './equipos'
+import type { EventoChat, NombreOperacionChat, OperacionesChat } from './chat'
 import type { NombreOperacionGitHub, OperacionesGitHub } from './github'
 import type { NombreOperacionHistorial, OperacionesHistorial } from './historial'
 import type { AccionNavegador, EstadoNavegador, ServidorLocal } from './navegador'
@@ -95,6 +96,9 @@ export const Canales = {
   apiOperar: 'api:operar',
   githubOperar: 'github:operar',
   equiposOperar: 'equipos:operar',
+  chatOperar: 'chat:operar',
+  /** main → interfaz: lo que el servidor del chat empuja (mensajes, acuses, presencia, llamadas) y el estado de la conexión. */
+  chatEvento: 'chat:evento',
   credencialesOperar: 'credenciales:operar',
   arranqueOperar: 'arranque:operar',
   vozEstado: 'voz:estado',
@@ -403,6 +407,11 @@ export interface ApiCentro {
   /** Mis equipos: estado de git de cada proyecto en cada PC de la cuenta y proyectos de la cuenta que faltan clonar aquí. */
   equipos: {
     operar<K extends NombreOperacionEquipos>(op: K, entrada: OperacionesEquipos[K]['entrada']): Promise<OperacionesEquipos[K]['salida']>
+  }
+  /** Chat entre cuentas: contactos, mensajes, archivos, notas de voz y llamadas. El servidor lo guarda; el token nunca llega al renderer. */
+  chat: {
+    operar<K extends NombreOperacionChat>(op: K, entrada: OperacionesChat[K]['entrada']): Promise<OperacionesChat[K]['salida']>
+    onEvento(cb: (e: EventoChat) => void): () => void
   }
   /** GitHub: cuenta (token cifrado), repositorios, clonar, publicar, pull requests, incidencias y CI. El token nunca llega al renderer. */
   github: {

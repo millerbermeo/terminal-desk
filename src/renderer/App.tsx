@@ -8,6 +8,10 @@ import { IconoCerrar, IconoMas, IconoPestanas, IconoRejilla, IconoReiniciar, Ico
 import { Sidebar, type Vista } from './components/Sidebar'
 import { Asistente } from './components/Asistente'
 import { Tareas } from './components/Tareas'
+import { Chat } from './chat/Chat'
+import { Llamada } from './chat/Llamada'
+import { almacenChat } from './chat/almacen'
+import { controlLlamada } from './chat/llamadas'
 import { Inicio } from './components/Inicio'
 import { Versiones } from './components/Versiones'
 import { Api } from './components/Api'
@@ -482,6 +486,12 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   const irAChat = useRef<(clave: string | undefined) => void>(() => undefined)
   irAChat.current = (clave) => {
     if (!clave) return setVista('asistente')
+    // Avisos del chat entre cuentas: `chat:<conversación>` abre ese chat; la llamada entrante solo trae la ventana al frente.
+    if (clave.startsWith('chat:')) {
+      setVista('chat')
+      return void almacenChat.abrir(clave.slice(5))
+    }
+    if (clave === 'chat-llamada') return
     const [proyectoId, extraId] = clave.split('#')
     for (const v of ventanasRef.current) {
       const t = extraId
@@ -494,6 +504,15 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     }
   }
   useEffect(() => window.api.notificaciones.onClic((clave) => irAChat.current(clave)), [])
+  // Chat entre cuentas: escucha al servidor y las llamadas entrantes aunque la sección no esté abierta.
+  useEffect(() => {
+    const dejarChat = almacenChat.iniciar()
+    const dejarLlamadas = controlLlamada.iniciar()
+    return () => {
+      dejarLlamadas()
+      dejarChat()
+    }
+  }, [])
 
   const cerrarVentana = useCallback(
     (id: string) => {
@@ -683,6 +702,8 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
       {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}
       <Asistente datos={datos} visible={vista === 'asistente'} />
       <Tareas datos={datos} visible={vista === 'tareas'} />
+      <Chat visible={vista === 'chat'} />
+      <Llamada />
       <Versiones datos={datos} visible={vista === 'versiones'} onDatos={setDatos} avisos={avisosEquipos} />
       <Api visible={vista === 'api'} />
       <Navegador visible={vista === 'navegador'} />

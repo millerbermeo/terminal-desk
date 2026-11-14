@@ -9,6 +9,7 @@ import {
   IconoBuscar,
   IconoCarpeta,
   IconoCerebro,
+  IconoChat,
   IconoChispa,
   IconoEscudo,
   IconoEvals,
@@ -42,6 +43,7 @@ const ICONOS: Record<string, () => ReactNode> = {
   reloj: IconoReloj,
   servidor: IconoServidor,
   tareas: IconoTareas,
+  chat: IconoChat,
   terminal: IconoTerminal,
   ventana: IconoVentana
 }

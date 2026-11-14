@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { trabajandoAhora, type AvisoEquipo, type PendienteClonar } from '@shared/equipos'
 import { proyectosConNombreRepetido, type DatosProyectos, type Proyecto, type ProveedorEstado } from '@shared/modelos'
 import logo from '../assets/logo.png'
-import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoBuscar, IconoGitHub, IconoGlobo, IconoInicio, IconoLibro, IconoMas, IconoNube, IconoPanelLateral, IconoRama, IconoRayo, IconoTareas, IconoUsuario } from './Iconos'
+import { useChat } from '../chat/almacen'
+import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoBuscar, IconoChat, IconoGitHub, IconoGlobo, IconoInicio, IconoLibro, IconoMas, IconoNube, IconoPanelLateral, IconoRama, IconoRayo, IconoTareas, IconoUsuario } from './Iconos'
 
 interface Props {
   datos: DatosProyectos
@@ -55,6 +56,7 @@ const NAV: { grupo: string; items: ItemNav[] }[] = [
       { vista: 'servicios', icono: <IconoRayo />, texto: 'Servicios', titulo: 'Los comandos de arranque de tus proyectos en marcha (API, frontend, base de datos…), cada uno en su terminal' },
       { vista: 'asistente', icono: <IconoChispa />, texto: 'Asistente' },
       { vista: 'tareas', icono: <IconoTareas />, texto: 'Tareas' },
+      { vista: 'chat', icono: <IconoChat />, texto: 'Chat', titulo: 'Chat con otras cuentas: mensajes, archivos, notas de voz y llamadas' },
       { vista: 'versiones', icono: <IconoRama />, texto: 'Versiones' },
       { vista: 'api', icono: <IconoApi />, texto: 'Cliente API' },
       { vista: 'navegador', icono: <IconoGlobo />, texto: 'Navegador' }
@@ -104,7 +106,7 @@ function useBarraCompacta(): [boolean, boolean, () => void] {
   return [manual || estrecho, estrecho, alternar]
 }
 
-export type Vista = 'inicio' | 'terminales' | 'servicios' | 'config' | 'github' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones' | 'api' | 'navegador' | 'guia'
+export type Vista = 'inicio' | 'chat' | 'terminales' | 'servicios' | 'config' | 'github' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones' | 'api' | 'navegador' | 'guia'
 
 interface MenuIA {
   proyecto: Proyecto
@@ -113,6 +115,7 @@ interface MenuIA {
 }
 
 export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, onMulti, onAbrirCarpeta, onAgregarRuta, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente, onAbrirAsistente, onArranque, enMarcha, serviciosActivos, email, onCuenta, pendientes, avisosPorProyecto, onClonarPendientes }: Props) {
+  const chatNoLeidos = useChat().noLeidos
   const [cerrados, setCerrados] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<MenuIA | null>(null)
   const [compacta, forzada, alternarCompacta] = useBarraCompacta()
@@ -351,6 +354,7 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
                 <span className="item-icono">{i.icono}</span>
                 <span className="txt">{i.texto}</span>
                 {i.vista === 'servicios' && serviciosActivos > 0 && <span className="insignia" title="Servicios abiertos">{serviciosActivos}</span>}
+                {i.vista === 'chat' && chatNoLeidos > 0 && <span className="insignia" title="Mensajes sin leer">{chatNoLeidos > 99 ? '99+' : chatNoLeidos}</span>}
                 {i.vista === 'asistente' && pendientesAsistente > 0 && <span className="insignia" title="El asistente espera tu confirmación">{pendientesAsistente}</span>}
               </button>
             ))}
