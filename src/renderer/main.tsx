@@ -24,6 +24,7 @@ import './diseno/inicio.css'
 import './diseno/agentes.css'
 import './diseno/tareas.css'
 import './diseno/chat.css'
+import './diseno/asistente-actividad.css'
 import { Cargando } from './components/Cargando'
 
 // ?ventana=<token> => ventana separada (solo terminales); sin parámetro => ventana principal

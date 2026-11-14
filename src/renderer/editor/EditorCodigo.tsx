@@ -35,6 +35,8 @@ export interface ManejoEditor {
   /** Olvida el estado (deshacer, cursor) de un archivo que se cerró. */
   olvidar(ruta: string): void
   enfocar(): void
+  /** Lleva el cursor a una línea (desde 1) de un archivo y la centra; si aún no se muestra, lo hace al mostrarlo. */
+  irALinea(ruta: string, linea: number): void
 }
 
 interface Props {
@@ -131,8 +133,25 @@ export const EditorCodigo = forwardRef<ManejoEditor, Props>(function EditorCodig
     actual.current = ruta
     if (!ruta) return v.setState(EditorState.create({ doc: '', extensions: [EditorState.readOnly.of(true), oneDark, tema] }))
     v.setState(estados.current.get(ruta) ?? crear(ruta, inicial))
+    aplicarSalto()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ruta])
+
+  /** Salto pedido con `irALinea` que espera a que su archivo sea el que se muestra. */
+  const salto = useRef<{ ruta: string; linea: number } | null>(null)
+  function aplicarSalto(): void {
+    const v = vista.current
+    const s = salto.current
+    if (!v || !s || s.ruta !== actual.current) return
+    salto.current = null
+    const l = v.state.doc.line(Math.min(Math.max(1, s.linea), v.state.doc.lines))
+    v.dispatch({ selection: { anchor: l.from, head: l.to }, effects: EditorView.scrollIntoView(l.from, { y: 'center' }) })
+    // Si el panel acaba de hacerse visible, CodeMirror aún no midió: se repite el desplazamiento en el siguiente cuadro.
+    requestAnimationFrame(() => {
+      v.dispatch({ effects: EditorView.scrollIntoView(l.from, { y: 'center' }) })
+      v.focus()
+    })
+  }
 
   useImperativeHandle(ref, () => ({
     texto: (r) => (r === actual.current && vista.current ? vista.current.state.doc.toString() : estados.current.get(r)?.doc.toString()),
@@ -147,7 +166,11 @@ export const EditorCodigo = forwardRef<ManejoEditor, Props>(function EditorCodig
       }
     },
     olvidar: (r) => void estados.current.delete(r),
-    enfocar: () => vista.current?.focus()
+    enfocar: () => vista.current?.focus(),
+    irALinea: (r, linea) => {
+      salto.current = { ruta: r, linea }
+      aplicarSalto()
+    }
   }))
 
   return (

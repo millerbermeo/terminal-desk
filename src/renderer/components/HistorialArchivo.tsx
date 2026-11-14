@@ -5,6 +5,8 @@ import { confirmar } from '../confirmar'
 import { mensajeDe } from '../tareas/useTareas'
 import { VisorDiff } from './VisorDiff'
 import { Esqueletos } from './Cargando'
+import type { BloqueDiff } from '@shared/diff'
+import { lineaEnDestino, pedirIrAArchivo } from '../irArchivo'
 
 const api = window.api.historial.operar
 
@@ -123,6 +125,28 @@ export function HistorialArchivo({ proyectoId, ruta, onCambio, avisar, tick = 0 
       vigente = false
     }
   }, [proyectoId, ruta, sel, contraEf, tick])
+
+  // «Ir a la línea»: abre el archivo actual en el editor del proyecto, en la línea donde está hoy ese cambio.
+  // El lado `b` del diff es el archivo actual (si se compara con él) o la versión elegida; en ese caso la línea
+  // de la versión se traslada al archivo actual con otra comparación (versión → actual).
+  const irALinea = useCallback(
+    async (b: BloqueDiff): Promise<void> => {
+      if (!resultado || !sel) return
+      const l = b.lineas.find((x) => x.tipo !== 'igual') ?? b.lineas[0]
+      const enB = l?.b ?? (l?.a !== undefined ? lineaEnDestino(resultado.diff, l.a) : b.bInicio)
+      let linea = enB
+      if (contraEf !== 'actual') {
+        try {
+          const r = await api('comparar', { proyectoId, ruta, desde: sel, hasta: 'actual' })
+          if (!r.omitido) linea = lineaEnDestino(r.diff, enB)
+        } catch {
+          // Sin comparación (p. ej. el archivo ya no existe): se intenta con la línea de la versión.
+        }
+      }
+      pedirIrAArchivo({ proyectoId, ruta, linea })
+    },
+    [resultado, sel, contraEf, proyectoId, ruta]
+  )
 
   // Para elegir qué restaurar: los cambios que se aplicarían (archivo actual → versión elegida).
   useEffect(() => {
@@ -259,7 +283,7 @@ export function HistorialArchivo({ proyectoId, ruta, onCambio, avisar, tick = 0 
             ) : resultado?.omitido ? (
               <p className="tareas-vacio">{resultado.omitido === 'binario' ? 'El archivo actual no es de texto.' : 'El archivo es demasiado grande para compararlo.'}</p>
             ) : resultado ? (
-              <VisorDiff diff={resultado.diff} modo={modo} />
+              <VisorDiff diff={resultado.diff} modo={modo} onIr={(b) => void irALinea(b)} />
             ) : null}
 
             <div className="hv-acciones">

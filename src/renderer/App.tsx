@@ -18,6 +18,8 @@ import { Api } from './components/Api'
 import { Navegador } from './components/Navegador'
 import { escucharSolicitudes, useSolicitudes } from './agente/solicitudes'
 import { ArranqueProyecto } from './components/ArranqueProyecto'
+import { sinRaiz } from './raizGrupo'
+import { EVENTO_IR_A_ARCHIVO, type DestinoArchivo } from './irArchivo'
 import { Servicios } from './components/Servicios'
 import { ConfigAgentes } from './components/ConfigAgentes'
 import { GitHubCuenta } from './components/GitHubCuenta'
@@ -480,6 +482,15 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     if (a.tipo === 'asistente-enviar') encolarExterno(p.id, a.mensaje)
   }
   useEffect(() => window.api.ia.onAccion((a) => void accionIa.current(a)), [])
+  // «Ir a la línea» del historial local: muestra la celda de archivos del proyecto; su `PanelArchivos` abre el archivo en esa línea.
+  useEffect(() => {
+    const alPedir = (e: Event): void => {
+      const d = (e as CustomEvent<DestinoArchivo>).detail
+      void accionIa.current({ tipo: 'abrir-proyecto', proyectoId: d.proyectoId, vista: 'archivos' })
+    }
+    window.addEventListener(EVENTO_IR_A_ARCHIVO, alPedir)
+    return () => window.removeEventListener(EVENTO_IR_A_ARCHIVO, alPedir)
+  }, [])
 
   // Clic en una notificación del Asistente: se va al chat de donde salió. La clave es la de su conversación: `<proyecto>` (celda del
   // proyecto), `<proyecto>#<pestaña duplicada>` o nada (pantalla «Asistente»). Si la celda ya no existe, se queda donde estaba.
@@ -812,8 +823,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
                   {menuNueva === v.id && (
                     <div className="menu-ia menu-nueva-lista" role="menu" onMouseDown={(e) => e.stopPropagation()}>
                       <div className="menu-ia-tit">Nueva terminal en «{v.nombre}»</div>
-                      {datos.proyectos
-                        .filter((p) => claveDe(p).id === v.id)
+                      {sinRaiz(datos.proyectos.filter((p) => claveDe(p).id === v.id))
                         .map((p) => (
                           <button key={p.id} role="menuitem" onClick={() => agregarEnVentana(v, p)} title={p.ruta}>
                             <IconoTerminal />

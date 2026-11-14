@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { EVENTO_IR_A_ARCHIVO, tomarIrAArchivo } from '../irArchivo'
 import type { CambioArchivo, EntradaArchivo, MarcaGit } from '@shared/archivos'
 import { EstadoVacio } from '../components/EstadoVacio'
 import { ModalHistorialArchivo } from '../components/ModalHistorialArchivo'
@@ -255,6 +256,20 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
     },
     [api, proyectoId, poner]
   )
+
+  // «Ir a la línea» desde el historial local: lo recoge el panel visible de este proyecto (al hacerse visible o al recibir el aviso).
+  const [avisoIr, setAvisoIr] = useState(0)
+  useEffect(() => {
+    const alPedir = (): void => setAvisoIr((n) => n + 1)
+    window.addEventListener(EVENTO_IR_A_ARCHIVO, alPedir)
+    return () => window.removeEventListener(EVENTO_IR_A_ARCHIVO, alPedir)
+  }, [])
+  useEffect(() => {
+    if (!visible) return
+    const d = tomarIrAArchivo(proyectoId)
+    if (!d) return
+    void abrir(d.ruta).then(() => editor.current?.irALinea(d.ruta, d.linea))
+  }, [visible, avisoIr, proyectoId, abrir])
 
   const cerrar = useCallback(
     async (ruta: string): Promise<void> => {

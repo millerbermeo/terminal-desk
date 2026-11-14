@@ -1,0 +1,184 @@
+/* =============================================================================
+   Asistente trabajando (components/ActividadAgente.tsx), capa «apple-design»:
+   - estado siempre visible: barra viva con lo que hace ahora, pasos y tiempo;
+   - jerarquía: cada paso dice qué hace y sobre qué; lo técnico (nombre real, JSON, salida) un nivel más abajo;
+   - línea de tiempo continua: los pasos seguidos se leen como un solo trabajo, no como cajas sueltas;
+   - el color solo marca la categoría (en el icono) y el error; nada parpadea salvo lo que está en curso;
+   - muelles críticamente amortiguados (--muelle), respuesta al pulsar y «reducir movimiento».
+   ============================================================================= */
+
+/* ---------- color por categoría: solo el icono y su halo ---------- */
+.cat-leer, .cat-buscar { --cat: #93c5fd; }
+.cat-editar { --cat: var(--acento-claro, #a5b4fc); }
+.cat-terminal { --cat: #6ee7b7; }
+.cat-web, .cat-navegador { --cat: #67e8f9; }
+.cat-tareas { --cat: var(--ok); }
+.cat-memoria { --cat: #f9a8d4; }
+.cat-git { --cat: #fdba74; }
+.cat-agente { --cat: var(--violeta, #c4b5fd); }
+.cat-movil { --cat: #fcd34d; }
+.cat-otra { --cat: var(--texto-suave); }
+
+/* ---------- línea de tiempo de pasos ---------- */
+.ag-pasos {
+  list-style: none; margin: 0; padding: 0; max-width: 880px;
+  display: flex; flex-direction: column; position: relative;
+}
+/* el hilo que une los iconos */
+.ag-pasos::before {
+  content: ''; position: absolute; left: 13px; top: 14px; bottom: 14px; width: 1px;
+  background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.09) 12px, rgba(255, 255, 255, 0.09) calc(100% - 12px), transparent);
+}
+.ag-paso { position: relative; animation: ag-paso-entrar var(--muelle-t) var(--muelle) both; }
+@keyframes ag-paso-entrar { from { opacity: 0; transform: translateY(4px); } }
+
+.ag-paso summary {
+  display: flex; align-items: center; gap: 10px; min-width: 0; list-style: none; cursor: pointer;
+  padding: 4px 8px 4px 2px; border-radius: 8px; font-size: 12.5px; line-height: 1.4;
+  transition: background var(--rapido) ease-out, transform var(--muelle-t) var(--muelle);
+}
+.ag-paso summary::-webkit-details-marker { display: none; }
+.ag-paso summary:hover { background: rgba(255, 255, 255, 0.035); }
+.ag-paso summary:active { transform: scale(0.995); transition-duration: 80ms; }
+.ag-paso summary:focus-visible { outline: none; box-shadow: var(--anillo); }
+
+.ag-paso-icono {
+  flex: none; width: 24px; height: 24px; border-radius: 7px; position: relative; z-index: 1;
+  display: grid; place-items: center; color: var(--cat);
+  background: color-mix(in srgb, var(--cat) 12%, var(--bg));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cat) 22%, transparent);
+}
+.ag-paso-titulo { flex: none; color: var(--texto); font-weight: 550; letter-spacing: -0.003em; }
+.ag-paso-detalle {
+  min-width: 0; flex: 1 1 auto; color: var(--texto-tenue);
+  font: 11.5px/1.4 var(--fuente-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ag-paso-estado { margin-left: auto; flex: none; width: 16px; text-align: center; font-size: 11px; color: var(--texto-tenue); }
+.ag-paso.ok .ag-paso-estado { color: color-mix(in srgb, var(--ok) 75%, var(--texto-tenue)); }
+.ag-paso.error .ag-paso-icono { color: var(--error); background: var(--error-suave, rgba(248, 113, 113, 0.12)); box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.35); }
+.ag-paso.error .ag-paso-titulo, .ag-paso.error .ag-paso-estado { color: var(--error); }
+/* el paso en curso: halo que respira en el icono y el título con brillo */
+.ag-paso.curso .ag-paso-icono { animation: ag-respirar 1.8s ease-in-out infinite; }
+.ag-paso.curso .ag-paso-titulo { color: var(--texto); }
+@keyframes ag-respirar {
+  50% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cat) 45%, transparent), 0 0 0 4px color-mix(in srgb, var(--cat) 10%, transparent); }
+}
+
+/* detalle técnico: un nivel más abajo, alineado con el texto del paso */
+.ag-paso-cuerpo { margin: 2px 0 8px 36px; display: flex; flex-direction: column; gap: 6px; animation: ag-desplegar 260ms var(--muelle) both; }
+@keyframes ag-desplegar { from { opacity: 0; transform: translateY(-3px); } }
+.ag-paso-nombre { font: 10.5px var(--fuente-mono); color: var(--texto-tenue); letter-spacing: 0.01em; }
+.ag-paso-cuerpo pre {
+  margin: 0; padding: 8px 10px; border-radius: 8px; max-height: 260px; overflow: auto;
+  white-space: pre-wrap; word-break: break-word; font: 11.5px/1.5 var(--fuente-mono); color: var(--texto-suave);
+  background: var(--bg-hundido, rgba(0, 0, 0, 0.25)); border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.ag-paso-cuerpo pre.ag-paso-entrada { color: var(--texto-tenue); max-height: 160px; }
+.ag-paso-cuerpo pre.error { border-color: rgba(248, 113, 113, 0.3); color: color-mix(in srgb, var(--error) 70%, var(--texto-suave)); }
+
+.ag-pasos-mas { padding: 2px 0 4px 36px; }
+.ag-pasos-mas button { background: transparent; border: 0; padding: 2px 0; font-size: 12px; color: var(--texto-tenue); cursor: pointer; }
+.ag-pasos-mas button:hover { color: var(--texto); }
+
+/* ---------- grupo de pasos (3 o más) ---------- */
+.ag-grupo { max-width: 880px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); background: rgba(255, 255, 255, 0.018); transition: background var(--medio) ease-out, border-color var(--medio) ease-out; }
+.ag-grupo.abierto { background: rgba(255, 255, 255, 0.025); border-color: rgba(255, 255, 255, 0.07); }
+.ag-grupo.vivo { border-color: color-mix(in srgb, var(--acento) 22%, rgba(255, 255, 255, 0.06)); }
+.ag-grupo > .ag-pasos { padding: 0 6px 6px 6px; }
+.ag-grupo > .ag-pasos::before { left: 19px; }
+.ag-grupo-cab {
+  width: 100%; display: flex; align-items: center; gap: 10px; min-width: 0;
+  padding: 8px 12px; border: 0; background: transparent; border-radius: 12px; cursor: pointer;
+  font-size: 12.5px; color: var(--texto-suave); text-align: left;
+  transition: background var(--rapido) ease-out, transform var(--muelle-t) var(--muelle);
+}
+.ag-grupo-cab:hover { background: rgba(255, 255, 255, 0.03); }
+.ag-grupo-cab:active { transform: scale(0.997); transition-duration: 80ms; }
+.ag-grupo-cab:focus-visible { outline: none; box-shadow: var(--anillo); }
+.ag-grupo-cab strong { color: var(--texto); font-weight: 600; }
+.ag-grupo-flecha { display: inline-block; width: 10px; color: var(--texto-tenue); font-size: 14px; line-height: 1; transition: transform var(--muelle-t) var(--muelle); }
+.ag-grupo.abierto .ag-grupo-flecha { transform: rotate(90deg); }
+.ag-grupo-n { color: var(--texto-tenue); font-variant-numeric: tabular-nums; }
+.ag-grupo-resumen { display: flex; gap: 12px; min-width: 0; overflow: hidden; flex: 1 1 auto; }
+.ag-grupo-cat { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; color: var(--texto-tenue); font-variant-numeric: tabular-nums; }
+.ag-grupo-cat svg { color: var(--cat); }
+.ag-grupo-fallos { flex: none; color: var(--error); font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--error-suave, rgba(248, 113, 113, 0.12)); }
+.ag-grupo.vivo .ag-grupo-resumen { display: none; }
+
+/* ---------- indicador de giro (pequeño, sin ruido) ---------- */
+.ag-girando {
+  display: inline-block; width: 11px; height: 11px; flex: none; border-radius: 50%; vertical-align: -1px;
+  border: 1.5px solid color-mix(in srgb, var(--acento) 25%, transparent); border-top-color: var(--acento);
+  animation: ag-girar 0.8s linear infinite;
+}
+@keyframes ag-girar { to { transform: rotate(360deg); } }
+
+/* ---------- texto que se está escribiendo ---------- */
+.ag-burbuja.parcial { border-style: solid; opacity: 1; }
+.ag-cursor {
+  display: inline-block; width: 7px; height: 1.05em; margin-left: 2px; vertical-align: -0.15em; border-radius: 2px;
+  background: var(--acento); animation: ag-cursor 1.05s steps(1, end) infinite;
+}
+@keyframes ag-cursor { 50% { opacity: 0; } }
+
+/* ---------- barra viva del turno ---------- */
+.ag-vivo {
+  position: sticky; bottom: 8px; z-index: 2; max-width: 880px;
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  padding: 7px 8px 7px 10px; border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-elevado) 78%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid color-mix(in srgb, var(--acento) 24%, rgba(255, 255, 255, 0.06));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28), var(--canto-luz, inset 0 1px 0 rgba(255, 255, 255, 0.05));
+  animation: ag-vivo-entrar var(--muelle-t) var(--muelle) both;
+}
+@keyframes ag-vivo-entrar { from { opacity: 0; transform: translateY(6px) scale(0.985); } }
+.ag-vivo-orbe {
+  flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; position: relative;
+  color: var(--cat, var(--acento));
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--cat, var(--acento)) 45%, transparent), color-mix(in srgb, var(--cat, var(--acento)) 14%, transparent) 70%);
+}
+.ag-vivo-orbe::after {
+  content: ''; position: absolute; inset: -3px; border-radius: 50%;
+  border: 1.5px solid transparent; border-top-color: var(--cat, var(--acento)); border-right-color: color-mix(in srgb, var(--cat, var(--acento)) 35%, transparent);
+  animation: ag-girar 1.1s linear infinite;
+}
+.ag-vivo-orbe:empty { background: radial-gradient(circle at 35% 30%, var(--acento-claro, #a5b4fc), var(--acento) 70%); animation: ag-latido 1.6s ease-in-out infinite; }
+.ag-vivo-orbe:empty::after { display: none; }
+@keyframes ag-latido { 50% { transform: scale(0.82); opacity: 0.75; } }
+/* el texto con un brillo que lo recorre: «está pasando ahora» sin parpadear */
+.ag-vivo-texto {
+  min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12.5px; font-weight: 550; color: var(--texto-suave);
+  background: linear-gradient(90deg, var(--texto-suave) 0%, var(--texto-suave) 40%, var(--texto) 50%, var(--texto-suave) 60%, var(--texto-suave) 100%);
+  background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  animation: ag-brillo 2.4s linear infinite;
+}
+@keyframes ag-brillo { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+.ag-vivo-meta { flex: none; font-size: 11.5px; color: var(--texto-tenue); font-variant-numeric: tabular-nums; }
+.ag-vivo-detener {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 550;
+  color: var(--texto-suave); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background var(--rapido) ease-out, color var(--rapido) ease-out, border-color var(--rapido) ease-out, transform var(--muelle-t) var(--muelle);
+}
+.ag-vivo-detener:hover:not(:disabled) { color: var(--error); border-color: rgba(248, 113, 113, 0.4); background: var(--error-suave, rgba(248, 113, 113, 0.1)); }
+.ag-vivo-detener:active:not(:disabled) { transform: scale(0.96); transition-duration: 80ms; }
+.ag-vivo-cuadro { width: 8px; height: 8px; border-radius: 2px; background: currentColor; }
+
+/* ---------- accesibilidad ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .ag-paso, .ag-paso-cuerpo, .ag-vivo { animation: none; }
+  .ag-paso.curso .ag-paso-icono, .ag-vivo-orbe:empty { animation: none; }
+  .ag-vivo-texto { animation: none; background: none; -webkit-text-fill-color: currentColor; color: var(--texto); }
+  .ag-girando, .ag-vivo-orbe::after { animation-duration: 2.4s; }
+  .ag-cursor { animation: none; }
+  .ag-grupo-flecha, .ag-paso summary, .ag-grupo-cab, .ag-vivo-detener { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .ag-vivo { background: var(--bg-elevado); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (prefers-contrast: more) {
+  .ag-grupo, .ag-vivo { border-color: var(--borde-fuerte); }
+  .ag-paso-detalle, .ag-grupo-cat, .ag-vivo-meta { color: var(--texto-suave); }
+}

@@ -27,6 +27,8 @@ import { useGrabadora } from '../agente/grabadora'
 import { BarraGrabacion, BotonMicrofono } from './GrabadorVoz'
 import { alExterno, tomarExternos } from '../agente/externos'
 import { Cargando } from './Cargando'
+import { EstadoVivo, GrupoHerramientas } from './ActividadAgente'
+import { agruparEventos } from '../agente/actividad'
 
 interface Props {
   agente: Agente
@@ -112,7 +114,7 @@ function PlanVista({ etapas }: { etapas: Etapa[] }) {
 }
 
 /** Convierte los eventos de un turno en elementos visibles (une el inicio y el fin de cada herramienta). */
-function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
+function Linea({ e, todos, raiz }: { e: EventoAgente; todos: EventoAgente[]; raiz?: string }) {
   const sangria = { marginLeft: Math.min(e.profundidad, 3) * 14 }
   switch (e.tipo) {
     case 'ruta':
@@ -129,7 +131,8 @@ function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
     case 'texto':
       return (
         <div className="ag-burbuja" style={sangria}>
-          <div className="ag-quien">{e.agente}</div>
+          {/* El nombre solo si habla otro agente: el del turno no se repite en cada mensaje. */}
+          {(e.profundidad > 0 || e.agente !== raiz) && <div className="ag-quien">{e.agente}</div>}
           <div className="ag-texto">{e.texto}</div>
         </div>
       )
@@ -232,12 +235,17 @@ const HERRAMIENTAS_QUE_EDITAN = new Set(['Edit', 'Write', 'MultiEdit', 'Notebook
  * Lo ya ocurrido en un turno. Memoizado: mientras el modelo escribe, cada trozo de texto cambia solo `parcial` (la lista
  * `eventos` es la misma), así que no se vuelven a pintar las herramientas y burbujas anteriores.
  */
-const EventosTurno = memo(function EventosTurno({ eventos }: { eventos: EventoAgente[] }) {
+const EventosTurno = memo(function EventosTurno({ eventos, raiz, vivo }: { eventos: EventoAgente[]; raiz: string; vivo: boolean }) {
+  const elementos = useMemo(() => agruparEventos(eventos), [eventos])
   return (
     <>
-      {eventos.map((e, i) => (
-        <Linea key={i} e={e} todos={eventos} />
-      ))}
+      {elementos.map((x, i) =>
+        x.tipo === 'herramientas' ? (
+          <GrupoHerramientas key={`g${x.indice}`} pasos={x.pasos} vivo={vivo && i === elementos.length - 1} />
+        ) : (
+          <Linea key={x.indice} e={x.evento} todos={eventos} raiz={raiz} />
+        )
+      )}
     </>
   )
 })
@@ -255,27 +263,27 @@ const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer }: { t: 
         <div className="ag-texto">{t.prompt}</div>
         {t.adjuntos && <AdjuntosAgente adjuntos={t.adjuntos} />}
       </div>
-      <EventosTurno eventos={t.eventos} />
+      <EventosTurno eventos={t.eventos} raiz={t.raiz} vivo={t.estado === 'en_curso'} />
       {t.parcial && (
         <div className="ag-burbuja parcial">
-          <div className="ag-quien">{t.raiz}</div>
-          <div className="ag-texto">{t.parcial}</div>
+          <div className="ag-texto">
+            {t.parcial}
+            <span className="ag-cursor" aria-hidden="true" />
+          </div>
         </div>
       )}
+      {t.estado === 'en_curso' && <EstadoVivo eventos={t.eventos} escribiendo={Boolean(t.parcial)} inicio={t.inicio} onDetener={() => onCancelar(t)} puedeDetener={Boolean(t.ejecucionId)} />}
       {t.error && <div className={`ag-final ${t.estado === 'limite_pasos' || t.estado === 'cancelado' ? 'aviso' : 'mal'}`}>{t.error}</div>}
+      {t.estado !== 'en_curso' && (
       <div className="ag-pie">
         <span className={`chip estado-${t.estado}`}>{ESTADO[t.estado]}</span>
-        {t.estado === 'en_curso' && (
-          <button onClick={() => onCancelar(t)} disabled={!t.ejecucionId}>
-            Cancelar
-          </button>
-        )}
         {editoArchivos && (
           <button onClick={() => onDeshacer(t)} title="Devuelve los archivos a como estaban antes de este mensaje (y deshace lo de los siguientes)">
             ↩ Deshacer cambios
           </button>
         )}
       </div>
+      )}
     </article>
   )
 })

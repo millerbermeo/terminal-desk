@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { HistorialArchivo } from './HistorialArchivo'
+import { EVENTO_IR_A_ARCHIVO } from '../irArchivo'
 import { IconoCerrar } from './Iconos'
 
 interface Props {
@@ -18,6 +19,11 @@ export function ModalHistorialArchivo({ proyectoId, ruta, onCerrar, onCambio }: 
     }
     window.addEventListener('keydown', tecla)
     return () => window.removeEventListener('keydown', tecla)
+  }, [onCerrar])
+  // «Ir a la línea» lleva al editor que está detrás: el modal se cierra.
+  useEffect(() => {
+    window.addEventListener(EVENTO_IR_A_ARCHIVO, onCerrar)
+    return () => window.removeEventListener(EVENTO_IR_A_ARCHIVO, onCerrar)
   }, [onCerrar])
   return (
     <div className="modal-fondo" onMouseDown={(e) => e.target === e.currentTarget && onCerrar()}>
