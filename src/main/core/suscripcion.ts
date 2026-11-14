@@ -278,7 +278,8 @@ export function permisosCli(autonomia: ModoAutonomia, verificaciones: string[], 
     // `Bash` NO va aquí: así cada comando pasa por el permiso de la app (`crearPermisoCli` con autonomía «autonomo»), que lo aprueba
     // al instante salvo lo catastrófico. Las reglas de prefijo de abajo quedan como segunda barrera.
     permitidas.push('Edit', 'Write', 'MultiEdit', 'NotebookEdit')
-    return ['--permission-mode', 'acceptEdits', '--allowedTools', ...permitidas, '--disallowedTools', ...COMANDOS_BLOQUEADOS]
+    // `sudo` sí llega al permiso de la app: lo pide con contraseña en un modal (`hitl/sudo.ts`).
+    return ['--permission-mode', 'acceptEdits', '--allowedTools', ...permitidas, '--disallowedTools', ...COMANDOS_BLOQUEADOS.filter((c) => c !== 'Bash(sudo:*)')]
   }
   return ['--permission-mode', autonomia === 'preguntar' ? 'default' : 'acceptEdits', '--allowedTools', ...permitidas]
 }

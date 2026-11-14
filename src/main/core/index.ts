@@ -44,6 +44,7 @@ import { Trazador } from './tracing/trazador'
 import { credencialesDe, eliminarCredencialPorNombre, guardarCredencialPorNombre } from '../credenciales'
 import { crearAprobadorHumano } from './hitl/aprobador'
 import { crearPermisoCli } from './hitl/permiso-cli'
+import { verificarSudo } from './hitl/sudo'
 import { AlmacenAdjuntos } from './adjuntos/almacen'
 import { LlmMedido, Medidor } from './uso/medidor'
 import { ComandosStore, dividirArgumentos } from './comandos/store'
@@ -75,7 +76,7 @@ import { ejecutarOperacionTareas } from './tareas/operaciones'
 import { archivoMcpTareas, servidoresExternos } from './tareas/mcp-config'
 import { cerrarSesion, consultarCli, ejecutarSuscripcion, ESFUERZOS, estadoCuenta, estadoSesion, iniciarSesion, listarModelosCli, Preferencias, rebobinarArchivos, SesionesCli, type ControlProceso, type ResultadoRebobinado, type SalidaEjecucion } from './suscripcion'
 import { ejecutarEnProceso, ProcesosCli } from './proceso-cli'
-import { AVISO_SUBAGENTES, GUIA_CREDENCIALES, GUIA_TRABAJO, guiaNavegador, guiaRecursos } from './avisos'
+import { AVISO_SUBAGENTES, GUIA_CREDENCIALES, GUIA_RESPUESTAS, GUIA_TRABAJO, guiaNavegador, guiaRecursos } from './avisos'
 import { registrarIntegradas } from './tools/integradas'
 import { RegistroHerramientas } from './tools/registro'
 
@@ -371,8 +372,9 @@ export class Nucleo {
           throw err
         }
         const previa = await this.sesiones.obtener(sesionId)
+        const traspaso = !previa && sol.contextoPrevio?.trim() ? `${bloqueContextoPrevio(sol.contextoPrevio.slice(0, 20_000), 'traspaso')}\n\n` : ''
         const r = await harness.ejecutar(agente, {
-          prompt: sol.prompt,
+          prompt: traspaso + sol.prompt,
           cwd: proyecto?.ruta ?? process.cwd(),
           ejecucionId: id,
           modelo,
@@ -433,7 +435,7 @@ export class Nucleo {
     // Texto fijo (sin nombres ni cuántas hay): si cambiara al guardar una credencial, se relanzaría el proceso y se perdería la caché.
     const credsCtx = proyecto ? GUIA_CREDENCIALES : ''
     return {
-      estable: [GUIA_TRABAJO, git.guia, credsCtx, AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim(),
+      estable: [GUIA_TRABAJO, GUIA_RESPUESTAS, git.guia, credsCtx, AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim(),
       dinamico: [memoria, tareas, git.estado, conAdjuntos ? AVISO_ADJUNTOS : ''].filter(Boolean).join('\n\n').trim()
     }
   }
@@ -444,7 +446,7 @@ export class Nucleo {
     const tareas = proyecto ? await this.tareas.contextoParaIA(proyecto.id, proyecto.nombre, prompt).catch(() => '') : ''
     const gitCtx = proyecto ? (({ estado, guia }) => [estado, guia].filter(Boolean).join('\n'))(await this.contextoGit(proyecto.ruta)) : ''
     const credsCtx = proyecto ? GUIA_CREDENCIALES : ''
-    return [memoria, tareas, gitCtx, credsCtx, conAdjuntos ? AVISO_ADJUNTOS : '', AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim()
+    return [GUIA_RESPUESTAS, memoria, tareas, gitCtx, credsCtx, conAdjuntos ? AVISO_ADJUNTOS : '', AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim()
   }
 
   private planEnCurso: Promise<void> | undefined
@@ -635,6 +637,8 @@ export class Nucleo {
         let meta = await this.metaCli.obtener(sesionId)
         // Un resumen pendiente significa que ya se decidió abrir una sesión nueva y esa ejecución no llegó a guardarla: no se reanuda la vieja.
         let prefijoPrompt: string | undefined
+        // Conversación nueva con el contexto traído de otra («Nueva con contexto»).
+        if (!previa && !meta && sol.contextoPrevio?.trim()) prefijoPrompt = bloqueContextoPrevio(sol.contextoPrevio.slice(0, 20_000), 'traspaso')
         if (meta?.pendiente) {
           previa = undefined
           this.procesos.cerrar(sesionId) // si quedó vivo, trae el contexto viejo
@@ -876,6 +880,29 @@ export class Nucleo {
    * Deshace los cambios de archivos que hizo la IA (con sus herramientas de edición) desde un mensaje del usuario. Con `soloVer` solo dice
    * qué cambiaría. La conversación no se toca: al siguiente mensaje se le avisa al modelo de que los archivos volvieron atrás.
    */
+  /**
+   * «Nueva con contexto»: resume una conversación (lo importante: objetivo, decisiones, archivos, estado y pendientes) para
+   * empezar otra en blanco que lo reciba en su primer mensaje (`SolicitudAgente.contextoPrevio`). La original no cambia.
+   */
+  async traspasarContexto(sesionId: string): Promise<{ resumen: string; titulo: string; conModelo: boolean }> {
+    const sesion = await this.sesiones.obtener(sesionId)
+    if (!sesion?.transcripcion?.length) throw new Error('La conversación está vacía: no hay contexto que pasar.')
+    const meta = await this.metaCli.obtener(sesionId)
+    const cuenta = await this.cuentaParaEjecutar().catch(() => undefined)
+    const carpeta = cuenta ? this.cuentas.carpetaDe(cuenta) : undefined
+    const proyecto = sesion.proyectoId ? (await leerProyectos()).proyectos.find((p) => p.id === sesion.proyectoId) : undefined
+    const r = await prepararRotacion({
+      sesion,
+      motivo: 'traspaso',
+      ...(meta?.resumen ? { resumenAnterior: meta.resumen } : {}),
+      ...(carpeta ? { carpeta } : {}),
+      ...(proyecto ? { cwd: proyecto.ruta } : {}),
+      alUso: (u) => u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo }))
+    })
+    if (!r) throw new Error('La conversación está vacía: no hay contexto que pasar.')
+    return { resumen: r.resumen, titulo: sesion.titulo, conModelo: r.conModelo }
+  }
+
   async rebobinar(sesionId: string, mensajeId: string, soloVer: boolean): Promise<ResultadoRebobinado> {
     if (!/^[0-9a-f-]{36}$/i.test(mensajeId)) throw new Error('Mensaje no válido')
     const claudeId = await this.sesionesCli.obtener(sesionId)
@@ -1387,6 +1414,7 @@ export function registrarIpcCore(nucleo: Nucleo): void {
     })
   })
   ipcMain.handle(Canales.coreResponder, (_e, solicitudId: string, decision: DecisionHumana) => nucleo.responder(solicitudId, decision))
+  ipcMain.handle(Canales.coreSudoVerificar, (_e, solicitudId: string, password: string) => verificarSudo(String(solicitudId), typeof password === 'string' ? password : ''))
   ipcMain.handle(Canales.coreWorktreesListar, (_e, proyectoId: string) => nucleo.listarWorktrees(String(proyectoId)))
   ipcMain.handle(Canales.coreWorktreeDescartar, (_e, proyectoId: string, id: string) => nucleo.descartarWorktree(String(proyectoId), String(id)))
   ipcMain.handle(Canales.coreWorktreePublicar, (e, proyectoId: string, id: string) =>
@@ -1443,6 +1471,7 @@ export function registrarIpcCore(nucleo: Nucleo): void {
   ipcMain.handle(Canales.corePermisosAgregar, (_e, regla: NuevaRegla, ambito?: string) => nucleo.permisos.agregar(regla, ambito || undefined))
   ipcMain.handle(Canales.corePermisosEliminar, (_e, id: string, ambito?: string) => nucleo.permisos.eliminar(String(id), ambito || undefined))
   ipcMain.handle(Canales.coreSesionesListar, (_e, proyectoId?: string) => nucleo.sesiones.listar(proyectoId ? String(proyectoId) : undefined))
+  ipcMain.handle(Canales.coreTraspasar, (_e, id: string) => nucleo.traspasarContexto(validarId(String(id))))
   ipcMain.handle(Canales.coreSesionObtener, (_e, id: string) => nucleo.sesiones.transcripcion(validarId(String(id))))
   ipcMain.handle(Canales.coreSesionTranscripcion, async (_e, id: string, turnos: TurnoGuardado[], proyectoId?: string) => {
     await nucleo.sesiones.guardarTranscripcion(validarId(String(id)), Array.isArray(turnos) ? turnos : [], proyectoId ? validarId(String(proyectoId)) : undefined)

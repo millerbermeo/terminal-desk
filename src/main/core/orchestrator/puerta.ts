@@ -10,6 +10,8 @@ export interface SolicitudHumana {
   /** Se puede ofrecer «Permitir siempre» (hay una regla exacta que guardar). */
   puedeSiempre?: boolean
   preguntas?: PreguntaUsuario[]
+  /** Pide la contraseña de administrador (el modal la verifica por `core:sudo-verificar`; nunca viaja en la decisión). */
+  sudo?: boolean
 }
 
 interface Pendiente {

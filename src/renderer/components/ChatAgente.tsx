@@ -280,6 +280,14 @@ const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer }: { t: 
   )
 })
 
+const IconoTraspaso = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="4" width="8" height="10" rx="2" />
+    <path d="M14 9h7m-3-3 3 3-3 3" />
+    <path d="M7 14v3a2 2 0 0 0 2 2h9" />
+  </svg>
+)
+
 export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [destino, setDestino] = useState('')
   const [modo, setModo] = useState<'chat' | 'flujo'>('chat')
@@ -728,11 +736,22 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     lanzar(sig.prompt, false, sig.adjuntos)
   }
 
-  /** Empezar otra conversación pide confirmación: la actual no se pierde, queda en el historial. */
+  /** Empezar otra conversación pregunta cómo: en blanco o con el contexto compactado de la actual (que queda en el historial). */
+  const [elegirNueva, setElegirNueva] = useState(false)
   const pedirNuevaConversacion = async (): Promise<void> => {
     if (agente.enCurso) return agente.avisar('/nueva', 'Espera a que termine la tarea en curso (o cancélala) para empezar una conversación nueva.', etiqueta)
     if (agente.turnos.length === 0) return
-    if (await confirmar({ titulo: 'Nueva conversación', tono: 'info', etiqueta: 'Empezar nueva', texto: 'La conversación actual se guarda en el historial y empiezas una en blanco.\n\nPodrás volver a abrirla desde 🕘 Historial.' })) agente.nuevaConversacion()
+    setElegirNueva(true)
+  }
+  /** Nueva conversación que hereda lo importante de la actual (objetivo, decisiones, archivos, estado y pendientes). */
+  const nuevaConContexto = async (): Promise<void> => {
+    setElegirNueva(false)
+    if (agente.enCurso) return agente.avisar('/nueva', 'Espera a que termine la tarea en curso (o cancélala) para pasar su contexto a una conversación nueva.', etiqueta)
+    try {
+      await agente.nuevaConContexto()
+    } catch (err) {
+      agente.avisar('/nueva', `No se pudo pasar el contexto: ${(err as Error).message}`, etiqueta)
+    }
   }
 
   const completar = (nombre: string): void => {
@@ -779,13 +798,60 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         />
       )}
       {gestion && <GestionProyecto {...(proyecto ? { proyectoId: proyecto.id, nombre: proyecto.nombre } : {})} inicial={gestion} onCerrar={() => setGestion(null)} />}
+      {elegirNueva && (
+        <div className="modal-fondo" onMouseDown={(e) => e.target === e.currentTarget && setElegirNueva(false)} onKeyDown={(e) => e.key === 'Escape' && setElegirNueva(false)}>
+          <div className="modal ag-nueva" role="dialog" aria-modal="true" aria-label="Nueva conversación">
+            <h3>Nueva conversación</h3>
+            <p className="ag-nueva-sub">La actual se guarda en el 🕘 Historial. ¿Cómo quieres empezar la nueva?</p>
+            <div className="ag-nueva-opciones">
+              <button className="ag-nueva-opcion recomendada" autoFocus onClick={() => void nuevaConContexto()} disabled={!agente.sesionId}>
+                <span className="ag-nueva-icono"><IconoTraspaso /></span>
+                <strong>Con el contexto</strong>
+                <span>Se compacta lo importante (objetivo, decisiones, archivos, estado y pendientes) y la nueva lo hereda. Menos tokens, sin perder el hilo.</span>
+              </button>
+              <button
+                className="ag-nueva-opcion"
+                onClick={() => {
+                  setElegirNueva(false)
+                  agente.nuevaConversacion()
+                }}
+              >
+                <span className="ag-nueva-icono"><IconoMas /></span>
+                <strong>En blanco</strong>
+                <span>Empieza de cero, sin nada de esta conversación.</span>
+              </button>
+            </div>
+            <div className="cfg-acciones">
+              <button onClick={() => setElegirNueva(false)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div
         className="ag-hilo"
         ref={hilo}
         onScroll={alScroll}
         onWheel={(e) => { if (e.deltaY < 0) pegado.current = false }}
       >
-        {agente.turnos.length === 0 && (
+        {agente.herencia && agente.turnos.length === 0 && (
+          <div className="ag-herencia">
+            <div className="ag-herencia-cab">
+              <span className="ag-herencia-icono" aria-hidden="true">⇢</span>
+              <div>
+                <strong>Contexto heredado</strong>
+                <span>de «{agente.herencia.titulo}» · se enviará con tu primer mensaje{agente.herencia.conModelo ? '' : ' (resumen de respaldo: el modelo no respondió)'}</span>
+              </div>
+              <button className="ag-icono" onClick={agente.quitarHerencia} aria-label="Quitar contexto heredado" title="Quitar: empezar en blanco">
+                <IconoCerrar />
+              </button>
+            </div>
+            <details>
+              <summary>Ver y editar el resumen</summary>
+              <textarea className="ag-herencia-texto" rows={10} value={agente.herencia.resumen} onChange={(e) => agente.editarHerencia(e.target.value)} />
+            </details>
+          </div>
+        )}
+        {agente.turnos.length === 0 && !agente.herencia && (
           <EstadoVacio
             icono={<IconoChispa />}
             titulo="Asistente de desarrollo"
@@ -897,6 +963,15 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           </button>
           <button className="ag-icono" onClick={() => setVerHistorial((v) => !v)} aria-expanded={verHistorial} aria-label="Historial" title="Historial: conversaciones guardadas">
             <IconoReloj />
+          </button>
+          <button
+            className={`ag-icono${agente.traspasando ? ' girando' : ''}`}
+            onClick={() => void nuevaConContexto()}
+            disabled={agente.enCurso || agente.traspasando || !agente.sesionId || agente.turnos.length === 0}
+            aria-label="Nueva conversación con contexto"
+            title={agente.traspasando ? 'Compactando el contexto…' : 'Nueva conversación con contexto: resume lo importante de esta y empieza otra que lo hereda (esta queda en el historial)'}
+          >
+            {agente.traspasando ? <span className="ag-giro" aria-hidden="true" /> : <IconoTraspaso />}
           </button>
           <button className="ag-icono" onClick={() => void pedirNuevaConversacion()} disabled={agente.enCurso || agente.turnos.length === 0} aria-label="Nueva conversación" title="Nueva conversación: la actual queda guardada en el historial">
             <IconoMas />

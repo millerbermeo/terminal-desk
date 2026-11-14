@@ -42,7 +42,7 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
   | { tipo: 'fin'; resultado: ResultadoAgente }
   | { tipo: 'ruta'; complejidad: Complejidad; modelo: string; razon: string; sugerirFlujo: boolean }
   | { tipo: 'flujo_nodo'; nodo: NodoFlujo; intento: number }
-  | { tipo: 'solicitud_humana'; solicitudId: string; clase: ClaseSolicitud; contenido: string; detalle?: string; destructivo?: boolean; herramienta?: string; puedeSiempre?: boolean; preguntas?: PreguntaUsuario[] }
+  | { tipo: 'solicitud_humana'; solicitudId: string; clase: ClaseSolicitud; contenido: string; detalle?: string; destructivo?: boolean; herramienta?: string; puedeSiempre?: boolean; preguntas?: PreguntaUsuario[]; sudo?: boolean }
   | { tipo: 'guardrail'; herramienta: string; motivo: string }
   | { tipo: 'worktree'; accion: AccionWorktree; rama: string; ruta: string; detalle?: string }
   | { tipo: 'flujo_fin'; estado: EstadoFlujo; resumen: string }
@@ -113,6 +113,7 @@ export interface SolicitudAgente {
   adjuntos?: string[] // ids de archivos subidos con `adjuntoSubir` (imágenes, PDFs, texto); máx. 5
   sesionId?: string // continúa esa conversación (memoria de corto plazo); sin él se crea una nueva
   esfuerzo?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' // esfuerzo de razonamiento (solo suscripción); sin él, el del modelo
+  contextoPrevio?: string // resumen traído de otra conversación (`core.traspasar`); solo cuenta en el primer mensaje de una nueva
 }
 
 export interface EjecucionIniciada {

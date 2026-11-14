@@ -4,6 +4,12 @@ import type { ResumenSesion, SesionGuardada } from '@shared/core/sesion'
 import type { ComandoArranque, ConflictoPuerto, EstadoArranque, ResultadoArrancar } from '@shared/arranque'
 import type { DatosProyectos } from '@shared/modelos'
 import type { AccionIa } from '@shared/control-app'
+import type { EntradaComandoArranque, ResultadoGuardarArranque } from '@shared/arranque'
+import type { ComandoUsuario } from '@shared/core/comandos'
+import type { BibliotecaAgentes } from '@shared/modelos'
+import type { Coleccion, DatosApi, PeticionApi, RespuestaApi } from '@shared/api'
+import type { ContactoChat, ConversacionChat, PaginaMensajes } from '@shared/chat'
+import { randomUUID } from 'node:crypto'
 import { motivoBloqueoAutonomo } from './core/guardrails/autonomo'
 
 /** Lo que se sabe de cada terminal (pty) de la interfaz: lo anota main al crearla. */
@@ -47,6 +53,24 @@ export interface DependenciasApp {
   /** Avisa a la interfaz (abrir/enfocar, mostrar una terminal, cerrar una celda, mandar un mensaje al Asistente). */
   interfaz(a: AccionIa): void
   esperar?(ms: number): Promise<void>
+  // Módulos que se conectaron después. Opcionales: sin ellos la herramienta responde que no está disponible.
+  proyectosEdicion?: { renombrar(id: string, nombre: string): Promise<unknown>; moverGrupo(id: string, grupoId: string | null): Promise<unknown> }
+  arranqueConfig?: { guardar(proyectoId: string, comando: EntradaComandoArranque): Promise<ResultadoGuardarArranque>; eliminar(proyectoId: string, id: string): Promise<unknown> }
+  /** `ambito` = 'global' o el id del proyecto. */
+  comandos?: { listar(ambito: string): Promise<ComandoUsuario[]>; guardar(c: ComandoUsuario, ambito: string): Promise<unknown>; eliminar(nombre: string, ambito: string): Promise<unknown> }
+  agentes?: { biblioteca(): Promise<BibliotecaAgentes>; activar(destino: { tipo: 'proyecto' | 'grupo'; id: string }, recursoId: string, activo: boolean): Promise<unknown> }
+  /** Operaciones tipadas de los módulos (las mismas que usa la interfaz por IPC); lanzan si fallan. */
+  equipos?(op: string, entrada: Record<string, unknown>): Promise<unknown>
+  api?(op: string, entrada: Record<string, unknown>): Promise<unknown>
+  chat?(op: string, entrada: Record<string, unknown>): Promise<unknown>
+  notificar?(titulo: string, cuerpo: string): boolean
+}
+
+const MAX_RESPUESTA_API = 12_000
+
+function falta<T>(v: T | undefined, que: string): T {
+  if (!v) throw new Error(`${que} no está disponible en esta sesión de Odesk.`)
+  return v
 }
 
 type Entrada = Record<string, unknown>
@@ -344,6 +368,196 @@ export class ControlApp {
         const p = await this.proyecto(e, ctxProyecto)
         await d.historial('restaurar', { proyectoId: p.id, ruta: String(e.ruta), version: String(e.version) })
         return `Restaurado ${String(e.ruta)} a la versión ${String(e.version)} (el estado anterior quedó guardado en el historial).`
+      }
+      case 'proyecto_renombrar': {
+        const p = await this.proyecto(e, ctxProyecto)
+        const nombre = String(e.nombre ?? '').trim()
+        if (!nombre) throw new Error('El nombre está vacío.')
+        await falta(d.proyectosEdicion, 'Editar proyectos').renombrar(p.id, nombre)
+        d.interfaz({ tipo: 'proyectos-cambiados' })
+        return `«${p.nombre}» ahora se llama «${nombre}».`
+      }
+      case 'proyecto_mover_grupo': {
+        const p = await this.proyecto(e, ctxProyecto)
+        const g = typeof e.grupo_id === 'string' && e.grupo_id && e.grupo_id !== 'ninguno' ? e.grupo_id : null
+        const grupos = (await d.proyectos()).grupos
+        if (g && !grupos.some((x) => x.id === g)) throw new Error(`No hay un grupo con id ${g} (odesk_proyectos da los grupos).`)
+        await falta(d.proyectosEdicion, 'Editar proyectos').moverGrupo(p.id, g)
+        d.interfaz({ tipo: 'proyectos-cambiados' })
+        return g ? `«${p.nombre}» movido al grupo «${grupos.find((x) => x.id === g)?.nombre}».` : `«${p.nombre}» quedó sin grupo.`
+      }
+      case 'servicio_guardar': {
+        const p = await this.proyecto(e, ctxProyecto)
+        const id = typeof e.id === 'string' && e.id ? e.id : undefined
+        const previo = id ? (await d.arranque.listar(p.id)).find((c) => c.id === id) : undefined
+        if (id && !previo) throw new Error(`No hay un comando de arranque con id ${id} (servicios_listar).`)
+        const base: Partial<EntradaComandoArranque> = { ...previo }
+        delete (base as { orden?: number }).orden
+        const comando: EntradaComandoArranque = {
+          ...base,
+          nombre: String(e.nombre ?? previo?.nombre ?? ''),
+          comando: String(e.comando ?? previo?.comando ?? ''),
+          ...(typeof e.cwd === 'string' ? { cwd: e.cwd } : {}),
+          ...(typeof e.puerto === 'number' ? { puerto: e.puerto } : {}),
+          ...(typeof e.esperar === 'string' ? { esperar: e.esperar as EntradaComandoArranque['esperar'] } : {}),
+          ...(typeof e.texto_listo === 'string' ? { textoListo: e.texto_listo } : {}),
+          ...(typeof e.espera_ms === 'number' ? { esperaMs: e.espera_ms } : {}),
+          ...(typeof e.siempre === 'boolean' ? { siempre: e.siempre } : {})
+        }
+        const r = await falta(d.arranqueConfig, 'Configurar servicios').guardar(p.id, comando)
+        if (!r.ok) throw new Error(r.mensaje)
+        d.interfaz({ tipo: 'proyectos-cambiados' })
+        const guardado = r.comandos.find((c) => (id ? c.id === id : c.nombre === comando.nombre))
+        return { guardado: guardado ?? comando, ...(r.avisos.length ? { avisos: r.avisos } : {}) }
+      }
+      case 'servicio_eliminar': {
+        const p = await this.proyecto(e, ctxProyecto)
+        const id = String(e.id ?? '')
+        if (!(await d.arranque.listar(p.id)).some((c) => c.id === id)) throw new Error(`No hay un comando de arranque con id ${id} (servicios_listar).`)
+        await falta(d.arranqueConfig, 'Configurar servicios').eliminar(p.id, id)
+        return `Comando de arranque ${id} borrado.`
+      }
+      case 'comandos_listar': {
+        const c = falta(d.comandos, 'Comandos «/»')
+        const proyecto = typeof e.proyecto_id === 'string' && e.proyecto_id ? (await this.proyecto(e)).id : undefined
+        const resumen = (x: ComandoUsuario) => ({ nombre: `/${x.nombre}`, tipo: x.tipo, descripcion: x.descripcion, ...(x.tipo === 'prompt' ? { plantilla: (x.plantilla ?? '').slice(0, 500) } : { comando: x.comando ?? [] }) })
+        return { globales: (await c.listar('global')).map(resumen), ...(proyecto ? { proyecto: (await c.listar(proyecto)).map(resumen) } : {}) }
+      }
+      case 'comando_guardar': {
+        const c = falta(d.comandos, 'Comandos «/»')
+        const ambito = typeof e.proyecto_id === 'string' && e.proyecto_id ? (await this.proyecto(e)).id : 'global'
+        const tipo = e.tipo === 'ejecutable' ? 'ejecutable' : 'prompt'
+        const cmd: ComandoUsuario = {
+          nombre: String(e.nombre ?? '').replace(/^\//, ''),
+          descripcion: String(e.descripcion ?? ''),
+          tipo,
+          ...(tipo === 'prompt' ? { plantilla: String(e.plantilla ?? '') } : { comando: Array.isArray(e.comando) ? e.comando.map(String) : [], argumentos: e.argumentos === true })
+        }
+        await c.guardar(cmd, ambito)
+        return `Comando «/${cmd.nombre}» guardado (${ambito === 'global' ? 'global' : 'del proyecto'}).`
+      }
+      case 'comando_eliminar': {
+        const c = falta(d.comandos, 'Comandos «/»')
+        const ambito = typeof e.proyecto_id === 'string' && e.proyecto_id ? (await this.proyecto(e)).id : 'global'
+        const nombre = String(e.nombre ?? '').replace(/^\//, '')
+        if (!(await c.listar(ambito)).some((x) => x.nombre === nombre)) throw new Error(`No hay un comando «/${nombre}» ${ambito === 'global' ? 'global' : 'en ese proyecto'} (comandos_listar).`)
+        await c.eliminar(nombre, ambito)
+        return `Comando «/${nombre}» borrado.`
+      }
+      case 'agentes_listar': {
+        const b = await falta(d.agentes, 'Agentes y skills').biblioteca()
+        const datos = await d.proyectos()
+        const filtro = typeof e.proyecto_id === 'string' && e.proyecto_id ? (await this.proyecto(e)).id : undefined
+        const grupoDe = filtro ? datos.proyectos.find((p) => p.id === filtro)?.grupo : undefined
+        const activoEn = (id: string) => ({
+          proyectos: Object.entries(b.activaciones.proyectos).filter(([, l]) => l.includes(id)).map(([p]) => datos.proyectos.find((x) => x.id === p)?.nombre ?? p),
+          grupos: Object.entries(b.activaciones.grupos).filter(([, l]) => l.includes(id)).map(([g]) => datos.grupos.find((x) => x.id === g)?.nombre ?? g)
+        })
+        const lista = b.recursos
+          .filter((r) => !filtro || (r.ambito === 'proyecto' ? r.proyectoId === filtro : (b.activaciones.proyectos[filtro] ?? []).includes(r.id) || (!!grupoDe && (b.activaciones.grupos[grupoDe] ?? []).includes(r.id))))
+          .map((r) => ({ id: r.id, tipo: r.tipo, nombre: r.nombre, descripcion: r.descripcion.slice(0, 300), ambito: r.ambito, ...(r.ambito === 'proyecto' ? { proyecto_id: r.proyectoId } : { activo_en: activoEn(r.id) }) }))
+        return filtro ? { cargados_en_el_proyecto: lista } : { recursos: lista }
+      }
+      case 'agente_activar': {
+        const a = falta(d.agentes, 'Agentes y skills')
+        const recursoId = String(e.recurso_id ?? '')
+        const r = (await a.biblioteca()).recursos.find((x) => x.id === recursoId)
+        if (!r) throw new Error(`No hay un agente o skill con id ${recursoId} (agentes_listar).`)
+        if (r.ambito !== 'compartido') throw new Error(`«${r.nombre}» es de un proyecto: ya se carga siempre en él y no se activa a mano.`)
+        const tipo = e.destino === 'grupo' ? 'grupo' : 'proyecto'
+        let destinoId = typeof e.destino_id === 'string' && e.destino_id ? e.destino_id : undefined
+        if (tipo === 'proyecto') destinoId = (await this.proyecto({ proyecto_id: destinoId }, ctxProyecto)).id
+        else if (!destinoId || !(await d.proyectos()).grupos.some((g) => g.id === destinoId)) throw new Error('Indica destino_id con el id de un grupo (odesk_proyectos).')
+        await a.activar({ tipo, id: destinoId! }, recursoId, e.activo === true)
+        return `«${r.nombre}» ${e.activo === true ? 'activado' : 'desactivado'} en ${tipo === 'grupo' ? 'el grupo' : 'el proyecto'}. Se aplica en las conversaciones y terminales nuevas.`
+      }
+      case 'equipos_estado': {
+        const op = falta(d.equipos, 'Mis equipos')
+        if (typeof e.proyecto_id === 'string' && e.proyecto_id) return op('listar', { proyectoId: (await this.proyecto(e)).id })
+        return { avisos: await op('resumen', {}) }
+      }
+      case 'api_colecciones': {
+        const datos = (await falta(d.api, 'Cliente API')('datos', {})) as DatosApi
+        return {
+          colecciones: datos.colecciones.map((c) => ({ id: c.id, nombre: c.nombre, peticiones: c.peticiones.map((p) => ({ id: p.id, nombre: p.nombre, metodo: p.peticion.metodo, url: p.peticion.url })) })),
+          // Los valores pueden ser tokens o claves: solo los nombres.
+          entornos: datos.entornos.map((x) => ({ id: x.id, nombre: x.nombre, variables: x.variables.map((v) => v.clave), ...(x.id === datos.entornoActivo ? { activo: true } : {}) }))
+        }
+      }
+      case 'api_enviar': {
+        const op = falta(d.api, 'Cliente API')
+        const datos = (await op('datos', {})) as DatosApi
+        const col = datos.colecciones.find((c) => c.id === String(e.coleccion_id))
+        const guardada = col?.peticiones.find((p) => p.id === String(e.peticion_id))
+        if (!guardada) throw new Error('No hay esa petición guardada (api_colecciones da los ids).')
+        const r = (await op('enviar', { peticion: guardada.peticion, envioId: randomUUID() })) as RespuestaApi
+        const cuerpo = r.cuerpo.tipo === 'texto' ? (r.texto.length > MAX_RESPUESTA_API ? r.texto.slice(0, MAX_RESPUESTA_API) + '\n[… recortado]' : r.texto) : `(${r.cuerpo.tipo}, ${r.bytes} bytes)`
+        return { estado: r.estado, ms: r.ms, url: r.urlFinal, tipo: r.tipoContenido, cabeceras: Object.fromEntries(r.cabeceras), cuerpo }
+      }
+      case 'api_guardar_peticion': {
+        const op = falta(d.api, 'Cliente API')
+        let coleccionId = typeof e.coleccion_id === 'string' && e.coleccion_id ? e.coleccion_id : undefined
+        const datos = (await op('datos', {})) as DatosApi
+        let col: Coleccion | undefined
+        if (coleccionId) {
+          col = datos.colecciones.find((c) => c.id === coleccionId)
+          if (!col) throw new Error(`No hay una colección con id ${coleccionId} (api_colecciones).`)
+        } else {
+          const nombre = String(e.coleccion_nombre ?? '').trim() || 'Asistente'
+          coleccionId = datos.colecciones.find((c) => c.nombre === nombre)?.id ?? ((await op('guardarColeccion', { nombre })) as { id: string }).id
+        }
+        const previa = typeof e.id === 'string' ? col?.peticiones.find((p) => p.id === e.id)?.peticion : undefined
+        const cabeceras = e.cabeceras && typeof e.cabeceras === 'object' ? Object.entries(e.cabeceras as Record<string, unknown>).map(([clave, valor]) => ({ id: randomUUID(), clave, valor: String(valor), activo: true })) : (previa?.cabeceras ?? [])
+        const peticion: PeticionApi = {
+          consulta: [],
+          auth: { tipo: 'ninguna' },
+          opciones: { seguirRedirecciones: true, ignorarCertificado: false, tiempoMs: 30_000 },
+          ...previa,
+          metodo: String(e.metodo ?? 'GET').toUpperCase() as PeticionApi['metodo'],
+          url: String(e.url ?? ''),
+          cabeceras,
+          cuerpo: typeof e.cuerpo_json === 'string' && e.cuerpo_json ? { tipo: 'json', texto: e.cuerpo_json } : (previa?.cuerpo ?? { tipo: 'ninguno' })
+        }
+        const r = (await op('guardarPeticion', { coleccionId, ...(typeof e.id === 'string' && e.id ? { id: e.id } : {}), nombre: String(e.nombre ?? ''), peticion })) as { id: string }
+        return { coleccion_id: coleccionId, peticion_id: r.id }
+      }
+      case 'chat_contactos': {
+        const r = (await falta(d.chat, 'Chat')('contactos', {})) as { contactos: ContactoChat[] }
+        return r.contactos.map((c) => ({ usuario_id: c.usuario.id, nombre: c.usuario.nombre, email: c.usuario.email, estado: c.estado, ...(c.usuario.enLinea !== undefined ? { en_linea: c.usuario.enLinea } : {}) }))
+      }
+      case 'chat_conversaciones': {
+        const r = (await falta(d.chat, 'Chat')('conversaciones', {})) as { conversaciones: ConversacionChat[] }
+        return r.conversaciones
+          .filter((c) => !c.archivada)
+          .map((c) => ({ id: c.id, con: c.otro.nombre, usuario_id: c.otro.id, no_leidos: c.noLeidos, ...(c.ultimo ? { ultimo: { texto: c.ultimo.texto, de_mi: c.ultimo.emisorId !== c.otro.id, fecha: c.ultimo.creado } } : {}) }))
+      }
+      case 'chat_leer': {
+        const chat = falta(d.chat, 'Chat')
+        const conv = ((await chat('conversaciones', {})) as { conversaciones: ConversacionChat[] }).conversaciones.find((c) => c.id === String(e.conversacion))
+        if (!conv) throw new Error('No hay esa conversación (chat_conversaciones da los ids).')
+        const p = (await chat('mensajes', { conversacionId: conv.id, limite: acotar(e.limite, 30, 100) })) as PaginaMensajes
+        return {
+          con: conv.otro.nombre,
+          mensajes: p.mensajes.map((m) => ({ de: m.emisorId === conv.otro.id ? conv.otro.nombre : 'yo', tipo: m.tipo, texto: m.eliminado ? '(eliminado)' : m.texto.slice(0, 4000), ...(m.adjunto ? { adjunto: m.adjunto.nombre } : {}), fecha: m.creado }))
+        }
+      }
+      case 'chat_enviar': {
+        const chat = falta(d.chat, 'Chat')
+        const texto = String(e.texto ?? '').trim()
+        if (!texto) throw new Error('El mensaje está vacío.')
+        let conversacionId = typeof e.conversacion === 'string' && e.conversacion ? e.conversacion : undefined
+        if (!conversacionId) {
+          if (typeof e.usuario_id !== 'string' || !e.usuario_id) throw new Error('Indica conversacion o usuario_id (chat_contactos / chat_conversaciones).')
+          conversacionId = ((await chat('abrirConversacion', { usuarioId: e.usuario_id })) as { id: string }).id
+        }
+        await chat('enviarTexto', { conversacionId, texto, clienteId: randomUUID() })
+        return 'Mensaje enviado.'
+      }
+      case 'notificar': {
+        const cuerpo = String(e.cuerpo ?? '').trim()
+        if (!cuerpo) throw new Error('El texto está vacío.')
+        const ok = falta(d.notificar, 'Notificaciones')(String(e.titulo ?? 'Odesk Agent'), cuerpo)
+        return ok ? 'Notificación mostrada.' : 'El sistema no admite notificaciones.'
       }
     }
     throw new Error(`Herramienta desconocida: ${nombre}`)

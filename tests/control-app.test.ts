@@ -214,3 +214,60 @@ describe('MCP «odesk» en clientes externos', () => {
     await expect(instalarMcpExterno('cursor', true, defs)).rejects.toThrow(/No se puede leer/)
   })
 })
+
+describe('módulos de Odesk conectados por MCP', () => {
+  it('todo módulo con operaciones tiene herramientas en el servidor «odesk»', () => {
+    const nombres = new Set(HERRAMIENTAS_ODESK.map((h) => h.nombre))
+    for (const n of ['chat_enviar', 'chat_leer', 'api_enviar', 'api_colecciones', 'equipos_estado', 'comandos_listar', 'comando_guardar', 'agentes_listar', 'agente_activar', 'servicio_guardar', 'servicio_eliminar', 'proyecto_renombrar', 'proyecto_mover_grupo', 'notificar']) {
+      expect(nombres.has(n), n).toBe(true)
+    }
+  })
+
+  it('lo que borra, ejecuta algo nuevo o habla con otra persona pide confirmación', () => {
+    expect(confirmacionApp('chat_enviar', { texto: 'hola', usuario_id: 'u2' })).toMatch(/hola/)
+    expect(confirmacionApp('servicio_eliminar', { id: 'web' })).toBeTruthy()
+    expect(confirmacionApp('comando_eliminar', { nombre: 'x' })).toBeTruthy()
+    expect(confirmacionApp('comando_guardar', { nombre: 'x', tipo: 'ejecutable', comando: ['rm', '-rf'] })).toMatch(/rm -rf/)
+    expect(confirmacionApp('comando_guardar', { nombre: 'x', tipo: 'prompt' })).toBeUndefined()
+  })
+
+  it('chat_enviar abre la conversación con el contacto y manda el texto con un clienteId', async () => {
+    const llamadas: [string, Record<string, unknown>][] = []
+    const f = falso({
+      chat: async (op, entrada) => {
+        llamadas.push([op, entrada])
+        return op === 'abrirConversacion' ? { id: 'c1' } : {}
+      }
+    })
+    const r = await new ControlApp(f.d).ejecutar('chat_enviar', { usuario_id: 'u2', texto: ' hola ' }, {})
+    expect(r.error).toBeUndefined()
+    expect(llamadas[0]).toEqual(['abrirConversacion', { usuarioId: 'u2' }])
+    expect(llamadas[1]![0]).toBe('enviarTexto')
+    expect(llamadas[1]![1]).toMatchObject({ conversacionId: 'c1', texto: 'hola' })
+    expect(typeof llamadas[1]![1].clienteId).toBe('string')
+  })
+
+  it('api_colecciones no expone los valores de las variables del entorno', async () => {
+    const f = falso({
+      api: async () => ({ colecciones: [], entornos: [{ id: 'e1', nombre: 'prod', variables: [{ id: 'v', clave: 'TOKEN', valor: 'secreto', activo: true }] }], entornoActivo: 'e1', historial: [] })
+    })
+    const r = await new ControlApp(f.d).ejecutar('api_colecciones', {}, {})
+    expect(r.texto).toContain('TOKEN')
+    expect(r.texto).not.toContain('secreto')
+  })
+
+  it('servicio_guardar edita solo los campos indicados y conserva el resto', async () => {
+    let guardado: unknown
+    const f = falso({ arranqueConfig: { guardar: async (_p, c) => ((guardado = c), { ok: true, comandos: [{ ...c, id: 'web', orden: 0 } as never], avisos: [] }), eliminar: async () => [] } })
+    const r = await new ControlApp(f.d).ejecutar('servicio_guardar', { id: 'web', nombre: 'Vite', comando: 'pnpm dev --host' }, { proyectoId: 'p1' })
+    expect(r.error).toBeUndefined()
+    expect(guardado).toMatchObject({ id: 'web', nombre: 'Vite', comando: 'pnpm dev --host', puerto: 5173, esperar: 'puerto' })
+    expect(guardado).not.toHaveProperty('orden')
+  })
+
+  it('sin el módulo conectado responde que no está disponible (no rompe)', async () => {
+    const r = await new ControlApp(falso().d).ejecutar('chat_conversaciones', {}, {})
+    expect(r.error).toBe(true)
+    expect(r.texto).toMatch(/no está disponible/)
+  })
+})

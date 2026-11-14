@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { Annotation, EditorState, type Extension } from '@codemirror/state'
+import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { basicSetup } from 'codemirror'
@@ -7,7 +7,10 @@ import { openSearchPanel, search, searchPanelOpen } from '@codemirror/search'
 import { BuscarEnArchivo } from './BuscarEnArchivo'
 import { semillaDeSeleccion } from './busquedaArchivo'
 import { FUENTE_MONO } from '../diseno/fuentes'
-import { lenguajeDe } from './lenguajes'
+import { cargarLenguaje, lenguajeDe } from './lenguajes'
+
+/** Resaltado del archivo: se reconfigura cuando llega el lenguaje cargado aparte (PHP, Go, Rust…). */
+const resaltado = new Compartment()
 
 /** Marca los cambios que vienen del disco (no son del usuario: no ensucian el archivo ni entran en el historial de deshacer). */
 const externa = Annotation.define<boolean>()
@@ -97,8 +100,17 @@ export const EditorCodigo = forwardRef<ManejoEditor, Props>(function EditorCodig
         }
       })
     ]
-    const lenguaje = lenguajeDe(r).extension
-    if (lenguaje) extensiones.push(lenguaje)
+    const primera = doc.slice(0, 300).split('\n', 1)[0] ?? ''
+    extensiones.push(resaltado.of(lenguajeDe(r, primera).extension ?? []))
+    void cargarLenguaje(r, primera).then((l) => {
+      if (!l) return
+      const efecto = resaltado.reconfigure(l)
+      if (actual.current === r && vista.current) vista.current.dispatch({ effects: efecto })
+      else {
+        const e = estados.current.get(r)
+        if (e) estados.current.set(r, e.update({ effects: efecto }).state)
+      }
+    })
     return EditorState.create({ doc, extensions: extensiones })
   }
 

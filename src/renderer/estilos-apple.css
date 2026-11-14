@@ -489,3 +489,98 @@ input[type='checkbox']:not(.interruptor input):not(.chip-sel input) { width: 16p
   .ed-buscar-campo { flex: 1; width: auto; min-width: 0; }
   .ed-buscar-total { min-width: 0; }
 }
+
+/* ---------- permisos de administrador (sudo) ---------- */
+.sudo-fondo {
+  position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: radial-gradient(circle at 50% 35%, rgba(99, 102, 241, 0.16), rgba(4, 5, 8, 0.78) 68%);
+  backdrop-filter: blur(10px) saturate(120%);
+  animation: aparecer 240ms ease-out both;
+}
+.sudo-modal {
+  position: relative; overflow: hidden; width: min(440px, 100%); max-height: 100%; overflow-y: auto;
+  display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;
+  padding: 30px 26px 20px; border-radius: var(--radio-xl);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0) 40%), var(--bg-popover);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--sombra), 0 30px 80px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(0, 0, 0, 0.7), var(--canto-luz, var(--brillo));
+  animation: modal-entrar var(--muelle-t, 320ms) var(--muelle, var(--ease)) both;
+}
+.sudo-modal.sacudir { animation: sudo-sacudir 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+.sudo-halo {
+  position: absolute; top: -90px; left: 50%; width: 260px; height: 180px; transform: translateX(-50%); pointer-events: none;
+  background: radial-gradient(closest-side, rgba(129, 140, 248, 0.35), transparent); filter: blur(10px);
+  transition: background 400ms ease;
+}
+.sudo-modal.destructiva .sudo-halo { background: radial-gradient(closest-side, rgba(248, 113, 113, 0.32), transparent); }
+.sudo-modal.concedido .sudo-halo { background: radial-gradient(closest-side, rgba(52, 211, 153, 0.38), transparent); }
+.sudo-icono {
+  position: relative; width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; color: var(--acento);
+  background: linear-gradient(180deg, rgba(129, 140, 248, 0.22), rgba(129, 140, 248, 0.06));
+  border: 1px solid rgba(129, 140, 248, 0.35);
+  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.28), var(--brillo);
+  animation: sudo-latir 2.6s ease-in-out infinite;
+  transition: color 300ms ease, background 300ms ease, border-color 300ms ease;
+}
+.sudo-modal.destructiva .sudo-icono { color: var(--error); background: linear-gradient(180deg, rgba(248, 113, 113, 0.2), rgba(248, 113, 113, 0.05)); border-color: rgba(248, 113, 113, 0.4); box-shadow: 0 10px 30px rgba(248, 113, 113, 0.22), var(--brillo); }
+.sudo-icono.ok { color: var(--ok); background: linear-gradient(180deg, rgba(52, 211, 153, 0.24), rgba(52, 211, 153, 0.06)); border-color: rgba(52, 211, 153, 0.45); animation: sudo-pop 380ms var(--muelle, ease) both; }
+.sudo-modal h3 { margin: 6px 0 0; font-size: 17px; font-weight: 650; letter-spacing: -0.02em; color: var(--texto); }
+.sudo-sub { margin: 0; color: var(--texto-suave); font-size: 12.5px; line-height: 1.5; max-width: 360px; }
+.sudo-sub code { font-family: var(--fuente-mono); font-size: 11.5px; padding: 1px 5px; border-radius: 5px; background: var(--bg-sutil); color: var(--texto); }
+.sudo-cola { align-self: center; }
+.sudo-comando {
+  width: 100%; margin: 4px 0 0; max-height: 120px; overflow: auto; text-align: left; white-space: pre-wrap; word-break: break-all;
+  font-family: var(--fuente-mono); font-size: 12px; line-height: 1.5; color: var(--texto);
+  padding: 10px 12px; border-radius: var(--radio); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--borde);
+}
+.sudo-peligro { margin: 0; width: 100%; text-align: left; font-size: 12px; color: var(--error); background: rgba(248, 113, 113, 0.08); border: 1px solid rgba(248, 113, 113, 0.3); border-radius: var(--radio); padding: 7px 10px; }
+.sudo-campo { width: 100%; display: flex; flex-direction: column; gap: 6px; text-align: left; margin-top: 4px; font-size: 12px; color: var(--texto-suave); }
+.sudo-entrada { position: relative; display: flex; }
+.sudo-entrada input { width: 100%; height: 40px; padding: 0 40px 0 12px; font-size: 14px; letter-spacing: 0.04em; border-radius: var(--radio); }
+.sudo-entrada.con-error input { border-color: var(--error); box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.18); }
+.sudo-ver {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; padding: 0; display: grid; place-items: center;
+  background: transparent; border: 0; color: var(--texto-tenue); border-radius: 8px; cursor: pointer;
+}
+.sudo-ver:hover { color: var(--texto); background: var(--bg-hover); }
+.sudo-error { margin: 0; min-height: 16px; width: 100%; text-align: left; font-size: 12px; color: var(--error); }
+.sudo-acciones { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 2px; }
+.sudo-acciones button { height: 38px; justify-content: center; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.sudo-denegar:hover:not(:disabled) { color: var(--error); border-color: rgba(248, 113, 113, 0.45); }
+.sudo-giro { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: sudo-girar 700ms linear infinite; }
+.sudo-nota { margin: 4px 0 0; font-size: 11px; color: var(--texto-tenue); }
+@keyframes sudo-sacudir { 10%, 90% { transform: translateX(-2px); } 20%, 80% { transform: translateX(4px); } 30%, 50%, 70% { transform: translateX(-8px); } 40%, 60% { transform: translateX(8px); } }
+@keyframes sudo-latir { 0%, 100% { transform: none; } 50% { transform: translateY(-2px) scale(1.03); } }
+@keyframes sudo-pop { 0% { transform: scale(0.8); } 60% { transform: scale(1.1); } 100% { transform: none; } }
+@keyframes sudo-girar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sudo-icono, .sudo-modal, .sudo-modal.sacudir { animation: none !important; } }
+
+/* ---------- nueva conversación con contexto ---------- */
+.ag-giro { width: 13px; height: 13px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: sudo-girar 700ms linear infinite; }
+.ag-nueva { width: min(560px, 100%); gap: 12px; }
+.ag-nueva h3 { margin: 0; }
+.ag-nueva-sub { margin: 0; color: var(--texto-suave); font-size: 13px; }
+.ag-nueva-opciones { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 560px) { .ag-nueva-opciones { grid-template-columns: 1fr; } }
+.ag-nueva-opcion {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; height: auto; padding: 14px;
+  border-radius: var(--radio-lg); border: 1px solid var(--borde-fuerte); background: var(--bg-elevado); white-space: normal;
+  transition: border-color var(--rapido) var(--ease), transform var(--rapido) var(--ease), background var(--rapido) var(--ease);
+}
+.ag-nueva-opcion:hover:not(:disabled) { border-color: var(--acento); background: var(--bg-hover); transform: translateY(-1px); }
+.ag-nueva-opcion strong { font-size: 13.5px; color: var(--texto); }
+.ag-nueva-opcion span:last-child { font-size: 12px; line-height: 1.45; color: var(--texto-suave); font-weight: 400; }
+.ag-nueva-opcion.recomendada { border-color: rgba(129, 140, 248, 0.5); background: linear-gradient(180deg, rgba(129, 140, 248, 0.1), rgba(129, 140, 248, 0.02)), var(--bg-elevado); }
+.ag-nueva-icono { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--acento); background: var(--acento-suave); }
+.ag-herencia {
+  margin: 12px 0; padding: 12px 14px; border-radius: var(--radio-lg); display: flex; flex-direction: column; gap: 8px;
+  border: 1px solid rgba(129, 140, 248, 0.4); background: linear-gradient(180deg, rgba(129, 140, 248, 0.1), rgba(129, 140, 248, 0.02)), var(--bg-elevado);
+  animation: subir var(--medio) var(--ease) both;
+}
+.ag-herencia-cab { display: flex; align-items: center; gap: 10px; }
+.ag-herencia-cab > div { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ag-herencia-cab strong { font-size: 13px; }
+.ag-herencia-cab span { font-size: 12px; color: var(--texto-suave); overflow: hidden; text-overflow: ellipsis; }
+.ag-herencia-icono { width: 30px; height: 30px; flex: none; border-radius: 9px; display: grid; place-items: center; color: var(--acento); background: var(--acento-suave); font-size: 16px; }
+.ag-herencia summary { cursor: pointer; font-size: 12px; color: var(--texto-suave); }
+.ag-herencia-texto { width: 100%; margin-top: 8px; font-family: var(--fuente-mono); font-size: 12px; line-height: 1.5; resize: vertical; }
