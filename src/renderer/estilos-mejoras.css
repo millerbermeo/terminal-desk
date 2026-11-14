@@ -624,3 +624,10 @@ body {
 .serv-chip.est-listo .serv-punto { background: var(--ok); }
 .serv-chip.est-arrancando .serv-punto, .serv-chip.est-pendiente .serv-punto { background: var(--aviso); }
 .serv-chip.est-error .serv-punto { background: var(--error); }
+
+/* Nombres de proyecto repetidos: en rojo para que se noten y se editen. */
+.cfg-proyecto.repetido { border-color: var(--error); background: color-mix(in srgb, var(--error) 8%, transparent); }
+.cfg-proyecto.repetido strong { color: var(--error); }
+.chip-repetido { color: var(--error); border-color: var(--error); background: transparent; }
+.item.nombre-repetido .item-nombre { color: var(--error); }
+.cfg-nombre-edicion { min-width: 0; flex: 1 1 140px; }

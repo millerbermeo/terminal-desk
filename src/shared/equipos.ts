@@ -85,7 +85,7 @@ export interface AvisoEquipo {
 export interface PendienteClonar {
   id: string
   nombre: string
-  /** Remoto del proyecto tal como lo registró el equipo que lo creó. */
+  /** Remoto del proyecto tal como lo registró el equipo que lo creó; vacío si no tiene (solo se puede enlazar una carpeta, no clonar). */
   repo: string
   grupoId?: string
 }

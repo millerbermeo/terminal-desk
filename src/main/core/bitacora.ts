@@ -15,6 +15,16 @@ const resumenEntrada = (entrada: Record<string, unknown>): string => {
   return corto(typeof v === 'string' ? v : JSON.stringify(entrada), MAX_ENTRADA)
 }
 
+/** El plan de `TodoWrite` en una línea por etapa. */
+const planDe = (todos: unknown[]): string =>
+  todos
+    .slice(0, 30)
+    .map((t) => {
+      const o = (t ?? {}) as { content?: unknown; status?: unknown }
+      return `${o.status === 'completed' ? '[x]' : o.status === 'in_progress' ? '[>]' : '[ ]'} ${corto(String(o.content ?? ''), 160)}`
+    })
+    .join('\n')
+
 /**
  * Lo que una ejecución lleva hecho, en líneas cortas y en orden, para poder contestar «¿cómo va?» sin tocarla:
  * la petición, lo que el agente fue diciendo y cada herramienta con su resultado. Acotada: al pasar el tope se
@@ -25,8 +35,12 @@ export class Bitacora {
   private peticion = ''
   private pasos = 0
   private ultimoEvento = Date.now()
+  /** Plan vigente (el último `TodoWrite`): aparte de las líneas, para que no se pierda al recortar. */
+  private plan = ''
+  /** Herramientas que empezaron y aún no devolvieron resultado: lo que está haciendo AHORA MISMO. */
+  private readonly enCurso = new Map<string, string>()
 
-  constructor(private readonly maxCaracteres = 12_000) {}
+  constructor(private readonly maxCaracteres = 16_000) {}
 
   registrar(e: Pick<EventoAgente, 'tipo'> & Record<string, unknown>): void {
     switch (e.tipo) {
@@ -37,13 +51,23 @@ export class Bitacora {
         if (typeof e.texto === 'string' && e.texto.trim()) this.anotar(`Dijo: ${corto(e.texto, MAX_TEXTO)}`)
         return
       case 'herramienta_inicio': {
-        const l = e.llamada as { nombre: string; entrada: Record<string, unknown> }
+        const l = e.llamada as { id?: string; nombre: string; entrada: Record<string, unknown> }
         this.pasos++
-        this.anotar(`Usa ${l.nombre}: ${resumenEntrada(l.entrada ?? {})}`)
+        if (l.nombre === 'TodoWrite' && Array.isArray(l.entrada?.todos)) {
+          this.plan = planDe(l.entrada.todos)
+          this.ultimoEvento = Date.now()
+          return
+        }
+        const linea = `${l.nombre}: ${resumenEntrada(l.entrada ?? {})}`
+        if (l.id) this.enCurso.set(l.id, linea)
+        this.anotar(`Usa ${linea}`)
         return
       }
       case 'herramienta_fin': {
         const r = e.resultado as { texto?: string; error?: boolean }
+        const id = (e.llamada as { id?: string; nombre?: string } | undefined)?.id
+        if (id) this.enCurso.delete(id)
+        if ((e.llamada as { nombre?: string } | undefined)?.nombre === 'TodoWrite') return
         this.anotar(`  → ${r.error ? 'ERROR: ' : ''}${corto(r.texto ?? '', MAX_RESULTADO) || '(sin salida)'}`)
         return
       }
@@ -63,7 +87,11 @@ export class Bitacora {
     return [
       `Petición original: ${this.peticion || '(desconocida)'}`,
       `Herramientas usadas hasta ahora: ${this.pasos}. Último movimiento hace ${hace} s${hace > 30 ? ' (probablemente un paso largo en curso)' : ''}.`,
-      this.lineas.length ? `Registro (lo más reciente al final):\n${this.lineas.join('\n')}` : 'Aún no ha hecho nada visible.'
-    ].join('\n')
+      this.plan ? `Plan de la tarea ([x] hecho, [>] en curso, [ ] pendiente):\n${this.plan}` : '',
+      this.lineas.length ? `Registro (lo más reciente al final):\n${this.lineas.join('\n')}` : 'Aún no ha hecho nada visible.',
+      this.enCurso.size ? `Ejecutando ahora mismo (sin terminar): ${[...this.enCurso.values()].slice(-3).join(' | ')}` : ''
+    ]
+      .filter(Boolean)
+      .join('\n')
   }
 }

@@ -13,7 +13,7 @@ export function BotonMicrofono({ voz, desactivado }: { voz: ControlGrabadora; de
       disabled={desactivado || ocupado}
       aria-pressed={grabando}
       aria-label={grabando ? 'Terminar el dictado' : 'Dictar por voz'}
-      title={grabando ? 'Terminar y transcribir' : 'Dictar por voz: se transcribe, se corrige y queda en el campo para que lo revises (no se envía solo)'}
+      title={grabando ? 'Terminar y transcribir' : 'Dictar por voz: se graba, se transcribe a texto y queda en el campo para que lo edites (no se envía solo)'}
     >
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="9" y="3" width="6" height="11" rx="3" />
@@ -25,7 +25,7 @@ export function BotonMicrofono({ voz, desactivado }: { voz: ControlGrabadora; de
 
 /** Barra encima del campo de texto mientras se graba, se procesa o hubo un error. Sin nada de eso no pinta nada. */
 export function BarraGrabacion({ voz }: { voz: ControlGrabadora }) {
-  const { fase, ms, maxMs, error } = voz.estado
+  const { fase, ms, maxMs, error, nivel, sinSonido } = voz.estado
   if (fase === 'inactivo') return null
   if (fase === 'error' && error) {
     const config = esErrorConfiguracion(error.codigo)
@@ -52,7 +52,7 @@ export function BarraGrabacion({ voz }: { voz: ControlGrabadora }) {
     return (
       <div className="ag-voz" role="status">
         <span className="ag-voz-giro" aria-hidden />
-        <span className="ag-voz-texto">Transcribiendo y corrigiendo…</span>
+        <span className="ag-voz-texto">Transcribiendo…</span>
         <button onClick={voz.cancelar}>Cancelar</button>
       </div>
     )
@@ -62,6 +62,12 @@ export function BarraGrabacion({ voz }: { voz: ControlGrabadora }) {
     <div className="ag-voz grabando" role="status" aria-live="off">
       <span className="ag-voz-punto" aria-hidden />
       <span className="ag-voz-texto">Grabando</span>
+      <span className={`ag-voz-nivel${sinSonido ? ' mudo' : ''}`} role="img" aria-label={sinSonido ? 'No se detecta sonido' : 'Nivel del micrófono'} title={sinSonido ? 'No se oye nada: revisa que el micrófono correcto esté activo y habla más cerca' : 'Nivel del micrófono'}>
+        {[0.04, 0.12, 0.25, 0.4, 0.6].map((u, i) => (
+          <i key={i} className={nivel >= u ? 'on' : ''} />
+        ))}
+      </span>
+      {sinSonido && <span className="ag-voz-aviso">No se detecta sonido: revisa el micrófono</span>}
       <span className={`ag-voz-tiempo${queda < 15_000 ? ' aviso' : ''}`} aria-label={`Grabado ${formatoTiempo(ms)} de ${formatoTiempo(maxMs)}`}>
         {formatoTiempo(ms)} / {formatoTiempo(maxMs)}
       </span>

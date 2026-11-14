@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { confirmar } from '../confirmar'
 import { IconoCarpeta, IconoCerrar, IconoCheck, IconoMas } from './Iconos'
-import type { DatosProyectos } from '@shared/modelos'
+import { claveNombre, type DatosProyectos } from '@shared/modelos'
 import type { ErrorProyecto, ValidacionRuta } from '@shared/ipc'
 
 interface Props {
@@ -36,6 +36,7 @@ function validar(ruta: string, cb: (v: ValidacionRuta) => void): void {
 export function ModalAgregar({ datos, onGuardado, onCerrar, rutasIniciales }: Props) {
   const [grupo, setGrupo] = useState(SIN_GRUPO)
   const [grupoNuevo, setGrupoNuevo] = useState('')
+  const [modo, setModo] = useState<'compartido' | 'local'>('compartido')
   const [filas, setFilas] = useState<Fila[]>(() => (rutasIniciales?.length ? rutasIniciales.map((ruta) => ({ nombre: '', ruta })) : [filaVacia()]))
   const [sugerencias, setSugerencias] = useState<string[]>([])
   const [errores, setErrores] = useState<ErrorProyecto[]>([])
@@ -131,9 +132,14 @@ export function ModalAgregar({ datos, onGuardado, onCerrar, rutasIniciales }: Pr
     const r = filas[i].validacion?.ruta
     return !!r && filas.some((f, j) => j < i && f.validacion?.ruta === r)
   }
+  const nombreDe = (i: number): string => filas[i].nombre.trim() || nombreDeRuta(filas[i].ruta)
+  const nombreRepetido = (i: number): boolean => {
+    const k = claveNombre(nombreDe(i))
+    return !!k && (datos.proyectos.some((p) => claveNombre(p.nombre) === k) || usadas.some((j) => j < i && claveNombre(nombreDe(j)) === k))
+  }
   const todoValido =
     usadas.length > 0 &&
-    usadas.every((i) => filas[i].validacion?.ok && !duplicada(i)) &&
+    usadas.every((i) => filas[i].validacion?.ok && !duplicada(i) && !nombreRepetido(i)) &&
     (grupo !== NUEVO || grupoNuevo.trim() !== '')
 
   const enviar = async (): Promise<void> => {
@@ -142,6 +148,7 @@ export function ModalAgregar({ datos, onGuardado, onCerrar, rutasIniciales }: Pr
     let res: Awaited<ReturnType<typeof window.api.proyectos.agregar>>
     try {
       res = await window.api.proyectos.agregar({
+        modo,
         ...(grupo === NUEVO ? { grupoNuevo } : grupo ? { grupoId: grupo } : {}),
         proyectos
       })
@@ -158,7 +165,7 @@ export function ModalAgregar({ datos, onGuardado, onCerrar, rutasIniciales }: Pr
     }
     onGuardado(res.datos)
     salir()
-    if (res.avisos?.length) {
+    if (modo === 'compartido' && res.avisos?.length) {
       void confirmar({ titulo: 'Un paso más: sube .odesk a git', texto: res.avisos.join('\n\n'), etiqueta: 'Entendido', tono: 'aviso', cancelar: 'Cerrar' })
     }
   }
@@ -168,6 +175,7 @@ export function ModalAgregar({ datos, onGuardado, onCerrar, rutasIniciales }: Pr
     if (!f.validacion) return <div className="cfg-nota"><span className="spinner" /> Comprobando…</div>
     if (!f.validacion.ok) return <div className="cfg-error"><IconoCerrar /> {f.validacion.mensaje}</div>
     if (duplicada(i)) return <div className="cfg-error"><IconoCerrar /> Ruta repetida en el formulario</div>
+    if (nombreRepetido(i)) return <div className="cfg-error"><IconoCerrar /> Ya existe un proyecto llamado «{nombreDe(i)}»: cambia el nombre</div>
     return <div className="cfg-ok"><IconoCheck /> {f.validacion.ruta}</div>
   }
 
@@ -189,6 +197,25 @@ export function ModalAgregar({ datos, onGuardado, onCerrar, rutasIniciales }: Pr
             <IconoCerrar />
           </button>
         </div>
+        <div className="modal-modo" role="radiogroup" aria-label="Tipo de proyecto">
+          <label>
+            <input type="radio" name="modo-proyecto" checked={modo === 'compartido'} onChange={() => setModo('compartido')} /> <b>Compartido</b>
+            <span className="cfg-nota"> — en tu cuenta: se enlaza con un <code>.odesk/project.json</code>, sincroniza tareas, conversaciones y estado con tus otros equipos y con GitHub.</span>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="modo-proyecto"
+              checked={modo === 'local'}
+              onChange={() => {
+                setModo('local')
+                if (grupo === NUEVO) setGrupo(SIN_GRUPO)
+              }}
+            />{' '}
+            <b>Local</b>
+            <span className="cfg-nota"> — solo en este equipo: no crea id de Odesk ni archivos en la carpeta y no tiene seguimiento remoto.</span>
+          </label>
+        </div>
         <label>
           Grupo
           <select value={grupo} onChange={(e) => setGrupo(e.target.value)}>
@@ -198,7 +225,7 @@ export function ModalAgregar({ datos, onGuardado, onCerrar, rutasIniciales }: Pr
                 {g.nombre}
               </option>
             ))}
-            <option value={NUEVO}>+ Nuevo grupo…</option>
+            {modo === 'compartido' && <option value={NUEVO}>+ Nuevo grupo…</option>}
           </select>
         </label>
         {grupo === NUEVO && (

@@ -95,7 +95,11 @@ const api: ApiCentro = {
   },
   voz: {
     estado: () => ipcRenderer.invoke(Canales.vozEstado),
-    transcribir: (audio, mime, duracionMs, mejorar) => ipcRenderer.invoke(Canales.vozTranscribir, audio, mime, duracionMs, mejorar)
+    transcribir: (audio, mime, duracionMs) => ipcRenderer.invoke(Canales.vozTranscribir, audio, mime, duracionMs)
+  },
+  notificaciones: {
+    mostrar: (n) => ipcRenderer.invoke(Canales.notificacionMostrar, n),
+    onClic: (cb) => suscribir<string | undefined>(Canales.notificacionClic, cb)
   },
   ia: {
     onAccion: (cb) => suscribir<AccionIa>(Canales.iaAccion, cb),
@@ -165,6 +169,7 @@ const api: ApiCentro = {
     sugerirRutas: (prefijo) => ipcRenderer.invoke(Canales.proyectosSugerirRutas, prefijo),
     eliminar: (id) => ipcRenderer.invoke(Canales.proyectosEliminar, id),
     moverAGrupo: (id, grupoId) => ipcRenderer.invoke(Canales.proyectosMoverGrupo, id, grupoId),
+    renombrar: (id, nombre) => ipcRenderer.invoke(Canales.proyectosRenombrar, id, nombre),
     cambiarCarpeta: (id, ruta, confirmar) => ipcRenderer.invoke(Canales.proyectosCambiarCarpeta, id, ruta, confirmar === true),
     eliminarGrupo: (id) => ipcRenderer.invoke(Canales.grupoEliminar, id)
   },

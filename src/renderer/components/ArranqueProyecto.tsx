@@ -92,9 +92,18 @@ export function ArranqueProyecto({ proyecto, onCerrar, onVer }: Props) {
 
   useEffect(() => {
     void cargar().catch((e: Error) => setError(limpiar(e.message)))
-    return window.api.arranque.onEstado((e) => {
+    // Los comandos viven en la cuenta: lo que cambie otro equipo se ve sin cerrar y abrir (cada 20 s y al volver a la ventana).
+    const refrescar = (): void => void cargar().catch(() => undefined)
+    const t = setInterval(refrescar, 20_000)
+    window.addEventListener('focus', refrescar)
+    const dejar = window.api.arranque.onEstado((e) => {
       if (e.proyectoId === proyecto.id) setEstados((x) => ({ ...x, [e.comandoId]: e }))
     })
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('focus', refrescar)
+      dejar()
+    }
   }, [cargar, proyecto.id])
 
   useEffect(() => {

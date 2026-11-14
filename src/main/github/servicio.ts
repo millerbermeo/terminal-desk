@@ -202,7 +202,8 @@ export class ServicioGitHub {
 
   async estado(proyectoId?: string): Promise<EstadoGitHub> {
     const t = await this.tokenVigente()
-    const base: EstadoGitHub = { conectado: Boolean(t), persistente: t?.persistente ?? false, host: this.hostGitHub, oauth: Boolean(await this.clientId()), ...(t?.refresh ? { renovable: true } : {}), ...(t?.usuario ? { usuario: { usuario: t.usuario } } : {}) }
+    const cuentas = await this.d.token.listar()
+    const base: EstadoGitHub = { conectado: Boolean(t), ...(cuentas.length ? { cuentas } : {}), persistente: t?.persistente ?? false, host: this.hostGitHub, oauth: Boolean(await this.clientId()), ...(t?.refresh ? { renovable: true } : {}), ...(t?.usuario ? { usuario: { usuario: t.usuario } } : {}) }
     if (!proyectoId) return base
     const remoto = await this.remoto(await this.repositorio(proyectoId)).catch(() => undefined)
     if (!remoto) return base
@@ -298,6 +299,27 @@ export class ServicioGitHub {
     this.dispositivo?.abortar.abort()
     this.dispositivo = undefined
     return { ok: true }
+  }
+
+  async cambiarCuenta(usuario: unknown): Promise<EstadoGitHub> {
+    const u = sinSalto(usuario, 'la cuenta', 100)
+    if (!(await this.d.token.activar(u))) throw new Error(`La cuenta «${u}» no está vinculada.`)
+    this.cambioDeCuenta()
+    return this.estado()
+  }
+
+  async quitarCuenta(usuario: unknown): Promise<EstadoGitHub> {
+    const u = sinSalto(usuario, 'la cuenta', 100)
+    if (!(await this.d.token.quitar(u))) throw new Error(`La cuenta «${u}» no está vinculada.`)
+    this.cambioDeCuenta()
+    return this.estado()
+  }
+
+  /** Lo que depende de la cuenta (repositorios locales ya cruzados, renovación en curso, código pendiente) se descarta. */
+  private cambioDeCuenta(): void {
+    this.locales = undefined
+    this.refrescando = undefined
+    this.dispositivoCancelar()
   }
 
   async desconectar(): Promise<EstadoGitHub> {

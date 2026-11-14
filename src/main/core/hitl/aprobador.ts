@@ -1,3 +1,4 @@
+import { sinValoresCredencial } from '@shared/credenciales-herramientas'
 import type { EventoAgente } from '@shared/core/agente'
 import type { LlamadaHerramienta } from '@shared/core/herramientas'
 import type { Aprobador } from '../agents/harness'
@@ -33,7 +34,7 @@ export function describirLlamada(l: LlamadaHerramienta): string {
     case 'escribir_archivo':
       return `Escribir ${String(e.ruta)}\n\n${recortar(String(e.contenido ?? ''))}`
     default:
-      return `${l.nombre}\n${recortar(JSON.stringify(e, null, 2))}`
+      return `${l.nombre}\n${recortar(JSON.stringify(sinValoresCredencial(l.nombre, e), null, 2))}`
   }
 }
 

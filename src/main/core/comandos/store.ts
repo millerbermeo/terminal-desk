@@ -141,7 +141,7 @@ export class ComandosStore {
 
   async efectivos(proyectoId?: string): Promise<ComandoUsuario[]> {
     const globales = await this.listar(AMBITO_GLOBAL)
-    if (!proyectoId || proyectoId === AMBITO_GLOBAL) return globales
+    if (!proyectoId || proyectoId === AMBITO_GLOBAL || proyectoId.startsWith('local-')) return globales // un proyecto local no tiene comandos propios en la cuenta
     const propios = await this.listar(proyectoId)
     return [...propios, ...globales.filter((g) => !propios.some((p) => p.nombre === g.nombre))]
   }

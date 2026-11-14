@@ -62,9 +62,19 @@ const PUBLICAN: Record<string, string> = {
   github_comentar: 'publica un comentario en GitHub'
 }
 
+/** Herramientas de la aplicación que borran algo que no se recupera: mismo trato (confirmación siempre, también en «Autónomo»). */
+const BORRAN: Record<string, string> = {
+  credenciales_eliminar: 'elimina una credencial de prueba guardada en este equipo'
+}
+
+/** Nombre de una herramienta de la app tal como la llama el CLI (`mcp__odesk__x`) o el núcleo (`x`). */
+const sinPrefijoOdesk = (h: string): string => (h.startsWith('mcp__odesk__') ? h.slice('mcp__odesk__'.length) : h)
+
 /** Motivo por el que una llamada es destructiva o sale de la máquina (siempre exige confirmación explícita). */
 export function esDestructiva(herramienta: string, entrada: Record<string, unknown>): string | null {
   if (Object.hasOwn(PUBLICAN, herramienta)) return PUBLICAN[herramienta]!
+  const propia = sinPrefijoOdesk(herramienta)
+  if (Object.hasOwn(BORRAN, propia)) return BORRAN[propia]!
   if (herramienta === 'ejecutar_comando') {
     const bin = basename(String(entrada.comando ?? ''))
     const args = Array.isArray(entrada.args) ? entrada.args.map(String) : []

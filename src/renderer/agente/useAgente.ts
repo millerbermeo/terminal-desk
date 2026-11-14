@@ -1,3 +1,4 @@
+import { notificarRespuesta } from './notificaciones'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EventoAgente, SolicitudAgente } from '@shared/core/agente'
 import type { Adjunto } from '@shared/core/adjuntos'
@@ -103,7 +104,7 @@ const liberar = (clave: string): void => void reclamadas.delete(clave)
  * Conversación con el agente. Cada llamada es independiente (una por celda o pantalla): solo atiende los eventos de las
  * ejecuciones que lanzó ella. Las confirmaciones pendientes van a un almacén global (`solicitudes.ts`).
  */
-export function useAgente(opciones: { clave?: string } = {}) {
+export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahora en pantalla? Si se ve y la ventana está enfocada, no se notifica. */ aLaVista?: () => boolean } = {}) {
   const claveActiva = `asistente:activa:${opciones.clave ?? 'global'}`
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [sesionId, setSesionId] = useState<string | undefined>()
@@ -116,6 +117,8 @@ export function useAgente(opciones: { clave?: string } = {}) {
   const contador = useRef(0)
   const salidasPendientes = useRef<string[]>([]) // salidas de comandos `/`: el agente las ve en el siguiente mensaje
 
+  const opcionesRef = useRef(opciones)
+  opcionesRef.current = opciones
   const pintado = useRef<ReturnType<typeof setTimeout> | undefined>(undefined) // repintado pendiente del texto en streaming
   const actualizar = useCallback((f: (ts: Turno[]) => Turno[]): void => {
     ref.current = f(ref.current)
@@ -139,7 +142,11 @@ export function useAgente(opciones: { clave?: string } = {}) {
         }, 50)
         return
       }
+      const antes = ref.current[i]!
       actualizar((ts) => ts.map((t, j) => (j === i ? aplicar(t, e) : t)))
+      // El turno acaba de terminar: notificación del sistema (si están activas y no se está mirando este chat).
+      const ahora = ref.current[i]
+      if (ahora && antes.estado === 'en_curso' && ahora.estado !== 'en_curso') notificarRespuesta(ahora, opcionesRef.current.clave, opcionesRef.current.aLaVista?.() ?? false)
     },
     [actualizar]
   )

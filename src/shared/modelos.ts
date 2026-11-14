@@ -8,6 +8,8 @@ export interface Proyecto {
   nombre: string
   ruta: string
   grupo?: string // id de Grupo
+  /** Proyecto solo de este equipo: sin id en el servidor, sin `.odesk/project.json`, sin sincronización ni seguimiento remoto. */
+  local?: boolean
 }
 
 export interface DatosProyectos {
@@ -50,4 +52,14 @@ export interface Activaciones {
 export interface BibliotecaAgentes {
   recursos: Recurso[]
   activaciones: Activaciones
+}
+
+/** Clave para comparar nombres de proyecto: sin mayúsculas ni espacios de más. */
+export const claveNombre = (n: string): string => n.trim().replace(/\s+/g, ' ').toLowerCase()
+
+/** Ids de los proyectos cuyo nombre lo comparte otro proyecto. */
+export function proyectosConNombreRepetido(proyectos: { id: string; nombre: string }[]): Set<string> {
+  const por = new Map<string, string[]>()
+  for (const p of proyectos) por.set(claveNombre(p.nombre), [...(por.get(claveNombre(p.nombre)) ?? []), p.id])
+  return new Set([...por.values()].filter((ids) => ids.length > 1).flat())
 }

@@ -17,12 +17,13 @@ import { BarraUso } from './BarraUso'
 import { GestionProyecto } from './GestionProyecto'
 import { EstadoVacio } from './EstadoVacio'
 import { HistorialAgente } from './HistorialAgente'
-import { IconoArchivo, IconoCarpeta, IconoChispa, IconoCerrar, IconoClip, IconoMas, IconoReloj, IconoTareas } from './Iconos'
+import { IconoArchivo, IconoCampana, IconoCampanaTachada, IconoCarpeta, IconoChispa, IconoCerrar, IconoClip, IconoMas, IconoReloj, IconoTareas } from './Iconos'
+import { fijarNotificaciones, useNotificaciones } from '../agente/notificaciones'
 import { aplicarMencion, detectarMencion, opcionesMencion } from '../agente/menciones'
 import { aplicarMencionTarea, detectarMencionTarea, opcionesTarea, pedirImplementar } from '../agente/tareas-chat'
 import { NOMBRE_PRIORIDAD } from './Tareas'
 import { SolicitudesChat } from './ModalSolicitud'
-import { useGrabadora, type TextoDictado } from '../agente/grabadora'
+import { useGrabadora } from '../agente/grabadora'
 import { BarraGrabacion, BotonMicrofono } from './GrabadorVoz'
 import { alExterno, tomarExternos } from '../agente/externos'
 import { Cargando } from './Cargando'
@@ -285,6 +286,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [aislado, setAislado] = useState(true)
   const [texto, setTexto] = useState('')
   const [verHistorial, setVerHistorial] = useState(false)
+  const notificar = useNotificaciones()
   const [gestion, setGestion] = useState<'permisos' | 'comandos' | null>(null)
   const [comandos, setComandos] = useState<ComandoUsuario[]>([])
   const [seleccion, setSeleccion] = useState(0)
@@ -304,7 +306,6 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [verTareas, setVerTareas] = useState(false)
   const [mencionTareaOculta, setMencionTareaOculta] = useState(false)
   const [selTarea, setSelTarea] = useState(0)
-  const [dictado, setDictado] = useState<(TextoDictado & { inicio: number }) | null>(null) // último dictado mejorado: permite volver al original
   const cursorPendiente = useRef<number | null>(null)
   const selector = useRef<HTMLInputElement>(null)
   const modelos = useModelos()
@@ -524,7 +525,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     setCursor(antes.length + insertado.length)
   }
 
-  // Dictado por voz: el texto queda en el campo, donde estaba el cursor, para revisarlo. Nunca se envía solo.
+  // Dictado por voz: la transcripción literal queda en el campo, donde estaba el cursor, para editarla. Nunca se envía solo.
   const voz = useGrabadora((d) => {
     const pos = Math.min(cursor, texto.length)
     const antes = texto.slice(0, pos)
@@ -535,20 +536,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     cursorPendiente.current = antes.length + prefijo.length + d.texto.length
     setTexto(nuevo)
     setCursor(cursorPendiente.current)
-    setDictado(d.mejorado ? { ...d, inicio: antes.length + prefijo.length } : null)
   })
-  /** Cambia la versión mejorada por la transcripción literal (si sigue sin tocar en el campo). */
-  const usarOriginal = (): void => {
-    if (!dictado) return
-    const i = texto.slice(dictado.inicio, dictado.inicio + dictado.texto.length) === dictado.texto ? dictado.inicio : texto.indexOf(dictado.texto)
-    setDictado(null)
-    if (i < 0) return
-    const nuevo = texto.slice(0, i) + dictado.original + texto.slice(i + dictado.texto.length)
-    cursorPendiente.current = i + dictado.original.length
-    setTexto(nuevo)
-    setCursor(cursorPendiente.current)
-  }
-
   // Tras insertar, el cursor se coloca después de lo insertado (el texto del campo se actualiza en el siguiente render).
   useEffect(() => {
     if (cursorPendiente.current === null) return
@@ -898,6 +886,15 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           <button className="ag-icono" onClick={() => selector.current?.click()} disabled={pendientes.length >= LIMITES_ADJUNTOS.porMensaje} title="Adjuntar imágenes, PDF o archivos de texto (también puedes pegarlos o arrastrarlos)" aria-label="Adjuntar archivos">
             <IconoClip />
           </button>
+          <button
+            className={`ag-icono${notificar ? '' : ' apagado'}`}
+            onClick={() => fijarNotificaciones(!notificar)}
+            aria-pressed={notificar}
+            aria-label="Notificaciones"
+            title={notificar ? 'Notificaciones activadas: te aviso cuando el Asistente termina de responder (si no estás mirando el chat). Pulsa para desactivarlas.' : 'Notificaciones desactivadas. Pulsa para que te avise cuando el Asistente termine de responder.'}
+          >
+            {notificar ? <IconoCampana /> : <IconoCampanaTachada />}
+          </button>
           <button className="ag-icono" onClick={() => setVerHistorial((v) => !v)} aria-expanded={verHistorial} aria-label="Historial" title="Historial: conversaciones guardadas">
             <IconoReloj />
           </button>
@@ -920,17 +917,6 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         {subiendo > 0 && <div className="cfg-nota">Subiendo archivo…</div>}
         {errorAdjunto && <div className="cfg-error" role="alert">{errorAdjunto}</div>}
         <BarraGrabacion voz={voz} />
-        {dictado && texto.includes(dictado.texto) && (
-          <div className="ag-voz-nota">
-            <span>✦ Redacción mejorada. Revísala antes de enviar.</span>
-            <button className="enlace" onClick={usarOriginal}>
-              Usar lo que dije
-            </button>
-            <button className="icono" onClick={() => setDictado(null)} aria-label="Cerrar aviso">
-              <IconoCerrar />
-            </button>
-          </div>
-        )}
         <div className="ag-entrada">
           {sugerencias.length > 0 && (
             <div className="ag-sugerencias" role="listbox" aria-label="Comandos">

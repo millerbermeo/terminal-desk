@@ -32,7 +32,11 @@ import {
   type ResumenTareas,
   type Tarea,
   type TipoActividad,
-  type TipoReferencia
+  type TipoReferencia,
+  MAX_ESTIMACION,
+  NOMBRE_RESPONSABLE,
+  RESPONSABLES,
+  type Responsable
 } from '@shared/tareas'
 import type { AlmacenJson } from '../memory/almacen'
 
@@ -97,6 +101,16 @@ const prioridad = (v: unknown): Prioridad => {
 const color = (v: unknown): ColorTarea => {
   if (!COLORES_TAREA.includes(v as ColorTarea)) throw new Error(`El color debe ser: ${COLORES_TAREA.join(', ')}.`)
   return v as ColorTarea
+}
+
+const responsable = (v: unknown): Responsable => {
+  if (!RESPONSABLES.includes(v as Responsable)) throw new Error(`El responsable debe ser: ${RESPONSABLES.join(', ')}.`)
+  return v as Responsable
+}
+
+const estimacion = (v: unknown): number => {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > MAX_ESTIMACION) throw new Error(`«estimacion» debe ser un número entre 0 y ${MAX_ESTIMACION}.`)
+  return Math.round(v * 10) / 10
 }
 
 const etiquetas = (v: unknown): string[] => {
@@ -221,6 +235,9 @@ export class ServicioTareas {
     }
     if (n.inicio !== undefined) t.inicio = fecha(n.inicio, 'inicio')
     if (n.vence !== undefined) t.vence = fecha(n.vence, 'vence')
+    if (n.responsable !== undefined) t.responsable = responsable(n.responsable)
+    if (n.estimacion !== undefined) t.estimacion = estimacion(n.estimacion)
+    if (n.hito !== undefined && n.hito.trim()) t.hito = texto(n.hito, 'hito', 60)
     if (t.criterios.length > MAX_ITEMS || t.checklist.length > MAX_ITEMS) throw new Error(`Máximo ${MAX_ITEMS} elementos por lista.`)
     if (estado.categoria === 'en_curso') t.inicio ??= ahora
     d.tareas.push(t)
@@ -342,6 +359,30 @@ export class ServicioTareas {
           t.etiquetas = v
         }
       }
+      if (parche.responsable !== undefined) {
+        const v = parche.responsable === null ? undefined : responsable(parche.responsable)
+        if (v !== t.responsable) {
+          cambios.push(`responsable (${v ? NOMBRE_RESPONSABLE[v] : 'sin asignar'})`)
+          if (v) t.responsable = v
+          else delete t.responsable
+        }
+      }
+      if (parche.estimacion !== undefined) {
+        const v = parche.estimacion === null ? undefined : estimacion(parche.estimacion)
+        if (v !== t.estimacion) {
+          cambios.push(`estimación (${v ?? 'quitada'})`)
+          if (v !== undefined) t.estimacion = v
+          else delete t.estimacion
+        }
+      }
+      if (parche.hito !== undefined) {
+        const v = parche.hito === null ? '' : texto(parche.hito, 'hito', 60)
+        if (v !== (t.hito ?? '')) {
+          cambios.push(`hito (${v || 'quitado'})`)
+          if (v) t.hito = v
+          else delete t.hito
+        }
+      }
       for (const campo of ['inicio', 'vence'] as const) {
         if (parche[campo] === undefined) continue
         if (parche[campo] === null) {
@@ -461,8 +502,16 @@ export class ServicioTareas {
           reg(tipo, `Quitó ${nombre} de ${corto(t)}: ${x.texto}`, t)
           break
         }
+        case 'mover': {
+          const x = buscarItem()
+          const destino = Math.min(lista.length - 1, Math.max(0, Math.floor(Number(e.indice))))
+          if (!Number.isFinite(destino)) throw new Error('«indice» debe ser un número.')
+          lista.splice(lista.indexOf(x), 1)
+          lista.splice(destino, 0, x)
+          break // reordenar no deja rastro en el historial
+        }
         default:
-          throw new Error('«accion» debe ser anadir, marcar, editar o quitar.')
+          throw new Error('«accion» debe ser anadir, marcar, editar, quitar o mover.')
       }
       t.actualizada = Date.now()
       return t

@@ -17,11 +17,11 @@ import { Canales } from '@shared/ipc'
 import { carpetasHermanas, pluginAgentesAsistente } from '../agentes'
 import { pluginCavemanLigero } from '../caveman'
 import { pluginGuardia } from '../guardia'
-import { AVISO_CONTEXTO, AVISO_COSTO_TURNO, bloqueContextoPrevio, decidirRotacion, maxContinuarAutomatico, MetaSesionesCli, type MotivoRotacion, presupuestoTurnoUsd, umbralesDeEntorno } from './consumo'
+import { AVISO_CONTEXTO, AVISO_COSTO_TURNO, bloqueContextoPrevio, bloqueLaterales, conLateral, decidirRotacion, digestDeConversacion, maxContinuarAutomatico, MetaSesionesCli, type MotivoRotacion, presupuestoTurnoUsd, umbralesDeEntorno } from './consumo'
 import { prepararRotacion } from './rotacion'
 import { Bitacora } from './bitacora'
 import { leerProveedores } from '../proveedores'
-import { DIR, carpetaDeProyecto, leerProyectos, registrarProyecto, vincularCarpetaAProyecto } from '../proyectos'
+import { DIR, carpetaDeProyecto, esProyectoLocal, leerProyectos, registrarProyecto, vincularCarpetaAProyecto } from '../proyectos'
 import { Agente } from './agents/agente'
 import { Harness, type Aprobador, type Validador } from './agents/harness'
 import { MODELO_POR_DEFECTO, ProveedorAnthropic } from './agents/llm/anthropic'
@@ -41,7 +41,7 @@ import { MotorGuardrails } from './guardrails/motor'
 import { AlmacenTrazas } from './tracing/almacen'
 import { LlmTrazado } from './tracing/llm-trazado'
 import { Trazador } from './tracing/trazador'
-import { credencialesDe } from '../credenciales'
+import { credencialesDe, eliminarCredencialPorNombre, guardarCredencialPorNombre } from '../credenciales'
 import { crearAprobadorHumano } from './hitl/aprobador'
 import { crearPermisoCli } from './hitl/permiso-cli'
 import { AlmacenAdjuntos } from './adjuntos/almacen'
@@ -75,7 +75,7 @@ import { ejecutarOperacionTareas } from './tareas/operaciones'
 import { archivoMcpTareas, servidoresExternos } from './tareas/mcp-config'
 import { cerrarSesion, consultarCli, ejecutarSuscripcion, ESFUERZOS, estadoCuenta, estadoSesion, iniciarSesion, listarModelosCli, Preferencias, rebobinarArchivos, SesionesCli, type ControlProceso, type ResultadoRebobinado, type SalidaEjecucion } from './suscripcion'
 import { ejecutarEnProceso, ProcesosCli } from './proceso-cli'
-import { AVISO_SUBAGENTES, GUIA_TRABAJO, guiaNavegador, guiaRecursos } from './avisos'
+import { AVISO_SUBAGENTES, GUIA_CREDENCIALES, GUIA_TRABAJO, guiaNavegador, guiaRecursos } from './avisos'
 import { registrarIntegradas } from './tools/integradas'
 import { RegistroHerramientas } from './tools/registro'
 
@@ -204,7 +204,7 @@ export class Nucleo {
   /** Títulos generados por el modelo que aún no se pudieron aplicar (la conversación se guarda al terminar el turno). */
   private readonly titulosPendientes = new Map<string, string>()
   /** Ejecuciones por suscripción en marcha: su bitácora y entorno, para responder preguntas laterales sin interrumpirlas. */
-  private readonly vivas = new Map<string, { bitacora: Bitacora; cwd: string; proyecto?: Proyecto; carpetasExtra: string[]; carpetaCuenta?: string; control?: ControlProceso; contexto: number }>()
+  private readonly vivas = new Map<string, { bitacora: Bitacora; sesionId: string; cwd: string; proyecto?: Proyecto; carpetasExtra: string[]; carpetaCuenta?: string; control?: ControlProceso; contexto: number }>()
 
   constructor(private readonly aprobar?: Aprobador) {
     registrarIntegradas(this.registro)
@@ -225,6 +225,7 @@ export class Nucleo {
       carpetaDe: carpetaDeProyecto,
       credenciales: this.github.credencialesPara,
       credencialesPrueba: credencialesDe,
+      credencialesGestion: { guardar: guardarCredencialPorNombre, eliminar: eliminarCredencialPorNombre },
       memoria: this.memoria,
       navegador: () => this.navegadorIA,
       movil: () => this.movilIA,
@@ -413,10 +414,8 @@ export class Nucleo {
     const memoria = await this.memoria.contextoPara(prompt, proyecto?.id)
     const tareas = proyecto ? await this.tareas.contextoParaIA(proyecto.id, proyecto.nombre, prompt).catch(() => '') : ''
     const git = proyecto ? await this.contextoGit(proyecto.ruta) : { estado: '', guia: '' }
-    const pruebas = proyecto ? await credencialesDe(proyecto.id).catch(() => []) : []
-    const credsCtx = pruebas.length
-      ? `Hay ${pruebas.length} credencial(es) de PRUEBA guardadas en este equipo para este proyecto (${pruebas.map((c) => c.nombre).join(', ')}). Cuando necesites un usuario, clave o URL para probar, consúltalas con credenciales_listar / credenciales_obtener en vez de pedírselas al usuario; no las escribas en archivos versionados ni en commits.`
-      : ''
+    // Texto fijo (sin nombres ni cuántas hay): si cambiara al guardar una credencial, se relanzaría el proceso y se perdería la caché.
+    const credsCtx = proyecto ? GUIA_CREDENCIALES : ''
     return {
       estable: [GUIA_TRABAJO, git.guia, credsCtx, AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim(),
       dinamico: [memoria, tareas, git.estado, conAdjuntos ? AVISO_ADJUNTOS : ''].filter(Boolean).join('\n\n').trim()
@@ -428,10 +427,7 @@ export class Nucleo {
     const memoria = await this.memoria.contextoPara(prompt, proyecto?.id)
     const tareas = proyecto ? await this.tareas.contextoParaIA(proyecto.id, proyecto.nombre, prompt).catch(() => '') : ''
     const gitCtx = proyecto ? (({ estado, guia }) => [estado, guia].filter(Boolean).join('\n'))(await this.contextoGit(proyecto.ruta)) : ''
-    const pruebas = proyecto ? await credencialesDe(proyecto.id).catch(() => []) : []
-    const credsCtx = pruebas.length
-      ? `Hay ${pruebas.length} credencial(es) de PRUEBA guardadas en este equipo para este proyecto (${pruebas.map((c) => c.nombre).join(', ')}). Cuando necesites un usuario, clave o URL para probar, consúltalas con credenciales_listar / credenciales_obtener en vez de pedírselas al usuario; no las escribas en archivos versionados ni en commits.`
-      : ''
+    const credsCtx = proyecto ? GUIA_CREDENCIALES : ''
     return [memoria, tareas, gitCtx, credsCtx, conAdjuntos ? AVISO_ADJUNTOS : '', AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim()
   }
 
@@ -657,15 +653,20 @@ export class Nucleo {
         // Lo que cambia entre mensajes (memoria relevante, tareas, estado de git) va delante del mensaje y solo si cambió desde la última vez;
         // los avisos pendientes (p. ej. archivos deshechos) también. Una sesión nueva (o recién resumida) lo necesita todo.
         const hashDinamico = dinamico ? createHash('sha1').update(dinamico).digest('hex') : undefined
+        // Preguntas laterales respondidas durante un mensaje anterior: este proceso no las vio. Las que lleguen DURANTE este turno
+        // quedan para el siguiente (por eso al guardar solo se quitan las que se entregaron aquí).
+        let lateralesEntregadas = meta?.laterales?.length ?? 0
         const delante = [
           prefijoPrompt,
           meta?.aviso,
+          bloqueLaterales(meta?.laterales),
           dinamico && (!previa || meta?.hashDinamico !== hashDinamico) ? `<contexto_actual>\n${dinamico}\n</contexto_actual>` : undefined
         ].filter(Boolean)
         prefijoPrompt = delante.length ? delante.join('\n\n') : undefined
         const eraNueva = !meta
-        const viva: { bitacora: Bitacora; cwd: string; proyecto?: Proyecto; carpetasExtra: string[]; carpetaCuenta?: string; control?: ControlProceso; contexto: number } = {
+        const viva: { bitacora: Bitacora; sesionId: string; cwd: string; proyecto?: Proyecto; carpetasExtra: string[]; carpetaCuenta?: string; control?: ControlProceso; contexto: number } = {
           bitacora,
+          sesionId,
           contexto: meta?.contexto ?? 0,
           cwd: proyecto?.ruta ?? process.cwd(),
           ...(proyecto ? { proyecto } : {}),
@@ -727,9 +728,12 @@ export class Nucleo {
             previa = r.sesionCli // si se sigue en el mismo turno (continuación automática, otra cuenta), que reanude desde aquí
             await this.sesionesCli.guardar(sesionId, r.sesionCli)
             await this.metaCli.actualizar(sesionId, (m) => {
-              const { pendiente: _resumido, aviso: _aviso, ...resto } = m
+              const { pendiente: _resumido, aviso: _aviso, laterales: lat, ...resto } = m
+              const sinEntregar = (lat ?? []).slice(lateralesEntregadas)
+              lateralesEntregadas = 0
               return {
                 ...resto,
+                ...(sinEntregar.length ? { laterales: sinEntregar } : {}),
                 ...(hashDinamico ? { hashDinamico } : {}),
                 contexto: r.contexto,
                 ...(r.ventana ? { ventana: r.ventana } : {}),
@@ -899,7 +903,15 @@ export class Nucleo {
     const id = randomUUID()
     const ctl = new AbortController()
     this.activas.set(id, ctl)
-    const emitir = (e: Record<string, unknown>): void => alEvento({ ejecucionId: id, agente: 'asistente', profundidad: 0, ...e } as EventoAgente)
+    // Enlace con el hilo principal: la respuesta se anota en la ficha de la conversación y el CLI de la tarea la recibe delante del
+    // siguiente mensaje (sin esto, lo preguntado aparte no existía para la conversación: «como te dije antes» no encontraba nada).
+    const emitir = (e: Record<string, unknown>): void => {
+      if (e.tipo === 'fin') {
+        const r = e.resultado as { estado?: string; texto?: string } | undefined
+        if (r?.estado === 'completado' && r.texto?.trim()) void this.metaCli.actualizar(viva.sesionId, (m) => conLateral(m, prompt, r.texto!)).catch(() => undefined)
+      }
+      alEvento({ ejecucionId: id, agente: 'asistente', profundidad: 0, ...e } as EventoAgente)
+    }
     // Con el proceso de la tarea a mano, la pregunta se hace con `side_question` del CLI: responde con el contexto REAL de la conversación (sin
     // bitácora ni otro proceso) y sin tocar la tarea. Cada llamada relee todo el contexto, así que con una conversación grande sale más barato
     // el camino de siempre (modelo rápido con un resumen de la bitácora).
@@ -934,12 +946,19 @@ export class Nucleo {
     emitir: (e: Record<string, unknown>) => void,
     omitirInicio: boolean
   ): Promise<void> {
+    // La bitácora solo cubre la ejecución en marcha: sin los mensajes anteriores, una pregunta sobre algo dicho antes («¿por qué
+    // elegiste eso?») quedaba sin contexto y la respuesta no tenía que ver con la conversación.
+    const previos = digestDeConversacion((await this.sesiones.obtener(viva.sesionId).catch(() => undefined))?.transcripcion ?? [], 8000)
     const sistemaExtra = [
-      'PREGUNTA LATERAL. Otra ejecución (otro proceso) está trabajando AHORA en la petición del usuario y no debes interrumpirla ni repetir su trabajo.',
-      'Responde la pregunta del usuario en pocas líneas, basándote en este registro de lo que lleva hecho. Si el registro no basta, dilo; no inventes.',
+      'PREGUNTA LATERAL. Otra ejecución (otro proceso) está trabajando AHORA en la petición del usuario, en esta misma conversación y carpeta. No la interrumpas ni repitas su trabajo.',
+      'La pregunta del usuario se refiere a ESA tarea y a esta conversación salvo que diga claramente otra cosa: «esto», «eso», «lo que haces», «ya» o «cuánto falta» hablan de ella. Responde en pocas líneas a partir del registro (qué pidió, el plan, qué lleva hecho y qué está ejecutando ahora) y de los mensajes anteriores. Si con eso no basta, puedes leer archivos para comprobarlo; si aun así no lo sabes, dilo, no inventes.',
+      'Si el usuario no pregunta sino que pide un cambio o da una instrucción para la tarea, no la ejecutes tú: dile que queda anotada y que el asistente la verá al terminar el paso actual, con su siguiente mensaje (o que detenga la tarea y la envíe si corre prisa).',
       'Solo lectura: puedes mirar archivos para comprobar algo, pero no modifiques nada ni ejecutes comandos que cambien algo.',
-      `<registro_de_la_tarea>\n${viva.bitacora.texto()}\n</registro_de_la_tarea>`
-    ].join('\n\n')
+      previos.trim() ? `<mensajes_anteriores_de_la_conversacion>\n${previos}\n</mensajes_anteriores_de_la_conversacion>` : '',
+      `<registro_de_la_tarea_en_marcha>\n${viva.bitacora.texto()}\n</registro_de_la_tarea_en_marcha>`
+    ]
+      .filter(Boolean)
+      .join('\n\n')
     try {
       const pluginDirs = [await pluginCavemanLigero(), await pluginGuardia()].filter((d): d is string => Boolean(d))
       const carpetaCuenta = this.cuentas.carpetaDe(await this.cuentas.activa())
@@ -1224,6 +1243,7 @@ export class Nucleo {
    * Lo local que el servidor no tiene, o tiene más viejo, se sube.
    */
   async hidratar(proyectoId: string, incremental = false): Promise<{ tareas: number; chats: number; trazas: number; borrados: number }> {
+    if (esProyectoLocal(proyectoId)) return { tareas: 0, chats: 0, trazas: 0, borrados: 0 } // proyecto local: no hay nada remoto que bajar
     const previo = incremental ? this.cursores.get(proyectoId) : undefined
     const ctx = await this.sync.contexto(proyectoId, previo !== undefined ? Math.max(0, previo - 10_000) : undefined)
     const hecho = { tareas: 0, chats: 0, trazas: 0, borrados: 0 }

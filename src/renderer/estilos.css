@@ -390,8 +390,8 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
 .estado-error, .estado-fallido, .estado-rechazado { color: var(--error); border-color: rgba(248, 113, 113, 0.4); }
 .estado-en_curso { color: var(--acento); border-color: rgba(129, 140, 248, 0.4); }
 .ag-compositor { border-top: 1px solid var(--borde); padding: 14px 32px 18px; background: var(--bg); }
-.ag-entrada { display: flex; gap: 8px; align-items: flex-end; }
-.ag-entrada textarea { flex: 1; width: 100%; min-height: 64px; border-radius: var(--radio-lg); padding: 10px 14px; background: var(--bg-elevado); }
+.ag-entrada { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.ag-entrada textarea { flex: 1 1 0; min-width: 0; width: 100%; min-height: 64px; border-radius: var(--radio-lg); padding: 10px 14px; background: var(--bg-elevado); }
 .ag-entrada button { align-self: stretch; min-width: 96px; }
 
 .ag-solicitud-fondo { flex: none; border-top: 1px solid var(--borde); padding: 10px 20px 0; background: var(--bg); }
@@ -521,7 +521,9 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
   .ag-compositor { padding: 6px 10px 10px; }
   .ag-opciones { gap: 6px; }
   .ag-opciones .ag-check { flex: 1 1 100%; }
-  .ag-entrada { flex-direction: column; align-items: stretch; }
+  .ag-entrada { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
+  .ag-entrada .ag-cola { flex: none; }
+  .ag-entrada textarea { flex: none; }
   .ag-entrada button { min-width: 0; }
   .ag-entrada textarea { min-height: 54px; }
   .ag-sugerencias { right: 0; }
@@ -1112,12 +1114,12 @@ button.enlace:hover:not(:disabled) { background: none; text-decoration: underlin
 @media (max-width: 900px) { .doc-indice { width: 196px; } .doc-art { padding: 20px 20px 56px; } }
 
 /* Mensajes en cola del Asistente */
-.ag-cola { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.ag-cola li { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 3px 8px; background: var(--bg-elevado); border: 1px dashed var(--borde-fuerte); border-radius: 8px; font-size: 12px; }
+.ag-cola { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 4px; flex: 1 1 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+.ag-cola li { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden; padding: 3px 8px; background: var(--bg-elevado); border: 1px dashed var(--borde-fuerte); border-radius: 8px; font-size: 12px; }
 .ag-cola-n { color: var(--texto-suave); flex: none; }
-.ag-cola-texto { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-cola-texto { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: anywhere; }
 .ag-cola small { color: var(--texto-suave); flex: none; }
-.ag-cola button { padding: 0 6px; }
+.ag-cola button { padding: 0 6px; flex: none; }
 .ag-cola-pausa { color: var(--texto-suave); }
 
 /* compositor compacto: controles chicos, input más bajo y barra de uso pegada debajo */

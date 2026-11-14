@@ -48,7 +48,12 @@ describe('recursosDeCarpeta', () => {
     await writeFile(join(tmp, '.claude', 'agents', 'revisor.md'), '---\nname: revisor\n---\n')
     await mkdir(join(tmp, '.claude', 'skills', 'commit'))
     await writeFile(join(tmp, '.claude', 'skills', 'commit', 'SKILL.md'), '---\nname: commit\n---\n')
-    expect(await recursosDeCarpeta(tmp)).toEqual({ agentes: true, skills: true })
+    await writeFile(join(tmp, '.claude', 'skills', 'commit', 'SKILL.md'), '---\nname: commit\ndescription: "Úsala al escribir mensajes de commit"\n---\n')
+    expect(await recursosDeCarpeta(tmp)).toEqual({
+      agentes: true,
+      skills: true,
+      lista: [{ tipo: 'agente', nombre: 'revisor', descripcion: '' }, { tipo: 'skill', nombre: 'commit', descripcion: 'Úsala al escribir mensajes de commit' }]
+    })
   })
 })
 
@@ -59,6 +64,21 @@ describe('guiaRecursos', () => {
     expect(soloSkills).toContain('skill')
     expect(soloSkills).not.toMatch(/herramienta Agent|delégala/)
     expect(guiaRecursos({ agentes: true, skills: true })).toMatch(/Agent[\s\S]*Skill/)
+  })
+
+  it('con la lista, nombra cada recurso con su «cuándo» para que el modelo decida contra una tabla', () => {
+    const g = guiaRecursos({
+      agentes: true,
+      skills: true,
+      lista: [
+        { tipo: 'agente', nombre: 'revisor', descripcion: 'Revisa cambios antes de confirmar.\nBusca errores' },
+        { tipo: 'skill', nombre: 'commit', descripcion: 'x'.repeat(400) }
+      ]
+    })
+    expect(g).toContain('- revisor: Revisa cambios antes de confirmar. Busca errores')
+    expect(g).toMatch(/- commit: x{100,179}…/)
+    expect(g).toMatch(/Una sola vez por conversación/)
+    expect(g).toMatch(/No ve esta conversación/)
   })
 })
 

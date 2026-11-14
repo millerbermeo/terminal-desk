@@ -61,8 +61,15 @@ interface Arrastre {
 
 /** Asistente de una celda: conversación propia (estado por celda) con el proyecto fijado. */
 function AsistenteCelda({ proyecto, clave }: { proyecto: { id: string; nombre: string }; clave: string }) {
-  const agente = useAgente({ clave }) // la primera celda del proyecto recuerda su conversación; cada copia empieza la suya
-  return <ChatAgente agente={agente} proyectoFijo={proyecto} />
+  // Marca sin tamaño: `checkVisibility` dice si la celda (y su pestaña) se están mostrando, para no notificar lo que ya se ve.
+  const marca = useRef<HTMLSpanElement>(null)
+  const agente = useAgente({ clave, aLaVista: () => marca.current?.checkVisibility() ?? false }) // la primera celda del proyecto recuerda su conversación; cada copia empieza la suya
+  return (
+    <>
+      <span ref={marca} style={{ position: 'absolute', width: 0, height: 0 }} aria-hidden="true" />
+      <ChatAgente agente={agente} proyectoFijo={proyecto} />
+    </>
+  )
 }
 
 export function TerminalGrid({ terminales, activa, modo, reiniciarLayout, claveLayout, onPersonalizado, onActivar, onCerrar, onPty, onVista, onPestanas }: Props) {

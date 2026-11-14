@@ -19,6 +19,9 @@ import './estilos-apple.css'
 import './diseno/sistema.css'
 import './diseno/barra-lateral.css'
 import './diseno/modulos.css'
+import './diseno/proyectos.css'
+import './diseno/inicio.css'
+import './diseno/tareas.css'
 import { Cargando } from './components/Cargando'
 
 // ?ventana=<token> => ventana separada (solo terminales); sin parámetro => ventana principal

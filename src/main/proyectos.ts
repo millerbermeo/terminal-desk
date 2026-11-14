@@ -1,11 +1,12 @@
+import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
-import { access, readdir, readFile, stat } from 'node:fs/promises'
+import { access, mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
-import type { DatosProyectos } from '@shared/modelos'
+import { claveNombre, type DatosProyectos } from '@shared/modelos'
 import type { ErrorProyecto, ResultadoAgregar, SolicitudAgregar, ValidacionRuta } from '@shared/ipc'
 import { resolverDirDatos } from './migracion'
-import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
+import { ErrorServidor, ErrorSesion, esFalloDeConexion, servidor } from './servidor/cliente'
 import { RutasLocales } from './servidor/rutas'
 import { avisoDeGit, leerVinculo, quitarVinculoLocal, repoDe, vincularProyectoLocal } from './servidor/vinculo'
 
@@ -17,6 +18,40 @@ export const DIR = MIGRACION_DATOS.dir
 
 /** Carpeta de cada proyecto en ESTE equipo: el servidor no guarda rutas. */
 export const rutasLocales = new RutasLocales(join(DIR, 'rutas.json'))
+
+/** Proyectos locales: solo viven en este equipo (`proyectos-locales.json`), con id `local-…` (nunca un UUID: nada los sube al servidor). */
+interface ProyectoLocal {
+  id: string
+  nombre: string
+  ruta: string
+  grupo?: string
+}
+const ARCHIVO_LOCALES = join(DIR, 'proyectos-locales.json')
+let colaLocales: Promise<unknown> = Promise.resolve()
+
+export const esProyectoLocal = (id: unknown): id is string => typeof id === 'string' && id.startsWith('local-')
+
+async function leerLocales(): Promise<ProyectoLocal[]> {
+  try {
+    const j = JSON.parse(await readFile(ARCHIVO_LOCALES, 'utf8')) as { proyectos?: ProyectoLocal[] }
+    return (j.proyectos ?? []).filter((p) => esProyectoLocal(p?.id) && typeof p.nombre === 'string' && typeof p.ruta === 'string')
+  } catch {
+    return []
+  }
+}
+
+/** Cambia la lista de proyectos locales (escrituras en cola, atómicas). */
+function cambiarLocales(fn: (l: ProyectoLocal[]) => ProyectoLocal[]): Promise<void> {
+  const p = colaLocales.then(async () => {
+    const nueva = fn(await leerLocales())
+    await mkdir(DIR, { recursive: true })
+    const tmp = `${ARCHIVO_LOCALES}.${process.pid}.tmp`
+    await writeFile(tmp, JSON.stringify({ version: 1, proyectos: nueva }, null, 2) + '\n', 'utf8')
+    await rename(tmp, ARCHIVO_LOCALES)
+  })
+  colaLocales = p.catch(() => undefined)
+  return p
+}
 
 interface GrupoApi {
   id: string
@@ -32,6 +67,8 @@ interface ProyectoApi {
 // Las lecturas se repiten mucho (cada operación de git o archivos resuelve la carpeta del proyecto): se guardan un instante.
 const VIGENCIA_MS = 2000
 let memoria: { datos: DatosProyectos; hasta: number } | undefined
+/** Última respuesta buena del servidor, de qué cuenta era: sirve mientras el servidor no responde (un corte no debe parar el trabajo). */
+let ultimaLectura: { groups: GrupoApi[]; projects: ProyectoApi[]; usuario: string | undefined } | undefined
 
 /** Olvida lo leído: hay que llamarlo tras cualquier cambio en el servidor. */
 export function olvidarProyectos(): void {
@@ -45,14 +82,28 @@ export function olvidarProyectos(): void {
  */
 export async function leerProyectos(): Promise<DatosProyectos> {
   if (memoria && memoria.hasta > Date.now()) return structuredClone(memoria.datos)
-  const r = await servidor.get<{ groups: GrupoApi[]; projects: ProyectoApi[] }>('/projects')
+  let r: { groups: GrupoApi[]; projects: ProyectoApi[] }
+  let vigente = true
+  try {
+    const usuario = (await servidor.estado()).email // antes de pedir: si la cuenta cambia durante la petición, no se etiqueta con la nueva
+    r = await servidor.get<{ groups: GrupoApi[]; projects: ProyectoApi[] }>('/projects')
+    ultimaLectura = { ...r, usuario }
+  } catch (err) {
+    // Sin conexión (o el servidor caído) se sigue con lo último que respondió para esta cuenta: enviar un mensaje al Asistente, abrir un
+    // archivo o usar git no dependen de que el servidor conteste justo ahora. Sin sesión, o si nunca respondió, el error sale tal cual.
+    if (!esFalloDeConexion(err) || !ultimaLectura || ultimaLectura.usuario !== (await servidor.estado()).email) throw err
+    r = ultimaLectura
+    vigente = false
+  }
   const locales = await rutasLocales.todas()
+  const grupos = r.groups.map((g) => ({ id: g.id, nombre: g.name }))
+  const soloAqui = (await leerLocales()).map((p) => ({ id: p.id, nombre: p.nombre, ruta: p.ruta, local: true as const, ...(p.grupo && grupos.some((g) => g.id === p.grupo) ? { grupo: p.grupo } : {}) }))
   const datos: DatosProyectos = {
-    grupos: r.groups.map((g) => ({ id: g.id, nombre: g.name })),
-    proyectos: r.projects.flatMap((p) => (locales[p.id] ? [{ id: p.id, nombre: p.name, ruta: locales[p.id], ...(p.groupId ? { grupo: p.groupId } : {}) }] : []))
+    grupos,
+    proyectos: [...r.projects.flatMap((p) => (locales[p.id] ? [{ id: p.id, nombre: p.name, ruta: locales[p.id], ...(p.groupId ? { grupo: p.groupId } : {}) }] : [])), ...soloAqui]
   }
   memoria = { datos, hasta: Date.now() + VIGENCIA_MS }
-  void completarRepos(r.projects, locales)
+  if (vigente) void completarRepos(r.projects, locales)
   return structuredClone(datos)
 }
 
@@ -135,6 +186,47 @@ export async function sugerirRutas(prefijo: string): Promise<string[]> {
   }
 }
 
+/**
+ * ¿Ya hay un proyecto con ese nombre (en este equipo o en la cuenta)? Si la carpeta se va a reanudar como un proyecto de la cuenta
+ * (trae su `.odesk/project.json` o su remoto coincide), ese proyecto no cuenta: conserva su nombre.
+ */
+async function nombreOcupado(nombre: string, datos: DatosProyectos, ruta: string): Promise<boolean> {
+  const k = claveNombre(nombre)
+  if (datos.proyectos.some((p) => claveNombre(p.nombre) === k)) return true
+  const sinCarpeta = await proyectosSinCarpeta().catch(() => [])
+  const coincide = sinCarpeta.filter((p) => claveNombre(p.nombre) === k)
+  if (coincide.length === 0) return false
+  const vinculo = await leerVinculo(ruta).catch(() => undefined)
+  const remoto = await repoDe(ruta).catch(() => undefined)
+  const clave = remoto ? claveRepo(remoto) : undefined
+  return coincide.some((p) => p.id !== vinculo && !(clave && p.repo && claveRepo(p.repo) === clave))
+}
+
+/** Cambia el nombre de un proyecto de la cuenta o local. No admite el nombre de otro proyecto. */
+export async function renombrarProyecto(id: string, nombre: string): Promise<DatosProyectos> {
+  const limpio = nombre.trim()
+  if (!limpio) throw new Error('Falta el nombre.')
+  if (limpio.length > 120) throw new Error('El nombre es demasiado largo (máximo 120 caracteres).')
+  const datos = await leerProyectos()
+  const k = claveNombre(limpio)
+  const sinCarpeta = await proyectosSinCarpeta().catch(() => [])
+  if (datos.proyectos.some((p) => p.id !== id && claveNombre(p.nombre) === k) || sinCarpeta.some((p) => p.id !== id && claveNombre(p.nombre) === k)) {
+    throw new Error(`Ya existe un proyecto llamado «${limpio}». Elige otro nombre.`)
+  }
+  if (esProyectoLocal(id)) {
+    await cambiarLocales((l) => l.map((p) => (p.id === id ? { ...p, nombre: limpio } : p)))
+  } else {
+    if (!datos.proyectos.some((p) => p.id === id)) throw new Error('Ese proyecto no está en este equipo.')
+    try {
+      await servidor.put(`/projects/${encodeURIComponent(id)}/name`, { name: limpio })
+    } finally {
+      olvidarProyectos()
+    }
+  }
+  olvidarProyectos()
+  return leerProyectos()
+}
+
 export async function agregarProyectos(sol: SolicitudAgregar): Promise<ResultadoAgregar> {
   const datos = await leerProyectos()
   const errores: ErrorProyecto[] = []
@@ -146,11 +238,24 @@ export async function agregarProyectos(sol: SolicitudAgregar): Promise<Resultado
     if (!p.nombre.trim()) errores.push({ indice, mensaje: 'Falta el nombre' })
     else if (!v.ok) errores.push({ indice, mensaje: `${v.mensaje}: ${v.ruta || p.ruta}` })
     else if (rutas.indexOf(v.ruta) !== indice) errores.push({ indice, mensaje: 'Ruta repetida en el formulario' })
+    else if (sol.proyectos.some((o, j) => j < indice && claveNombre(o.nombre) === claveNombre(p.nombre))) errores.push({ indice, mensaje: `Nombre repetido en el formulario: «${p.nombre.trim()}»` })
+    else if (await nombreOcupado(p.nombre, datos, v.ruta)) errores.push({ indice, mensaje: `Ya existe un proyecto llamado «${p.nombre.trim()}». Elige otro nombre.` })
   }
   if (sol.grupoId && !datos.grupos.some((g) => g.id === sol.grupoId)) {
     errores.push({ indice: -1, mensaje: 'El grupo no existe' })
   }
   if (errores.length > 0) return { datos, errores }
+
+  if (sol.modo === 'local') {
+    if (sol.grupoNuevo?.trim()) return { datos, errores: [{ indice: -1, mensaje: 'Un proyecto local usa un grupo que ya exista: crear grupos es cosa de la cuenta.' }] }
+    // Sin servidor, sin `.odesk/project.json`, sin seguimiento remoto: solo se apunta la carpeta en este equipo.
+    const yaAqui = new Set([...datos.proyectos.map((p) => p.ruta), ...(await leerLocales()).map((p) => p.ruta)])
+    for (const [i, p] of sol.proyectos.entries()) if (yaAqui.has(rutas[i])) errores.push({ indice: i, mensaje: `Esa carpeta ya es un proyecto: ${p.nombre.trim()}` })
+    if (errores.length > 0) return { datos, errores }
+    await cambiarLocales((l) => [...l, ...sol.proyectos.map((p, i) => ({ id: `local-${randomUUID()}`, nombre: p.nombre.trim(), ruta: rutas[i], ...(sol.grupoId ? { grupo: sol.grupoId } : {}) }))])
+    olvidarProyectos()
+    return { datos: await leerProyectos(), errores }
+  }
 
   // El servidor crea (o reutiliza por nombre) el grupo nuevo con el primer proyecto; los demás ya lo encuentran.
   const nombreGrupo = sol.grupoNuevo?.trim()
@@ -237,6 +342,11 @@ async function resolverProyecto(nombre: string, ruta: string, destino: object): 
  * igual. Su `.odesk/project.json` queda en la carpeta: al volver a abrirla se retoma el mismo proyecto.
  */
 export async function eliminarProyecto(id: string): Promise<DatosProyectos> {
+  if (esProyectoLocal(id)) {
+    await cambiarLocales((l) => l.filter((p) => p.id !== id))
+    olvidarProyectos()
+    return leerProyectos()
+  }
   await rutasLocales.quitar(id)
   olvidarProyectos()
   return leerProyectos()
@@ -244,6 +354,11 @@ export async function eliminarProyecto(id: string): Promise<DatosProyectos> {
 
 /** Pasa un proyecto a otro grupo (`null` = sin grupo). */
 export async function moverProyectoAGrupo(id: string, grupoId: string | null): Promise<DatosProyectos> {
+  if (esProyectoLocal(id)) {
+    await cambiarLocales((l) => l.map((p) => (p.id === id ? { id: p.id, nombre: p.nombre, ruta: p.ruta, ...(grupoId ? { grupo: grupoId } : {}) } : p)))
+    olvidarProyectos()
+    return leerProyectos()
+  }
   try {
     await servidor.put(`/projects/${encodeURIComponent(id)}/group`, { groupId: grupoId })
   } finally {
@@ -280,11 +395,11 @@ export async function registrarProyecto(ruta: string, nombre: string, grupoId?: 
   return { id: registrado.id }
 }
 
-/** Proyectos de la cuenta que tienen repositorio y aún no tienen carpeta en este equipo (candidatos a clonar). */
+/** Proyectos de la cuenta que aún no tienen carpeta en este equipo (candidatos a clonar, o a enlazar con su carpeta si no tienen repositorio). Conservan su grupo de la cuenta. */
 export async function proyectosSinCarpeta(): Promise<{ id: string; nombre: string; repo: string; grupoId?: string }[]> {
   const r = await servidor.get<{ groups: GrupoApi[]; projects: ProyectoApi[] }>('/projects')
   const locales = await rutasLocales.todas()
-  return r.projects.flatMap((p) => (!locales[p.id] && p.repo ? [{ id: p.id, nombre: p.name, repo: p.repo, ...(p.groupId ? { grupoId: p.groupId } : {}) }] : []))
+  return r.projects.flatMap((p) => (!locales[p.id] ? [{ id: p.id, nombre: p.name, repo: p.repo ?? '', ...(p.groupId ? { grupoId: p.groupId } : {}) }] : []))
 }
 
 /** Prefijo del error cuando algo pide confirmación antes de enlazar: la interfaz la pregunta y reintenta con `confirmar`. */
