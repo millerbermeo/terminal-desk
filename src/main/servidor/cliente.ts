@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { AlmacenToken, type Cifrador } from '../github/token'
-import { servidorSeguro, type EstadoSesion } from '@shared/sesion'
+import { servidorSeguro, type EstadoSesion, type SesionDispositivo } from '@shared/sesion'
 
 /** Error con un mensaje apto para mostrar tal cual en la interfaz. */
 export class ErrorServidor extends Error {
@@ -176,6 +176,32 @@ export class ClienteServidor {
     await this.peticion('POST', '/auth/password', { actual, nueva })
   }
 
+  /** Cabeceras con las que el servidor reconoce este equipo en «Dispositivos conectados» (ver `identificarEquipo`). */
+  private equipo: Record<string, string> = {}
+
+  /**
+   * Identifica este equipo ante el servidor en cada petición con sesión: id de «Mis equipos», nombre, sistema y versión de la app.
+   * El nombre va codificado: una cabecera HTTP no admite «ñ» ni tildes tal cual.
+   */
+  identificarEquipo(e: { id: string; nombre: string; plataforma: string; version: string }): void {
+    this.equipo = { 'x-odesk-equipo': e.id, 'x-odesk-equipo-nombre': encodeURIComponent(e.nombre.slice(0, 120)), 'x-odesk-plataforma': e.plataforma, 'x-odesk-version': e.version }
+  }
+
+  /** Sesiones abiertas de la cuenta (`actual` = la de este equipo). */
+  dispositivos(): Promise<SesionDispositivo[]> {
+    return this.peticion<SesionDispositivo[]>('GET', '/auth/sessions')
+  }
+
+  /** Cierra la sesión de otro dispositivo: su token deja de valer al momento. */
+  async cerrarDispositivo(id: string): Promise<void> {
+    await this.peticion('DELETE', `/auth/sessions/${encodeURIComponent(id)}`)
+  }
+
+  /** Cierra la sesión en todos los dispositivos menos en este. */
+  cerrarOtros(): Promise<{ cerradas: number }> {
+    return this.peticion<{ cerradas: number }>('POST', '/auth/sessions/close-others', {})
+  }
+
   /** Cierra la sesión en todos los equipos (también en este). */
   async cerrarTodas(): Promise<EstadoSesion> {
     await this.peticion('POST', '/auth/logout-all', {}).catch(() => undefined)
@@ -271,7 +297,7 @@ export class ClienteServidor {
           method: metodo,
           headers: {
             ...(binario ? { 'content-type': binario.tipo, ...binario.cabeceras } : cuerpo !== undefined ? { 'content-type': 'application/json' } : {}),
-            ...(conSesion && this.token ? { authorization: `Bearer ${this.token}` } : {})
+            ...(conSesion && this.token ? { authorization: `Bearer ${this.token}`, ...this.equipo } : {})
           },
           ...(binario ? { body: new Uint8Array(binario.datos) } : cuerpo !== undefined ? { body: JSON.stringify(cuerpo) } : {}),
           signal: AbortSignal.timeout(espera)

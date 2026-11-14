@@ -50,6 +50,22 @@ export interface ResumenSincronizacion {
 }
 
 /** Operaciones de cuenta: un solo canal IPC tipado. */
+/** Una sesión abierta de la cuenta y desde dónde se usa (lo que el servidor sabe de ella). */
+export interface SesionDispositivo {
+  id: string
+  /** Es la de este equipo. */
+  actual: boolean
+  deviceId: string | null
+  deviceName: string | null
+  /** `linux`, `darwin`, `win32`… (`process.platform` del equipo). */
+  platform: string | null
+  appVersion: string | null
+  userAgent: string | null
+  ip: string | null
+  createdAt: string
+  lastSeenAt: string
+}
+
 export interface OperacionesCuenta {
   registrar: { entrada: { email: string; password: string }; salida: ResultadoPaso }
   /** `password`: la del registro (o la del login que pidió activar): el servidor la exige junto con el código. */
@@ -59,6 +75,12 @@ export interface OperacionesCuenta {
   restablecer: { entrada: { email: string; code: string; password: string }; salida: ResultadoSesion }
   cambiarPassword: { entrada: { actual: string; nueva: string }; salida: ResultadoPaso }
   cerrarTodas: { entrada: Record<string, never>; salida: EstadoSesion }
+  /** «Dispositivos conectados»: las sesiones abiertas de la cuenta. */
+  dispositivos: { entrada: Record<string, never>; salida: SesionDispositivo[] }
+  /** Cierra la sesión de otro dispositivo (la de este equipo se cierra con «Cerrar sesión»). */
+  cerrarDispositivo: { entrada: { id: string }; salida: { ok: true } }
+  /** Cierra la sesión en todos los dispositivos menos en este. */
+  cerrarOtros: { entrada: Record<string, never>; salida: { cerradas: number } }
   /** Sube y baja ya los datos de la cuenta y la bóveda (normalmente se hace solo cada 30 s). */
   sincronizar: { entrada: Record<string, never>; salida: ResumenSincronizacion }
   bovedaEstado: { entrada: Record<string, never>; salida: ResultadoBoveda }

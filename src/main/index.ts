@@ -326,6 +326,11 @@ const depsEquipos: DepsEquipos = {
   alClonar: async (id) => void (await nucleo.hidratar(id))
 }
 const equipos = new ServicioEquipos(depsEquipos)
+// Cada petición con sesión dice desde qué equipo se hace: el servidor lo muestra en «Dispositivos conectados».
+void equipos
+  .equipo()
+  .then((yo) => servidor.identificarEquipo({ id: yo.id, nombre: yo.nombre, plataforma: process.platform, version: app.getVersion() }))
+  .catch(() => undefined)
 // Chat entre cuentas: un WebSocket con el servidor (se abre al haber sesión) y las operaciones que pide la interfaz.
 const conexionChat = new ConexionChat({
   url: () => servidor.url,
@@ -599,6 +604,15 @@ function operarCuenta(op: NombreOperacionCuenta, e: Record<string, unknown>): Pr
     case 'cerrarTodas':
       detenerBucleCuenta()
       return servidor.cerrarTodas()
+    case 'dispositivos':
+      return servidor.dispositivos()
+    case 'cerrarDispositivo': {
+      const id = t('id')
+      if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Dispositivo no válido')
+      return servidor.cerrarDispositivo(id).then(() => ({ ok: true as const }))
+    }
+    case 'cerrarOtros':
+      return servidor.cerrarOtros()
     case 'sincronizar':
       return sincronizarCuenta()
     case 'bovedaEstado':

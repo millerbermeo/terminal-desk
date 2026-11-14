@@ -109,3 +109,10 @@ Biblioteca de recursos (compartidos o individuales de un proyecto) con activaci�
 - **Permisos del sistema**: la primera llamada o nota de voz pide acceso al micrófono (y a la cámara en videollamada). En macOS ver `NSMicrophoneUsageDescription` / `NSCameraUsageDescription` en `electron-builder.yml`.
 - El correo de invitación a quien aún no tiene cuenta sale por el mismo SMTP que los códigos de verificación.
 
+
+## 13. Dispositivos conectados (Cuenta)
+
+- **Migración del backend**: `pnpm migration:ejecutar` en `terminal-desk-api` (añade a `sessions` las columnas del equipo: `device_id`, `device_name`, `platform`, `app_version`, `user_agent`, `ip`; migración `0013_dispositivos_de_sesion`). Sin ella el API falla al validar cualquier sesión: **ejecútala antes de reiniciar el API nuevo**.
+- **API actualizado y reiniciado**: rutas `GET /auth/sessions`, `DELETE /auth/sessions/:id` y `POST /auth/sessions/close-others`. Con un servidor antiguo la lista no carga.
+- La IP solo es la real del cliente con `TRUST_PROXY` puesto detrás del proxy (ya está en `ecosystem.config.cjs`).
+- Las sesiones abiertas antes de actualizar aparecen como «Equipo sin identificar» hasta que ese equipo, ya con la app nueva, haga una petición.
