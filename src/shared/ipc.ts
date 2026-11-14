@@ -155,6 +155,7 @@ export const CanalesArchivos = {
   duplicar: 'archivos:duplicar',
   rutaAbsoluta: 'archivos:ruta-absoluta',
   mostrar: 'archivos:mostrar',
+  abrirVscode: 'archivos:abrir-vscode',
   estadoGit: 'archivos:estado-git',
   vigilar: 'archivos:vigilar',
   cambio: 'archivos:cambio'
@@ -271,6 +272,8 @@ export interface ApiCentro {
     rutaAbsoluta(proyectoId: string, ruta: string): Promise<string>
     /** Lo muestra en el explorador de archivos del sistema. */
     mostrar(proyectoId: string, ruta: string): Promise<void>
+    /** Abre la carpeta del proyecto en una ventana nueva de VS Code (`code`, `code-insiders` o `codium`). */
+    abrirVscode(proyectoId: string): Promise<{ ok: boolean; mensaje?: string }>
     estadoGit(proyectoId: string): Promise<Record<string, MarcaGit>>
     /** Carpetas cuyos cambios en disco se quieren recibir (sustituye a las anteriores de este proyecto en esta ventana). */
     vigilar(proyectoId: string, carpetas: string[]): Promise<void>

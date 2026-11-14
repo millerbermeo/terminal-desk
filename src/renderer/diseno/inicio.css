@@ -107,3 +107,7 @@
 .ini-vacio h2 { margin: 0; font-size: 28px; letter-spacing: -0.03em; }
 .ini-vacio p { margin: 0; color: var(--texto-suave); }
 .item-inicio { margin: 2px 8px 6px; width: calc(100% - 16px); }
+
+/* Inicio ocupa todo el ancho (anula el ancho de lectura centrado de sistema.css) */
+.config.ini > :not(.modal-fondo) { max-width: none; margin-inline: 0; }
+.config.gc > :not(.modal-fondo):not(.x), .config.ancha > :not(.modal-fondo):not(.x) { max-width: none; margin-inline: 0; }

@@ -1,9 +1,23 @@
+import { spawn } from 'node:child_process'
 import { ipcMain, shell } from 'electron'
 import type { CambioArchivo } from '@shared/archivos'
 import { CanalesArchivos } from '@shared/ipc'
 import { GestorArchivos, Vigilante } from './archivos'
 import type { ServicioHistorial } from './historial/servicio'
 import { leerProyectos } from './proyectos'
+
+/** Lanza el primer editor tipo VS Code que exista en el PATH, en ventana nueva, sin esperar a que cierre. */
+async function abrirEnVscode(carpeta: string): Promise<{ ok: boolean; mensaje?: string }> {
+  for (const bin of ['code', 'code-insiders', 'codium']) {
+    const lanzado = await new Promise<boolean>((resolve) => {
+      const hijo = spawn(bin, ['-n', carpeta], { detached: true, stdio: 'ignore', shell: process.platform === 'win32' })
+      hijo.once('error', () => resolve(false))
+      hijo.once('spawn', () => (hijo.unref(), resolve(true)))
+    })
+    if (lanzado) return { ok: true }
+  }
+  return { ok: false, mensaje: 'No se encontró VS Code: instala el comando «code» (VS Code → Ctrl+Shift+P → «Shell Command: Install \'code\' command in PATH»).' }
+}
 
 async function raizDe(proyectoId: string): Promise<string> {
   const p = (await leerProyectos()).proyectos.find((x) => x.id === String(proyectoId))
@@ -34,6 +48,7 @@ export function registrarIpcArchivos(historial?: ServicioHistorial): void {
   ipcMain.handle(c.duplicar, (_e, id: string, ruta: string) => gestor.duplicar(String(id), String(ruta)))
   ipcMain.handle(c.rutaAbsoluta, (_e, id: string, ruta: string) => gestor.rutaAbsoluta(String(id), String(ruta ?? '')))
   ipcMain.handle(c.mostrar, async (_e, id: string, ruta: string) => shell.showItemInFolder(await gestor.rutaAbsoluta(String(id), String(ruta ?? ''))))
+  ipcMain.handle(c.abrirVscode, async (_e, id: string) => abrirEnVscode(await raizDe(String(id))))
   ipcMain.handle(c.estadoGit, (_e, id: string) => gestor.estadoGit(String(id)))
   ipcMain.handle(c.vigilar, async (e, id: string, carpetas: string[]) => {
     const sender = e.sender

@@ -15,7 +15,7 @@ export function ConfigProveedores({ proveedores, onProveedores }: Props) {
   const [modal, setModal] = useState<{ inicial?: ProveedorEstado } | null>(null)
 
   return (
-    <div className="config">
+    <div className="config ancha">
       <div className="cfg-cab">
         <h2>Proveedores de IA</h2>
         <button className="primario" onClick={() => setModal({})}>
