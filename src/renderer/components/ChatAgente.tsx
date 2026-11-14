@@ -755,6 +755,14 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const nuevaConContexto = async (): Promise<void> => {
     setElegirNueva(false)
     if (agente.enCurso) return agente.avisar('/nueva', 'Espera a que termine la tarea en curso (o cancélala) para pasar su contexto a una conversación nueva.', etiqueta)
+    const seguir = await confirmar({
+      titulo: 'Nueva conversación con el contexto',
+      tono: 'info',
+      etiqueta: 'Crear conversación',
+      texto:
+        'Se resumirá lo importante de esta conversación (objetivo, decisiones, archivos, estado y pendientes) y empezará otra que lo hereda.\n\nLa actual queda guardada en el 🕘 Historial. Antes de enviar el primer mensaje podrás revisar y editar el resumen.\n\nResumirla usa algunos tokens.'
+    })
+    if (!seguir) return
     try {
       await agente.nuevaConContexto()
     } catch (err) {
