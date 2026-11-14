@@ -351,7 +351,6 @@ export class Nucleo {
     } else {
       const agente = this.agentes.get(sol.agenteId ?? 'asistente')
       if (!agente) throw new Error(`Agente desconocido: ${sol.agenteId}`)
-      const previa = await this.sesiones.obtener(sesionId)
       // El Router elige el modelo según la complejidad, salvo que se fuerce uno.
       let modelo = sol.modelo
       if (!modelo) {
@@ -360,8 +359,19 @@ export class Nucleo {
         modelo = bloques.some((b) => b.tipo === 'imagen' || b.tipo === 'documento') && ruta.complejidad === 'simple' ? MODELOS_POR_DEFECTO.media : ruta.modelo
         emitir({ tipo: 'ruta', complejidad: ruta.complejidad, modelo, razon: ruta.razon, sugerirFlujo: ruta.sugerirFlujo })
       }
-      tarea = harness
-        .ejecutar(agente, {
+      // Una ejecución a la vez por conversación, igual que en suscripción: dos a la vez leían el mismo historial y la última en
+      // guardar borraba el turno de la otra. El historial se lee DESPUÉS de esperar a la anterior.
+      const anterior = this.turnosSesion.get(sesionId)
+      tarea = (async () => {
+        try {
+          if (anterior) await esperarTurnoAnterior(anterior, ctl.signal)
+        } catch (err) {
+          // Cancelado mientras esperaba: no llegó a empezar; la interfaz necesita su `fin`.
+          alEvento({ ejecucionId: id, agente: agente.nombre, profundidad: 0, tipo: 'fin', resultado: { estado: 'cancelado', texto: '', mensajes: [], uso: { tokensEntrada: 0, tokensSalida: 0 }, pasos: 0 } })
+          throw err
+        }
+        const previa = await this.sesiones.obtener(sesionId)
+        const r = await harness.ejecutar(agente, {
           prompt: sol.prompt,
           cwd: proyecto?.ruta ?? process.cwd(),
           ejecucionId: id,
@@ -375,7 +385,13 @@ export class Nucleo {
           senal: ctl.signal,
           alEvento
         })
-        .then((r) => this.sesiones.guardar(sesionId, sinUsoPendiente(r.mensajes), r.uso, sol.proyectoId))
+        await this.sesiones.guardar(sesionId, sinUsoPendiente(r.mensajes), r.uso, sol.proyectoId)
+      })()
+      const libre = tarea.catch(() => undefined)
+      this.turnosSesion.set(sesionId, libre)
+      void libre.then(() => {
+        if (this.turnosSesion.get(sesionId) === libre) this.turnosSesion.delete(sesionId)
+      })
     }
     void tarea
       .then(() => this.trazador.finalizar(id))
@@ -631,6 +647,7 @@ export class Nucleo {
           const rot = await prepararRotacion({
             sesion: await this.sesiones.obtener(sesionId),
             motivo,
+            ...(meta?.resumen ? { resumenAnterior: meta.resumen } : {}),
             ...(this.cuentas.carpetaDe(cuenta) ? { carpeta: this.cuentas.carpetaDe(cuenta)! } : {}),
             cwd: proyecto?.ruta ?? process.cwd(),
             senal: ctl.signal,
@@ -642,7 +659,7 @@ export class Nucleo {
           this.procesos.cerrar(sesionId) // el proceso vivo trae el contexto viejo: la sesión nueva arranca limpia
           await this.metaCli.actualizar(sesionId, (m) => {
             const { hashDinamico: _h, ...resto } = m
-            return { ...resto, pendiente: rot.resumen, contexto: 0, imagenes: 0, acumulado: {}, rotaciones: m.rotaciones + 1 }
+            return { ...resto, pendiente: rot.resumen, resumen: rot.resumen, contexto: 0, imagenes: 0, acumulado: {}, rotaciones: m.rotaciones + 1 }
           })
           meta = await this.metaCli.obtener(sesionId)
           previa = undefined
@@ -737,7 +754,8 @@ export class Nucleo {
                 ...(hashDinamico ? { hashDinamico } : {}),
                 contexto: r.contexto,
                 ...(r.ventana ? { ventana: r.ventana } : {}),
-                imagenes: m.imagenes + r.imagenes,
+                // Si el CLI compactó en este turno, las imágenes anteriores ya no están en su contexto: solo cuentan las de después.
+                imagenes: (r.compactado ? 0 : m.imagenes) + r.imagenes,
                 ultimaActividad: Date.now(),
                 acumulado: r.acumulado ?? m.acumulado,
                 ...(sol.modelo ? { modelo: sol.modelo } : {}),

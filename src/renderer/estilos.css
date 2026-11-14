@@ -542,12 +542,12 @@ input.sacudir { animation: sacudir 360ms ease; border-color: var(--error); }
 .barra { flex-wrap: wrap; row-gap: 6px; }
 .barra-acciones { flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; min-width: 0; }
 @media (max-width: 900px) {
-  .sidebar { width: 200px; }
+  .sidebar { width: 220px; }
   .config { padding: 18px 20px; }
   .ag-vista.scroll { padding: 16px 18px; }
 }
 @media (max-width: 640px) {
-  .sidebar { width: 152px; }
+  .sidebar { width: 167px; }
   .marca { padding: 10px 10px 6px; }
   .marca h1, .barra-info { display: none; }
   .acciones { padding: 4px 8px 8px; }

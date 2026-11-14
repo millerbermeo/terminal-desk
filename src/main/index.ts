@@ -316,7 +316,7 @@ const depsEquipos: DepsEquipos = {
   servidor,
   archivo: join(DIR, 'equipo.json'),
   nombreSistema: hostname() || 'Este equipo',
-  proyectos: async () => (await leerProyectos()).proyectos.filter((p) => !p.local).map((p) => ({ id: p.id, ruta: p.ruta })),
+  proyectos: async () => (await leerProyectos()).proyectos.filter((p) => !p.local).map((p) => ({ id: p.id, ruta: p.ruta, nombre: p.nombre })),
   repositorio: (ruta) => new Repositorio(ruta, nucleo.github.credencialesPara),
   pendientes: proyectosSinCarpeta,
   clonarProyecto: (e) => nucleo.github.clonarProyecto(e),

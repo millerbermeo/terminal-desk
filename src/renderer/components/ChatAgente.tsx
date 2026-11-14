@@ -171,7 +171,7 @@ function Linea({ e, todos }: { e: EventoAgente; todos: EventoAgente[] }) {
         </div>
       )
     case 'contexto':
-      return <div className="ag-nota">Contexto comprimido ({e.estrategia}): {e.tokensAntes} → {e.tokensDespues} tokens</div>
+      return <div className="ag-nota">Contexto comprimido ({e.estrategia}){e.tokensAntes > 0 ? `: ${e.tokensAntes}${e.tokensDespues > 0 ? ` → ${e.tokensDespues}` : ''} tokens` : ''}</div>
     case 'cuenta_cambiada':
       return (
         <div className="ag-nota">

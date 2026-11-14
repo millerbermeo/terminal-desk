@@ -106,6 +106,17 @@ export interface OperacionesEquipos {
   clonarPendiente: { entrada: { proyectoId: string; carpetaPadre: string; protocolo?: 'https' | 'ssh' }; salida: { ruta: string } }
   /** Enlaza una carpeta que ya tienes en este equipo (sin clonar) a un proyecto de la cuenta. Con `confirmar`, aunque su remoto sea otro. */
   enlazarPendiente: { entrada: { proyectoId: string; ruta: string; confirmar?: boolean }; salida: { ruta: string } }
+  /** Por cada proyecto pendiente: qué otros equipos lo tienen y si se parece a un proyecto que ya está aquí (posible duplicado). */
+  diagnosticoPendientes: { entrada: Record<string, never>; salida: Record<string, DiagnosticoPendiente> }
+  /** Borra de la cuenta un proyecto que no tiene carpeta en este equipo (con su tablero, conversaciones y trazas). */
+  quitarPendiente: { entrada: { proyectoId: string }; salida: { ok: true } }
+}
+
+export interface DiagnosticoPendiente {
+  /** Otros equipos que informan de este proyecto (nombre y última vez). Vacío: ninguna computadora lo tiene. */
+  equipos: { nombre: string; actualizado: string }[]
+  /** Proyecto de este equipo con nombre o carpeta parecidos: probablemente el mismo, agregado dos veces. */
+  parecido?: string
 }
 
 export type NombreOperacionEquipos = keyof OperacionesEquipos

@@ -38,7 +38,12 @@ const entero = (v: string | undefined, porDefecto: number): number => {
 const ESPERA_ECO_MS = entero(process.env.ODESK_ESPERA_ECO_S, 120) * 1000
 
 /** El proceso ya había terminado: quien llama puede lanzar otro y repetir (el mensaje no llegó a enviarse). */
-export class ProcesoCerrado extends Error {}
+export class ProcesoCerrado extends Error {
+  /** @param iniciado el turno ya emitió su evento `inicio` (el reintento no debe repetirlo). */
+  constructor(readonly iniciado = false) {
+    super('El proceso del CLI ya había terminado.')
+  }
+}
 /** El CLI no repitió (eco) el mensaje a tiempo: no lo tomó, así que se puede reenviar en otro proceso. */
 export class SinEco extends Error {
   constructor(readonly salida: SalidaEjecucion) {
@@ -191,7 +196,7 @@ export class ProcesoCli implements ControlProceso {
           clearInterval(sinEco)
           o.senal.removeEventListener('abort', alAbortar)
           hecho = true
-          throw new ProcesoCerrado()
+          throw new ProcesoCerrado(true)
         }
         if (o.senal.aborted) alAbortar()
       })
@@ -282,15 +287,19 @@ export class ProcesosCli {
  */
 export async function ejecutarEnProceso(pool: ProcesosCli, clave: string, o: OpcionesEjecucion): Promise<SalidaEjecucion> {
   let entrada = o
+  // El evento `inicio` (lleva el id para deshacer) se emite una sola vez: si el proceso murió antes de emitirlo, el reintento lo emite.
+  let iniciado = false
   for (let intento = 0; ; intento++) {
     const { proceso } = await pool.obtener(clave, entrada)
     entrada.alProceso?.(proceso)
     try {
-      const r = await proceso.ejecutar(intento === 0 ? entrada : { ...entrada, omitirInicio: true })
+      const r = await proceso.ejecutar(iniciado ? { ...entrada, omitirInicio: true } : entrada)
       if (r.resultado.estado === 'limite_pasos') pool.cerrar(clave)
       return r
     } catch (err) {
+      if (err instanceof ProcesoCerrado) iniciado ||= err.iniciado
       if (err instanceof SinEco) {
+        iniciado = true
         pool.cerrar(clave)
         if (intento === 0 && o.omitirInicio && !o.senal.aborted) {
           entrada = { ...o, mensajeId: randomUUID() }
