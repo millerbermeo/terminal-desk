@@ -5,6 +5,7 @@ import type { NuevaRegla, ReglaPermiso } from '@shared/core/permisos'
 import type { ModoAutonomia } from '@shared/core/permisos'
 import { motivoBloqueoAutonomo } from '../guardrails/autonomo'
 import { esDestructiva } from '../guardrails/destructivo'
+import { esBashSoloLectura } from '../guardrails/solo-lectura'
 import type { PuertaHumana, SolicitudHumana } from '../orchestrator/puerta'
 import { decidir, reglaDe } from '../permisos/reglas'
 import type { PeticionPermiso, RespuestaPermiso } from '../suscripcion'
@@ -158,6 +159,8 @@ export function crearPermisoCli(d: DepsPermisoCli): (p: PeticionPermiso) => Prom
       }
       const razon = razonDestructiva(llamada, p.herramienta === 'Bash' ? texto(p.entrada.command) : null, simple)
       if (!razon && regla === 'permitir') return { permitir: true }
+      // Un `Bash` que solo lee (grep, ls, git log, sed -n…) vale lo mismo que Read/Grep, que ya se permiten siempre: no se pregunta.
+      if (!razon && p.herramienta === 'Bash' && esBashSoloLectura(texto(p.entrada.command))) return { permitir: true }
       if (!razon && recordadas.has(p.herramienta)) return { permitir: true }
 
       const oferta = !razon && simple ? reglaDe(llamada) : null

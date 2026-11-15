@@ -6,7 +6,7 @@
  */
 
 /** Separa en palabras respetando comillas simples y dobles (suficiente para decidir; no es un intérprete de shell). */
-function palabras(tramo: string): string[] {
+export function palabras(tramo: string): string[] {
   const r: string[] = []
   let actual = ''
   let comilla: '"' | "'" | null = null

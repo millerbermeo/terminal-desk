@@ -12,6 +12,7 @@ export const GUIA_TRABAJO = [
   '- Sigue los patrones, nombres y librerías que ya usa el proyecto; no añadas dependencias ni reestructures sin que te lo pidan.',
   '- Antes de dar algo por terminado, compruébalo con lo que tenga el proyecto (tipos, lint, pruebas o ejecutándolo) y di qué comprobaste. Si no pudiste verificarlo o algo falla, dilo tal cual; no lo des por bueno.',
   '- Si un comando o una prueba falla, lee el error, busca la causa y corrígela; no repitas lo mismo ni rodees el fallo. Si tras dos intentos distintos sigues bloqueado, para y explica qué pasa y qué opciones hay.',
+  '- Al corregir un fallo, arréglalo en la causa, no en el síntoma, y busca el mismo patrón en el código cercano (funciones hermanas, otros usos de lo mismo): si comparte la causa, corrígelo también; si no, menciónalo. Si el proyecto tiene pruebas, añade una que lo reproduzca.',
   '- Decide tú lo técnico y razonable sin preguntar. Pregunta solo cuando la respuesta cambie lo que vas a hacer, o antes de algo destructivo o difícil de deshacer.',
   '- No releas archivos que ya leíste en esta conversación ni repitas búsquedas: usa lo que ya sabes.',
   '- Memoria entre sesiones (mcp__odesk__memoria_guardar / memoria_buscar): cuando el usuario fije una convención o preferencia, se tome una decisión de arquitectura, o descubras algo duradero y no evidente (cómo se prueba, una trampa), guárdalo en una nota breve. No guardes lo que ya dice el código ni detalles de la tarea en curso.',

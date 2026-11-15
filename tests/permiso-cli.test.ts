@@ -63,4 +63,12 @@ describe('permiso del CLI de suscripción', () => {
     expect(eventos).toEqual([expect.objectContaining({ tipo: 'guardrail', herramienta: 'Bash' })])
     expect(eventos.some((e) => e.tipo === 'solicitud_humana')).toBe(false)
   })
+  it('Bash de solo lectura se aprueba sin preguntar; con escritura sí pregunta', async () => {
+    const { eventos, permiso } = montar()
+    expect(await permiso({ herramienta: 'Bash', entrada: { command: 'grep -rn "aplicarIva" src' } })).toEqual({ permitir: true })
+    expect(await permiso({ herramienta: 'Bash', entrada: { command: 'git log --oneline -5' } })).toEqual({ permitir: true })
+    expect(eventos).toHaveLength(0)
+    void permiso({ herramienta: 'Bash', entrada: { command: 'npm test' } })
+    await vi.waitFor(() => expect(eventos).toHaveLength(1))
+  })
 })

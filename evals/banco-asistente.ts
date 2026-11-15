@@ -39,7 +39,7 @@ export class Banco {
     vi.stubEnv('ODESK_SIN_TITULO', '1')
     const p = (this.proyecto = join(this.home, 'tienda'))
     for (const d of ['src', 'test', join('.claude', 'skills', 'despliegue')]) await mkdir(join(p, d), { recursive: true })
-    await writeFile(join(p, 'package.json'), JSON.stringify({ name: 'tienda', type: 'module', scripts: { test: 'node --test test/' } }, null, 2) + '\n')
+    await writeFile(join(p, 'package.json'), JSON.stringify({ name: 'tienda', type: 'module', scripts: { test: 'node --test' } }, null, 2) + '\n')
     await writeFile(join(p, 'CLAUDE.md'), '# Tienda\n\nProyecto de prueba. El nombre clave interno del proyecto es ZORRO-AZUL-7.\n')
     await writeFile(join(p, 'src', 'carrito.js'), 'export function total(items) {\n  // suma precio × cantidad de cada línea\n  return items.reduce((t, i) => t + i.precio + i.cantidad, 0)\n}\n')
     await writeFile(

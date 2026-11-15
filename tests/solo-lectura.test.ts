@@ -1,0 +1,67 @@
+import { describe, expect, it } from 'vitest'
+import { esBashSoloLectura } from '../src/main/core/guardrails/solo-lectura'
+
+describe('Bash de solo lectura (sin confirmación en «Preguntar»)', () => {
+  it.each([
+    'ls -la',
+    'grep -rn "aplicarIva" src test',
+    'grep -rn "a\\|b" src 2>/dev/null',
+    'rg -n total src | head -20',
+    "sed -n '1,80p' src/carrito.js",
+    "sed -n '10,$p' a.js",
+    'cat package.json && ls src',
+    'find . -name "*.js" -not -path "./node_modules/*"',
+    'git status --porcelain',
+    'git log --oneline -10',
+    'git --no-pager diff HEAD~1 -- src',
+    'git -C sub show HEAD:src/a.js',
+    'git branch -a',
+    'git branch --show-current',
+    'git remote -v',
+    'cd src; ls',
+    'wc -l src/*.js',
+    'head -50 README.md 2>&1',
+    'grep -rn aplicarIva . --include=*.{js,ts}'
+  ])('permite: %s', (c) => expect(esBashSoloLectura(c)).toBe(true))
+
+  it.each([
+    'npm test',
+    'node -e "1"',
+    'rm -rf src',
+    'echo hola > a.txt',
+    'cat a >> b',
+    'ls $(rm -rf x)',
+    'ls `rm x`',
+    'grep "$(rm x)" a',
+    'ls & rm x',
+    'ls; rm x',
+    'ls && npm i',
+    'cat a | sh',
+    'cat a | xargs rm',
+    'find . -name x -delete',
+    'find . -exec rm {} \\;',
+    "sed -i 's/a/b/' a.js",
+    "sed 's/a/b/w out' a.js",
+    "sed -n '1e rm x' a.js",
+    'sort -o a.txt a.txt',
+    'rg --pre ./x pat',
+    'git branch nueva',
+    'git branch -D vieja',
+    'git tag v1',
+    'git remote add o url',
+    'git -c core.pager=sh log',
+    'git log --output=a.txt',
+    'git diff --ext-diff',
+    'git checkout -- .',
+    'git stash',
+    'git config user.name x',
+    'FOO=1 ls',
+    'awk \'{system("rm x")}\' a',
+    'ls "sin cerrar',
+    'ls\nrm x',
+    '{ rm x; }',
+    'ls; { rm x; }',
+    'cat <<EOF\nx\nEOF',
+    ''
+  ])('pregunta: %s', (c) => expect(esBashSoloLectura(c)).toBe(false))
+})
