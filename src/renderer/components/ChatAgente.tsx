@@ -32,6 +32,14 @@ import { alExterno, tomarExternos } from '../agente/externos'
 import { Cargando } from './Cargando'
 import { EstadoVivo, GrupoHerramientas } from './ActividadAgente'
 import { agruparEventos } from '../agente/actividad'
+import { Desplegable, IconoAjustes, IconoCola, IconoDescargar, IconoEnviar, IconoLupa, IconoNuevaConv, IconoPuntos, IconoRayito, ItemMenu, OpcionMenu, Pista, SeccionMenu } from './CompositorMenus'
+
+const NOMBRE_ESFUERZO: Record<Esfuerzo | 'auto', string> = { auto: 'Auto', low: 'Bajo', medium: 'Medio', high: 'Alto', xhigh: 'Muy alto', max: 'Máximo' }
+const AUTONOMIAS: { valor: ModoAutonomia; texto: string; detalle: string }[] = [
+  { valor: 'preguntar', texto: 'Preguntar todo', detalle: 'Te pide permiso antes de editar o ejecutar' },
+  { valor: 'ediciones', texto: 'Aceptar ediciones', detalle: 'Edita archivos solo; los comandos te los pregunta' },
+  { valor: 'autonomo', texto: 'Autónomo', detalle: 'Sin confirmaciones; lo destructivo siempre pregunta' },
+]
 
 interface Props {
   agente: Agente
@@ -382,6 +390,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   useEffect(() => {
     if (modeloSel !== 'auto' && modelos.length > 0 && !modelos.some((m) => m.id === modeloSel)) setModeloSel('auto')
   }, [modelos, modeloSel])
+  const nombreModelo = modeloSel === 'auto' ? 'Auto' : (modelos.find((m) => m.id === modeloSel)?.nombre ?? modeloSel).replace(/^Claude\s+/i, '')
   const cambiarModelo = (id: string): void => {
     versionAjustes.current++
     setModeloSel(id)
@@ -1036,9 +1045,9 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         )}
       </div>
       <SolicitudesChat ejecuciones={agente.turnos.map((t) => t.ejecucionId)} />
-      <div className="ag-compositor">
-        <div className="ag-opciones">
-          {!proyectoFijo && datos && (
+      <div className={`ag-compositor cmp${agente.enCurso ? ' trabajando' : ''}`}>
+        {!proyectoFijo && datos && (
+          <div className="ag-opciones cmp-destino">
             <select value={destino} onChange={(e) => setDestino(e.target.value)} aria-label="Destino">
               <option value="">Sin proyecto</option>
               {datos.proyectos.map((p) => (
@@ -1052,113 +1061,19 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
                 </option>
               ))}
             </select>
-          )}
-          <div className="segmentado" role="group" aria-label="Modo">
-            <button className={modo === 'chat' ? 'on' : ''} onClick={() => setModo('chat')}>
-              Chat
-            </button>
-            <button className={modo === 'flujo' ? 'on' : ''} disabled={!proyecto || conSuscripcion} onClick={() => setModo('flujo')} title={conSuscripcion ? 'El flujo solo está disponible con la clave de API' : proyecto ? 'Plan → aprobación → generación → verificación → confirmación' : 'Elige un proyecto'}>
-              Flujo
-            </button>
           </div>
-          <select
-            className="ag-modelo"
-            value={modeloSel}
-            onChange={(e) => cambiarModelo(e.target.value)}
-            aria-label="Modelo"
-            title="Modelo que responde. En automático el router elige según la complejidad de cada petición."
-          >
-            <option value="auto">Modelo: automático</option>
-            {modelos.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.nombre}
-                {m.ventana ? ` · ${m.ventana >= 1_000_000 ? `${m.ventana / 1_000_000}M` : `${Math.round(m.ventana / 1000)}k`}` : ''}
-              </option>
-            ))}
-          </select>
-          <select
-            className={`ag-autonomia ${autonomia}`}
-            value={autonomia}
-            onChange={(e) => void cambiarAutonomia(e.target.value as ModoAutonomia)}
-            aria-label="Autonomía"
-            title="Cuánto te pregunta el agente. Lo destructivo siempre pregunta."
-          >
-            <option value="preguntar">Preguntar todo</option>
-            <option value="ediciones">Aceptar ediciones</option>
-            <option value="autonomo">Autónomo</option>
-          </select>
-          <select
-            className="ag-modelo"
-            value={esfuerzo}
-            onChange={(e) => cambiarEsfuerzo(e.target.value as Esfuerzo | 'auto')}
-            aria-label="Esfuerzo de razonamiento"
-            title="Cuánto piensa el modelo antes de responder (solo suscripción). Menos esfuerzo = respuestas más rápidas y menos tokens; más = mejor en problemas difíciles."
-          >
-            <option value="auto">Esfuerzo: automático</option>
-            {ESFUERZOS_AJUSTE.map((x) => (
-              <option key={x} value={x}>
-                Esfuerzo: {{ low: 'bajo', medium: 'medio', high: 'alto', xhigh: 'muy alto', max: 'máximo' }[x]}
-              </option>
-            ))}
-          </select>
-          {modo === 'flujo' && (
-            <label className="ag-check" title="Trabaja en un git worktree propio; tu árbol de trabajo no se toca">
-              <input type="checkbox" checked={aislado} onChange={(e) => setAislado(e.target.checked)} /> Aislar en rama git
-            </label>
-          )}
-          <span className="ag-espacio" />
-          {proyecto && (
-            <button className="ag-icono" onClick={() => setVerTareas((v) => !v)} aria-expanded={verTareas} aria-label="Tareas" title="Tareas del proyecto y su grupo: menciónalas o pide que el Asistente implemente una (también escribiendo «#»)">
-              <IconoTareas />
-            </button>
-          )}
-          <BotonMicrofono voz={voz} />
-          <SelectorIdiomaVoz desactivado={voz.estado.fase !== 'inactivo' && voz.estado.fase !== 'error'} />
-          <button className="ag-icono" onClick={() => selector.current?.click()} disabled={pendientes.length >= LIMITES_ADJUNTOS.porMensaje} title="Adjuntar imágenes, PDF o archivos de texto (también puedes pegarlos o arrastrarlos)" aria-label="Adjuntar archivos">
-            <IconoClip />
-          </button>
-          <button
-            className={`ag-icono${notificar ? '' : ' apagado'}`}
-            onClick={() => fijarNotificaciones(!notificar)}
-            aria-pressed={notificar}
-            aria-label="Notificaciones"
-            title={notificar ? 'Notificaciones activadas: te aviso cuando el Asistente termina de responder (si no estás mirando el chat). Pulsa para desactivarlas.' : 'Notificaciones desactivadas. Pulsa para que te avise cuando el Asistente termine de responder.'}
-          >
-            {notificar ? <IconoCampana /> : <IconoCampanaTachada />}
-          </button>
-          <button className="ag-icono" onClick={abrirBusqueda} disabled={agente.turnos.length === 0} aria-label="Buscar en la conversación" title="Buscar en esta conversación (Ctrl+F)">
-            ⌕
-          </button>
-          <button className="ag-icono" onClick={exportarConversacion} disabled={!agente.turnos.some((t) => t.estado !== 'en_curso')} aria-label="Exportar la conversación" title="Exportar la conversación a un archivo Markdown (lo que pediste y lo que respondió el Asistente)">
-            ⤓
-          </button>
-          <button className="ag-icono" onClick={() => setVerHistorial((v) => !v)} aria-expanded={verHistorial} aria-label="Historial" title="Historial: conversaciones guardadas">
-            <IconoReloj />
-          </button>
-          <button
-            className={`ag-icono${agente.traspasando ? ' girando' : ''}`}
-            onClick={() => void nuevaConContexto()}
-            disabled={agente.enCurso || agente.traspasando || !agente.sesionId || agente.turnos.length === 0}
-            aria-label="Nueva conversación con contexto"
-            title={agente.traspasando ? 'Compactando el contexto…' : 'Nueva conversación con contexto: resume lo importante de esta y empieza otra que lo hereda (esta queda en el historial)'}
-          >
-            {agente.traspasando ? <span className="ag-giro" aria-hidden="true" /> : <IconoTraspaso />}
-          </button>
-          <button className="ag-icono" onClick={() => void pedirNuevaConversacion()} disabled={agente.enCurso || agente.turnos.length === 0} aria-label="Nueva conversación" title="Nueva conversación: la actual queda guardada en el historial">
-            <IconoMas />
-          </button>
-          <input
-            ref={selector}
-            type="file"
-            multiple
-            hidden
-            accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,.txt,.md,.markdown,.csv,.tsv,.json,.yml,.yaml,.toml,.xml,.html,.css,.sql,.log,.sh,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.go,.rs,.java,.kt,.c,.h,.cpp,.hpp,.cs,.php,.rb,.swift,.vue,.svelte,.ini,.conf,.diff,.patch"
-            onChange={(e) => {
-              void subir([...(e.target.files ?? [])])
-              e.target.value = ''
-            }}
-          />
-        </div>
+        )}
+        <input
+          ref={selector}
+          type="file"
+          multiple
+          hidden
+          accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,.txt,.md,.markdown,.csv,.tsv,.json,.yml,.yaml,.toml,.xml,.html,.css,.sql,.log,.sh,.ts,.tsx,.js,.jsx,.mjs,.cjs,.py,.go,.rs,.java,.kt,.c,.h,.cpp,.hpp,.cs,.php,.rb,.swift,.vue,.svelte,.ini,.conf,.diff,.patch"
+          onChange={(e) => {
+            void subir([...(e.target.files ?? [])])
+            e.target.value = ''
+          }}
+        />
         <AdjuntosAgente adjuntos={pendientes} onQuitar={quitar} />
         {subiendo > 0 && <div className="cfg-nota">Subiendo archivo…</div>}
         {errorAdjunto && <div className="cfg-error" role="alert">{errorAdjunto}</div>}
@@ -1169,7 +1084,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             {estimacion.porcentajeDespues !== undefined && <> · el contexto quedará al {estimacion.porcentajeDespues} %</>}
           </div>
         )}
-        <div className="ag-entrada">
+        <div className="ag-entrada" data-vacio={texto === '' ? '' : undefined}>
           {sugerencias.length > 0 && (
             <div className="ag-sugerencias" role="listbox" aria-label="Comandos">
               {sugerencias.map((c, i) => (
@@ -1259,7 +1174,8 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             ref={areaTexto}
             rows={2}
             value={texto}
-            placeholder={pendientes.length > 0 ? 'Mensaje opcional: pulsa Enter para enviar solo los archivos…' : modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo…  (Ctrl+Enter envía · «/» comandos · «@» archivos · «#» tareas · ↑ mensajes anteriores · mantén Espacio para dictar)'}
+            placeholder={pendientes.length > 0 ? 'Mensaje opcional: pulsa Enter para enviar solo los archivos…' : modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo…'}
+            aria-label="Mensaje para el Asistente"
             onPaste={(e) => {
               const archivos = [...e.clipboardData.files]
               if (archivos.length) {
@@ -1359,14 +1275,128 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               }
             }}
           />
-          {agente.enCurso && (
-            <button onClick={preguntarAhora} disabled={!texto.trim() || texto.trim().startsWith('/') || subiendo > 0} title="Responde ya, en paralelo y sin interrumpir lo que está haciendo (solo suscripción, en solo lectura)">
-              Preguntar ahora
+          <div className="cmp-barra">
+            <button className="ag-icono cmp-boton" onClick={() => selector.current?.click()} disabled={pendientes.length >= LIMITES_ADJUNTOS.porMensaje} title="Adjuntar imágenes, PDF o archivos de texto (también puedes pegarlos o arrastrarlos)" aria-label="Adjuntar archivos">
+              <IconoClip />
             </button>
-          )}
-          <button className="primario" onClick={enviar} disabled={(!texto.trim() && pendientes.length === 0) || subiendo > 0} title={agente.enCurso ? 'El agente está trabajando: el mensaje se enviará al terminar (o usa «Preguntar ahora»)' : undefined}>
-            {agente.enCurso ? 'Encolar' : !texto.trim() && pendientes.length > 0 ? 'Enviar archivos' : 'Enviar'}
-          </button>
+            <Pista
+              etiqueta="Modo"
+              clase="cmp-modo"
+              valor={modo}
+              onCambiar={setModo}
+              opciones={[
+                { valor: 'chat', texto: 'Chat' },
+                { valor: 'flujo', texto: 'Flujo', disabled: !proyecto || conSuscripcion, titulo: conSuscripcion ? 'El flujo solo está disponible con la clave de API' : proyecto ? 'Plan → aprobación → generación → verificación → confirmación' : 'Elige un proyecto' },
+              ]}
+            />
+            <Desplegable
+              etiqueta="Ajustes del Asistente"
+              titulo={`Modelo: ${nombreModelo} · Autonomía: ${AUTONOMIAS.find((a) => a.valor === autonomia)?.texto ?? autonomia} · Esfuerzo: ${NOMBRE_ESFUERZO[esfuerzo]}`}
+              claseBoton={`cmp-chip ${autonomia}`}
+              ancho={320}
+              boton={
+                <>
+                  <span className={`cmp-punto ${autonomia}`} aria-hidden="true" />
+                  <span className="cmp-chip-modelo">{nombreModelo}</span>
+                  <span className="cmp-chip-extra">{AUTONOMIAS.find((a) => a.valor === autonomia)?.texto.split(' ')[0]}</span>
+                  <span className="cmp-chip-extra tenue">{NOMBRE_ESFUERZO[esfuerzo]}</span>
+                  <span className="cmp-chevron" aria-hidden="true"><IconoAjustes /></span>
+                </>
+              }
+            >
+              {(cerrar) => (
+                <>
+                  <SeccionMenu titulo="Modelo">
+                    <OpcionMenu indice={0} texto="Automático" detalle="El router elige según la complejidad" marcada={modeloSel === 'auto'} onClick={() => { cambiarModelo('auto'); cerrar() }} />
+                    {modelos.map((m, i) => (
+                      <OpcionMenu
+                        key={m.id}
+                        indice={i + 1}
+                        texto={m.nombre}
+                        {...(m.ventana ? { detalle: `Ventana de ${m.ventana >= 1_000_000 ? `${m.ventana / 1_000_000}M` : `${Math.round(m.ventana / 1000)}k`} tokens` } : {})}
+                        marcada={modeloSel === m.id}
+                        onClick={() => { cambiarModelo(m.id); cerrar() }}
+                      />
+                    ))}
+                  </SeccionMenu>
+                  <SeccionMenu titulo="Autonomía" nota="lo destructivo siempre pregunta">
+                    {AUTONOMIAS.map((a, i) => (
+                      <OpcionMenu key={a.valor} indice={i + modelos.length + 1} punto={a.valor} texto={a.texto} detalle={a.detalle} marcada={autonomia === a.valor} onClick={() => void cambiarAutonomia(a.valor)} />
+                    ))}
+                  </SeccionMenu>
+                  <SeccionMenu titulo="Esfuerzo de razonamiento" nota="solo suscripción">
+                    <Pista
+                      enMenu
+                      etiqueta="Esfuerzo de razonamiento"
+                      clase="cmp-esfuerzo"
+                      valor={esfuerzo}
+                      onCambiar={cambiarEsfuerzo}
+                      opciones={(['auto', ...ESFUERZOS_AJUSTE] as (Esfuerzo | 'auto')[]).map((x) => ({ valor: x, texto: NOMBRE_ESFUERZO[x], titulo: x === 'auto' ? 'El modelo decide cuánto pensar' : `Esfuerzo ${NOMBRE_ESFUERZO[x].toLowerCase()}` }))}
+                    />
+                  </SeccionMenu>
+                  {modo === 'flujo' && (
+                    <SeccionMenu titulo="Flujo">
+                      <ItemMenu interruptor activo={aislado} icono={<IconoRayito />} texto="Aislar en rama git" detalle="Trabaja en un git worktree propio; tu árbol no se toca" onClick={() => setAislado(!aislado)} />
+                    </SeccionMenu>
+                  )}
+                  <SeccionMenu titulo="Idioma del dictado">
+                    <SelectorIdiomaVoz desactivado={voz.estado.fase !== 'inactivo' && voz.estado.fase !== 'error'} />
+                  </SeccionMenu>
+                </>
+              )}
+            </Desplegable>
+            <span className="cmp-ayuda" aria-hidden="true">
+              <span><kbd>Ctrl</kbd><kbd>↵</kbd> enviar</span>
+              <span><kbd>/</kbd> comandos</span>
+              <span><kbd>@</kbd> archivos</span>
+              <span><kbd>#</kbd> tareas</span>
+              <span><kbd>↑</kbd> anteriores</span>
+              <span><kbd>Espacio</kbd> dictar</span>
+            </span>
+            <BotonMicrofono voz={voz} />
+            <Desplegable
+              etiqueta="Más acciones"
+              lado="derecha"
+              claseBoton={`ag-icono cmp-boton${agente.traspasando ? ' girando' : ''}`}
+              ancho={290}
+              boton={agente.traspasando ? <span className="ag-giro" aria-hidden="true" /> : <IconoPuntos />}
+            >
+              {(cerrar) => (
+                <>
+                  {proyecto && <ItemMenu indice={0} icono={<IconoTareas />} texto="Tareas del proyecto" detalle="Menciónalas o pide que el Asistente implemente una" atajo="#" activo={verTareas} onClick={() => { cerrar(); setVerTareas((v) => !v) }} />}
+                  <ItemMenu indice={1} icono={<IconoLupa />} texto="Buscar en la conversación" atajo="Ctrl F" disabled={agente.turnos.length === 0} onClick={() => { cerrar(); abrirBusqueda() }} />
+                  <ItemMenu indice={2} icono={<IconoReloj />} texto="Historial" detalle="Conversaciones guardadas" onClick={() => { cerrar(); setVerHistorial((v) => !v) }} />
+                  <ItemMenu indice={3} icono={<IconoDescargar />} texto="Exportar a Markdown" disabled={!agente.turnos.some((t) => t.estado !== 'en_curso')} onClick={() => { cerrar(); exportarConversacion() }} />
+                  <div className="cmp-sep" role="separator" />
+                  <ItemMenu
+                    indice={4}
+                    icono={<IconoTraspaso />}
+                    texto={agente.traspasando ? 'Compactando el contexto…' : 'Nueva con contexto'}
+                    detalle="Resume lo importante y empieza otra que lo hereda"
+                    disabled={agente.enCurso || agente.traspasando || !agente.sesionId || agente.turnos.length === 0}
+                    onClick={() => { cerrar(); void nuevaConContexto() }}
+                  />
+                  <ItemMenu indice={5} icono={<IconoNuevaConv />} texto="Nueva conversación" detalle="La actual queda en el historial" disabled={agente.enCurso || agente.turnos.length === 0} onClick={() => { cerrar(); void pedirNuevaConversacion() }} />
+                  <div className="cmp-sep" role="separator" />
+                  <ItemMenu indice={6} interruptor activo={notificar} icono={notificar ? <IconoCampana /> : <IconoCampanaTachada />} texto="Notificaciones" detalle="Te aviso cuando termine si no miras el chat" onClick={() => fijarNotificaciones(!notificar)} />
+                </>
+              )}
+            </Desplegable>
+            {agente.enCurso && (
+              <button className="cmp-lateral" onClick={preguntarAhora} disabled={!texto.trim() || texto.trim().startsWith('/') || subiendo > 0} title="Responde ya, en paralelo y sin interrumpir lo que está haciendo (solo suscripción, en solo lectura)">
+                Preguntar<span className="cmp-lateral-largo"> ahora</span>
+              </button>
+            )}
+            <button
+              className={`primario cmp-enviar${agente.enCurso ? ' encolar' : ''}`}
+              onClick={enviar}
+              disabled={(!texto.trim() && pendientes.length === 0) || subiendo > 0}
+              aria-label={agente.enCurso ? 'Encolar' : !texto.trim() && pendientes.length > 0 ? 'Enviar archivos' : 'Enviar'}
+              title={agente.enCurso ? 'El agente está trabajando: el mensaje se enviará al terminar (o usa «Preguntar ahora»)' : 'Enviar (Ctrl+Enter)'}
+            >
+              {agente.enCurso ? <IconoCola /> : <IconoEnviar />}
+            </button>
+          </div>
         </div>
         <BarraUso {...(detalleCtx ? { detalle: detalleCtx } : {})} {...(agente.contexto ? { contexto: agente.contexto } : {})} {...(modeloSel !== 'auto' ? { modelo: modeloSel } : {})} modelos={modelos} tokensSesion={agente.tokensSesion} />
       </div>
