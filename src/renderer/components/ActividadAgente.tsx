@@ -1,5 +1,7 @@
 import { memo, useEffect, useState, type ReactNode } from 'react'
 import type { EventoAgente } from '@shared/core/agente'
+import { DiffEdicion } from './DiffEdicion'
+import { cambiosDeEdicion } from '../agente/utilidades-chat'
 import { actividadActual, contarPasos, describirHerramienta, duracion, type Categoria, type PasoHerramienta } from '../agente/actividad'
 
 /**
@@ -101,6 +103,7 @@ const NOMBRE_CATEGORIA: Record<Categoria, [string, string]> = {
 }
 
 const MAX_SALIDA = 20_000
+const HERRAMIENTAS_CON_DIFF = new Set(['Edit', 'MultiEdit', 'Write'])
 const cuerpoEntrada = (nombre: string, e: Record<string, unknown>): string => {
   if (nombre === 'Bash' && typeof e.command === 'string') return `$ ${e.command}`
   const t = JSON.stringify(e, null, 2)
@@ -134,7 +137,11 @@ const PasoVista = memo(function PasoVista({ paso }: { paso: PasoHerramienta }) {
         </summary>
         <div className="ag-paso-cuerpo">
           <div className="ag-paso-nombre">{inicio.llamada.nombre}</div>
-          <pre className="ag-paso-entrada">{cuerpoEntrada(inicio.llamada.nombre, inicio.llamada.entrada)}</pre>
+          {HERRAMIENTAS_CON_DIFF.has(inicio.llamada.nombre) && !fin?.resultado.error && cambiosDeEdicion(inicio.llamada.nombre, inicio.llamada.entrada).length > 0 ? (
+            <DiffEdicion nombre={inicio.llamada.nombre} entrada={inicio.llamada.entrada} />
+          ) : (
+            <pre className="ag-paso-entrada">{cuerpoEntrada(inicio.llamada.nombre, inicio.llamada.entrada)}</pre>
+          )}
           <pre className={fin?.resultado.error ? 'ag-paso-salida error' : 'ag-paso-salida'}>{fin ? (salida.length > MAX_SALIDA ? salida.slice(0, MAX_SALIDA) + '\n…' : salida) || '(sin salida)' : 'ejecutando…'}</pre>
         </div>
       </details>

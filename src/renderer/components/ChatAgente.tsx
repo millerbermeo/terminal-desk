@@ -9,7 +9,7 @@ import type { Agente, Turno } from '../agente/useAgente'
 import { useCuenta } from '../agente/cuenta'
 import { ESFUERZOS_AJUSTE, type AjustesAsistente, type Esfuerzo } from '@shared/ajustes'
 import type { ContextoUso } from '@shared/core/uso'
-import { useModelos } from '../agente/uso'
+import { useModelos, ventanaDe } from '../agente/uso'
 import { AdjuntosAgente } from './AdjuntosAgente'
 import { BarraRama } from './BarraRama'
 import { confirmar } from '../confirmar'
@@ -24,7 +24,10 @@ import { aplicarMencionTarea, detectarMencionTarea, opcionesTarea, pedirImplemen
 import { NOMBRE_PRIORIDAD } from './Tareas'
 import { SolicitudesChat } from './ModalSolicitud'
 import { useGrabadora } from '../agente/grabadora'
-import { BarraGrabacion, BotonMicrofono } from './GrabadorVoz'
+import { BarraGrabacion, BotonMicrofono, SelectorIdiomaVoz } from './GrabadorVoz'
+import { ProyectoDelChat } from './DiffEdicion'
+import { useLectura } from '../agente/voz-salida'
+import { buscarEnTurnos, cursorEnBorde, estimarEnvio, exportarMarkdown, navegarPrompts, nombreArchivoExportado, promptsEnviados, textoRespuesta } from '../agente/utilidades-chat'
 import { alExterno, tomarExternos } from '../agente/externos'
 import { Cargando } from './Cargando'
 import { EstadoVivo, GrupoHerramientas } from './ActividadAgente'
@@ -251,7 +254,7 @@ const EventosTurno = memo(function EventosTurno({ eventos, raiz, vivo }: { event
 })
 
 /** Memoizado: un turno terminado no se repinta cuando otro recibe texto (los manejadores son estables y reciben el turno). */
-const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer }: { t: Turno; onCancelar: (t: Turno) => void; onDeshacer: (t: Turno) => void }) {
+const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer, onEditar, lecturaDisponible, leyendo, onLeer }: { t: Turno; onCancelar: (t: Turno) => void; onDeshacer: (t: Turno) => void; onEditar: (t: Turno) => void; /** Hay voces del sistema para leer en voz alta. */ lecturaDisponible: boolean; leyendo: boolean; onLeer: (t: Turno) => void }) {
   const editoArchivos = t.estado !== 'en_curso' && !t.lateral && Boolean(t.mensajeId) && t.eventos.some((e) => e.tipo === 'herramienta_inicio' && HERRAMIENTAS_QUE_EDITAN.has(e.llamada.nombre))
   return (
     <article className="ag-turno">
@@ -277,6 +280,16 @@ const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer }: { t: 
       {t.estado !== 'en_curso' && (
       <div className="ag-pie">
         <span className={`chip estado-${t.estado}`}>{ESTADO[t.estado]}</span>
+        {t.modo !== 'comando' && !t.lateral && t.prompt.trim() && (
+          <button onClick={() => onEditar(t)} title="Pone este mensaje en el campo para que lo cambies y lo envíes otra vez (sale como mensaje nuevo en esta conversación)">
+            ✎ Editar y reenviar
+          </button>
+        )}
+        {lecturaDisponible && textoRespuesta(t) && (
+          <button onClick={() => onLeer(t)} aria-pressed={leyendo} title={leyendo ? 'Parar la lectura' : 'Leer la respuesta en voz alta'}>
+            {leyendo ? '■ Parar' : '🔊 Leer'}
+          </button>
+        )}
         {editoArchivos && (
           <button onClick={() => onDeshacer(t)} title="Devuelve los archivos a como estaban antes de este mensaje (y deshace lo de los siguientes)">
             ↩ Deshacer cambios
@@ -313,6 +326,15 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [cola, setCola] = useState<{ prompt: string; adjuntos: Adjunto[] }[]>([]) // mensajes escritos mientras el agente trabaja
   const [arrastrando, setArrastrando] = useState(false)
   const areaTexto = useRef<HTMLTextAreaElement>(null)
+  // Buscar dentro de la conversación (Ctrl+F).
+  const [busqueda, setBusqueda] = useState<{ consulta: string; indice: number } | null>(null)
+  const campoBusqueda = useRef<HTMLInputElement>(null)
+  // Historial de lo enviado (flechas arriba/abajo en el campo, como en una consola).
+  const pasosHistorial = useRef(0)
+  const borradorHistorial = useRef('')
+  // Hablar manteniendo la barra espaciadora con el campo vacío.
+  const teclaVoz = useRef<{ desde: number; pendienteSoltar: boolean } | null>(null)
+  const lectura = useLectura()
   const [cursor, setCursor] = useState(0)
   const [archivosProyecto, setArchivosProyecto] = useState<string[] | null>(null) // para las menciones «@»
   const [mencionOculta, setMencionOculta] = useState(false)
@@ -542,17 +564,30 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   }
 
   // Dictado por voz: la transcripción literal queda en el campo, donde estaba el cursor, para editarla. Nunca se envía solo.
-  const voz = useGrabadora((d) => {
-    const pos = Math.min(cursor, texto.length)
-    const antes = texto.slice(0, pos)
-    const despues = texto.slice(pos)
+  // En tiempo real: mientras se graba, el texto parcial se muestra en el campo (entre `antes` y `despues`, fijados al empezar).
+  const baseDictado = useRef<{ antes: string; despues: string } | null>(null)
+  const componerDictado = (dictado: string): void => {
+    const base = baseDictado.current ?? (baseDictado.current = { antes: texto.slice(0, Math.min(cursor, texto.length)), despues: texto.slice(Math.min(cursor, texto.length)) })
+    const { antes, despues } = base
     const prefijo = antes && !/\s$/.test(antes) ? ' ' : ''
     const sufijo = despues && !/^\s/.test(despues) ? ' ' : ''
-    const nuevo = antes + prefijo + d.texto + sufijo + despues
-    cursorPendiente.current = antes.length + prefijo.length + d.texto.length
-    setTexto(nuevo)
+    cursorPendiente.current = antes.length + prefijo.length + dictado.length
+    setTexto(antes + prefijo + dictado + sufijo + despues)
     setCursor(cursorPendiente.current)
-  })
+  }
+  const voz = useGrabadora(
+    (d) => {
+      componerDictado(d.texto)
+      baseDictado.current = null
+    },
+    (parcial) => {
+      if (parcial !== null) return componerDictado(parcial)
+      // Dictado cancelado o fallido: el campo vuelve a como estaba.
+      const base = baseDictado.current
+      baseDictado.current = null
+      if (base) setTexto(base.antes + base.despues)
+    }
+  )
   // Tras insertar, el cursor se coloca después de lo insertado (el texto del campo se actualiza en el siguiente render).
   useEffect(() => {
     if (cursorPendiente.current === null) return
@@ -775,6 +810,80 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     setSugOculta(true)
   }
 
+  /** Soltar la barra espaciadora: si se mantuvo lo bastante, se termina y se transcribe; un toque suelto se descarta (no se dicta por error). */
+  const soltarTeclaVoz = (): void => {
+    const k = teclaVoz.current
+    if (!k) return
+    if (performance.now() - k.desde < 500) {
+      teclaVoz.current = null
+      return voz.cancelar()
+    }
+    if (voz.estado.fase === 'grabando') {
+      teclaVoz.current = null
+      voz.terminar()
+    } else k.pendienteSoltar = true // aún se está abriendo el micrófono: se termina en cuanto empiece
+  }
+  useEffect(() => {
+    const k = teclaVoz.current
+    if (!k) return
+    if (voz.estado.fase === 'grabando' && k.pendienteSoltar) {
+      teclaVoz.current = null
+      voz.terminar()
+    } else if (voz.estado.fase === 'inactivo' || voz.estado.fase === 'error') teclaVoz.current = null
+  }, [voz.estado.fase]) // eslint-disable-line react-hooks/exhaustive-deps
+  const coincidencias = useMemo(() => (busqueda ? buscarEnTurnos(agente.turnos, busqueda.consulta) : []), [busqueda, agente.turnos])
+  const indiceCoincidencia = coincidencias.length ? Math.min(busqueda?.indice ?? 0, coincidencias.length - 1) : -1
+  const irACoincidencia = (indice: number): void => {
+    if (coincidencias.length === 0) return
+    const i = (indice + coincidencias.length) % coincidencias.length
+    setBusqueda((b) => b && { ...b, indice: i })
+    const clave = agente.turnos[coincidencias[i]!]?.clave
+    if (!clave) return
+    pegado.current = false
+    hilo.current?.querySelector(`[data-turno="${CSS.escape(clave)}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }
+  const abrirBusqueda = (): void => {
+    setBusqueda((b) => b ?? { consulta: '', indice: 0 })
+    window.setTimeout(() => campoBusqueda.current?.select(), 0)
+  }
+  const cerrarBusqueda = (): void => {
+    setBusqueda(null)
+    areaTexto.current?.focus()
+  }
+
+  const exportarConversacion = (): void => {
+    const turnos = agente.turnos.filter((t) => t.estado !== 'en_curso')
+    if (turnos.length === 0) return
+    const titulo = turnos[0]!.prompt.replace(/\s+/g, ' ').trim().slice(0, 80) || 'Conversación'
+    const blob = new Blob([exportarMarkdown({ titulo, turnos })], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const enlace = document.createElement('a')
+    enlace.href = url
+    enlace.download = nombreArchivoExportado(titulo)
+    document.body.append(enlace)
+    enlace.click()
+    enlace.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  }
+
+  const editarYReenviar = useCallback((t: Turno): void => {
+    setTexto(t.prompt)
+    setCursor(t.prompt.length)
+    cursorPendiente.current = t.prompt.length
+    pasosHistorial.current = 0
+  }, [])
+  // Estable (TurnoVista está memoizado): lee el estado de la lectura desde una ref.
+  const lecturaRef = useRef(lectura)
+  lecturaRef.current = lectura
+  const leerTurno = useCallback((t: Turno): void => {
+    const l = lecturaRef.current
+    if (l.leyendo === t.clave) l.detener()
+    else l.leer(t.clave, textoRespuesta(t))
+  }, [])
+
+  const ventanaCtx = detalleCtx?.maximo || agente.contexto?.ventana || ventanaDe(modelos, modeloSel !== 'auto' ? modeloSel : agente.contexto?.modelo)
+  const estimacion = useMemo(() => (texto.trim() ? estimarEnvio(texto, agente.contexto ? { tokens: agente.contexto.tokens, ...(ventanaCtx ? { ventana: ventanaCtx } : {}) } : undefined) : undefined), [texto, agente.contexto, ventanaCtx])
+
   const actual = agente.turnos.filter((t) => !t.lateral).at(-1) // una pregunta lateral no decide si la cola avanza
   // Al terminar bien el turno en marcha, sale el siguiente de la cola. Si se canceló o falló, la cola espera a que el usuario decida.
   useEffect(() => {
@@ -783,6 +892,12 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   return (
     <div
       className={`ag-chat${arrastrando ? ' arrastrando' : ''}`}
+      onKeyDown={(e) => {
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+          e.preventDefault()
+          abrirBusqueda()
+        }
+      }}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('Files')) {
           e.preventDefault()
@@ -843,6 +958,35 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           </div>
         </div>
       )}
+      {busqueda && (
+        <div className="ag-busqueda" role="search">
+          <input
+            ref={campoBusqueda}
+            type="search"
+            value={busqueda.consulta}
+            onChange={(e) => setBusqueda({ consulta: e.target.value, indice: 0 })}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                e.stopPropagation()
+                cerrarBusqueda()
+              } else if (e.key === 'Enter') {
+                e.preventDefault()
+                irACoincidencia(indiceCoincidencia + (e.shiftKey ? -1 : 1))
+              }
+            }}
+            placeholder="Buscar en esta conversación…"
+            aria-label="Buscar en esta conversación"
+            autoFocus
+          />
+          <span className="ag-busqueda-cuenta" aria-live="polite">
+            {busqueda.consulta.trim() ? (coincidencias.length ? `${indiceCoincidencia + 1} de ${coincidencias.length}` : 'Sin resultados') : ''}
+          </span>
+          <button className="icono" onClick={() => irACoincidencia(indiceCoincidencia - 1)} disabled={coincidencias.length < 2} aria-label="Anterior" title="Anterior (Mayús+Enter)">↑</button>
+          <button className="icono" onClick={() => irACoincidencia(indiceCoincidencia + 1)} disabled={coincidencias.length < 2} aria-label="Siguiente" title="Siguiente (Enter)">↓</button>
+          <button className="icono" onClick={cerrarBusqueda} aria-label="Cerrar la búsqueda" title="Cerrar (Esc)"><IconoCerrar /></button>
+        </div>
+      )}
       <div
         className="ag-hilo"
         ref={hilo}
@@ -875,9 +1019,13 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             pistas={['/plan <funcionalidad>', '/tareas', '/flujo <petición>', '/ayuda']}
           />
         )}
-        {agente.turnos.map((t) => (
-          <TurnoVista key={t.clave} t={t} onCancelar={cancelarTurno} onDeshacer={deshacerTurno} />
-        ))}
+        <ProyectoDelChat.Provider value={proyecto?.id}>
+          {agente.turnos.map((t, i) => (
+            <div key={t.clave} data-turno={t.clave} className={coincidencias.includes(i) ? (i === coincidencias[indiceCoincidencia] ? 'ag-coincide actual' : 'ag-coincide') : undefined}>
+              <TurnoVista t={t} onCancelar={cancelarTurno} onDeshacer={deshacerTurno} onEditar={editarYReenviar} lecturaDisponible={lectura.disponible} leyendo={lectura.leyendo === t.clave} onLeer={leerTurno} />
+            </div>
+          ))}
+        </ProyectoDelChat.Provider>
         <div ref={fin} />
         {verBajar && (
           <button type="button" className="ag-ir-abajo" onClick={irAbajo} aria-label="Ir al final" title="Ir al final">
@@ -965,6 +1113,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             </button>
           )}
           <BotonMicrofono voz={voz} />
+          <SelectorIdiomaVoz desactivado={voz.estado.fase !== 'inactivo' && voz.estado.fase !== 'error'} />
           <button className="ag-icono" onClick={() => selector.current?.click()} disabled={pendientes.length >= LIMITES_ADJUNTOS.porMensaje} title="Adjuntar imágenes, PDF o archivos de texto (también puedes pegarlos o arrastrarlos)" aria-label="Adjuntar archivos">
             <IconoClip />
           </button>
@@ -976,6 +1125,12 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             title={notificar ? 'Notificaciones activadas: te aviso cuando el Asistente termina de responder (si no estás mirando el chat). Pulsa para desactivarlas.' : 'Notificaciones desactivadas. Pulsa para que te avise cuando el Asistente termine de responder.'}
           >
             {notificar ? <IconoCampana /> : <IconoCampanaTachada />}
+          </button>
+          <button className="ag-icono" onClick={abrirBusqueda} disabled={agente.turnos.length === 0} aria-label="Buscar en la conversación" title="Buscar en esta conversación (Ctrl+F)">
+            ⌕
+          </button>
+          <button className="ag-icono" onClick={exportarConversacion} disabled={!agente.turnos.some((t) => t.estado !== 'en_curso')} aria-label="Exportar la conversación" title="Exportar la conversación a un archivo Markdown (lo que pediste y lo que respondió el Asistente)">
+            ⤓
           </button>
           <button className="ag-icono" onClick={() => setVerHistorial((v) => !v)} aria-expanded={verHistorial} aria-label="Historial" title="Historial: conversaciones guardadas">
             <IconoReloj />
@@ -1008,6 +1163,12 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         {subiendo > 0 && <div className="cfg-nota">Subiendo archivo…</div>}
         {errorAdjunto && <div className="cfg-error" role="alert">{errorAdjunto}</div>}
         <BarraGrabacion voz={voz} />
+        {estimacion && (
+          <div className="ag-estimacion" title="Estimación aproximada (4 caracteres ≈ 1 token). Cada mensaje reenvía además todo el contexto de la conversación; el consumo real lo mide la barra de abajo. Los adjuntos no se cuentan.">
+            ≈ {estimacion.entrada.toLocaleString()} tokens en este mensaje
+            {estimacion.porcentajeDespues !== undefined && <> · el contexto quedará al {estimacion.porcentajeDespues} %</>}
+          </div>
+        )}
         <div className="ag-entrada">
           {sugerencias.length > 0 && (
             <div className="ag-sugerencias" role="listbox" aria-label="Comandos">
@@ -1098,7 +1259,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
             ref={areaTexto}
             rows={2}
             value={texto}
-            placeholder={pendientes.length > 0 ? 'Mensaje opcional: pulsa Enter para enviar solo los archivos…' : modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo…  (Ctrl+Enter envía · «/» comandos · «@» archivos · «#» tareas · pega o arrastra archivos)'}
+            placeholder={pendientes.length > 0 ? 'Mensaje opcional: pulsa Enter para enviar solo los archivos…' : modo === 'flujo' ? 'Describe el cambio que quieres…' : 'Pregunta o pide algo…  (Ctrl+Enter envía · «/» comandos · «@» archivos · «#» tareas · ↑ mensajes anteriores · mantén Espacio para dictar)'}
             onPaste={(e) => {
               const archivos = [...e.clipboardData.files]
               if (archivos.length) {
@@ -1107,6 +1268,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               }
             }}
             onChange={(e) => {
+              pasosHistorial.current = 0
               setTexto(e.target.value)
               setCursor(e.target.selectionStart)
               setSugOculta(false)
@@ -1117,7 +1279,25 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               setSelTarea(0)
             }}
             onSelect={(e) => setCursor(e.currentTarget.selectionStart)}
+            onBlur={() => soltarTeclaVoz()}
+            onKeyUp={(e) => {
+              if (e.key === ' ') soltarTeclaVoz()
+            }}
             onKeyDown={(e) => {
+              if (e.key === 'Escape' && voz.estado.fase === 'grabando') {
+                e.preventDefault()
+                teclaVoz.current = null
+                return voz.cancelar()
+              }
+              // Mantener la barra espaciadora con el campo vacío = hablar mientras se mantiene; al soltar se transcribe.
+              if (e.key === ' ' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.nativeEvent.isComposing && (teclaVoz.current || (texto === '' && (voz.estado.fase === 'inactivo' || voz.estado.fase === 'error')))) {
+                e.preventDefault()
+                if (!teclaVoz.current) {
+                  teclaVoz.current = { desde: performance.now(), pendienteSoltar: false }
+                  voz.iniciar()
+                }
+                return
+              }
               if (mencionTarea && opcionesTareas.length > 0 && sugerencias.length === 0) {
                 if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                   e.preventDefault()
@@ -1151,6 +1331,22 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
                   return completar(sugerencias[Math.min(seleccion, sugerencias.length - 1)]!.nombre)
                 }
                 if (e.key === 'Escape') return setSugOculta(true)
+              }
+              // Flechas arriba/abajo: lo enviado antes (solo con el campo vacío o ya navegando, y con el cursor en el borde).
+              if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.nativeEvent.isComposing && sugerencias.length === 0 && (texto === '' || pasosHistorial.current > 0)) {
+                const direccion = e.key === 'ArrowUp' ? 'arriba' : 'abajo'
+                if (cursorEnBorde(texto, e.currentTarget.selectionStart, e.currentTarget.selectionEnd, direccion)) {
+                  if (pasosHistorial.current === 0) borradorHistorial.current = texto
+                  const r = navegarPrompts(promptsEnviados(agente.turnos), pasosHistorial.current, direccion, borradorHistorial.current)
+                  if (r) {
+                    e.preventDefault()
+                    pasosHistorial.current = r.pasos
+                    setTexto(r.texto)
+                    setCursor(r.texto.length)
+                    cursorPendiente.current = r.texto.length
+                    return
+                  }
+                }
               }
               // Con archivos adjuntos el mensaje es opcional: Enter (sin texto) los envía solos.
               if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !texto.trim() && pendientes.length > 0 && sugerencias.length === 0) {

@@ -645,7 +645,7 @@ function registrarIpc(): void {
   ipcMain.handle(Canales.historialOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionHistorial(historial, op, entrada))
   const voz = new ServicioVoz(crearMotorWhisper(join(DIR, 'modelos')))
   ipcMain.handle(Canales.vozEstado, () => voz.estado())
-  ipcMain.handle(Canales.vozTranscribir, (_e, pcm: unknown, duracionMs: unknown) => voz.transcribir(pcm, Number(duracionMs) || 0))
+  ipcMain.handle(Canales.vozTranscribir, (_e, pcm: unknown, duracionMs: unknown, idioma: unknown) => voz.transcribir(pcm, Number(duracionMs) || 0, idioma))
   ipcMain.handle(Canales.arranqueOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionArranque(arranque, op as never, entrada as never))
   // Notificación del sistema pedida por la interfaz (el Asistente terminó). Al pulsarla, la ventana que la pidió vuelve al frente y se le
   // dice de qué chat era. Se guarda la referencia: sin ella el recolector de basura se la lleva y el clic no llega.

@@ -40,6 +40,20 @@ export type EstadoVoz = { ok: true; maxSegundos: number; modeloListo: boolean } 
 /** Solo la transcripción literal: el texto no pasa por ninguna IA de redacción. */
 export type ResultadoVoz = { ok: true; texto: string } | { ok: false; codigo: CodigoVoz; mensaje: string }
 
+/** Idiomas de dictado: código corto -> nombre que entiende Whisper. «auto» deja que el modelo lo detecte. */
+export const IDIOMAS_VOZ = {
+  es: { nombre: 'Español', whisper: 'spanish' },
+  en: { nombre: 'English', whisper: 'english' },
+  pt: { nombre: 'Português', whisper: 'portuguese' },
+  fr: { nombre: 'Français', whisper: 'french' },
+  de: { nombre: 'Deutsch', whisper: 'german' },
+  it: { nombre: 'Italiano', whisper: 'italian' },
+  auto: { nombre: 'Detectar', whisper: undefined }
+} as const
+export type IdiomaVoz = keyof typeof IDIOMAS_VOZ
+export const IDIOMA_VOZ_POR_DEFECTO: IdiomaVoz = 'es'
+export const esIdiomaVoz = (v: unknown): v is IdiomaVoz => typeof v === 'string' && Object.hasOwn(IDIOMAS_VOZ, v)
+
 /** 75 000 ms -> «1:15». */
 export const formatoTiempo = (ms: number): string => {
   const s = Math.max(0, Math.floor(ms / 1000))

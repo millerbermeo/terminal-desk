@@ -387,7 +387,8 @@ export interface ApiCentro {
     /** Límites y si el modelo ya está descargado. */
     estado(): Promise<EstadoVoz>
     /** `pcm`: audio mono a 16 kHz (`MUESTREO_VOZ`). */
-    transcribir(pcm: Float32Array, duracionMs: number): Promise<ResultadoVoz>
+    /** `idioma`: uno de `IDIOMAS_VOZ` (por defecto español; un valor desconocido se ignora). */
+    transcribir(pcm: Float32Array, duracionMs: number, idioma?: string): Promise<ResultadoVoz>
   }
   /** Notificaciones del sistema (el Asistente terminó de responder). Al pulsar una, la ventana vuelve al frente y `onClic` dice de qué chat era. */
   notificaciones: {

@@ -656,3 +656,41 @@ body {
 .cta-disp-nombre strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cta-disp-meta { font-size: 12px; color: var(--texto-tenue); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cta-dispositivos-lista button { flex: none; }
+
+/* ── Asistente: búsqueda, diff en línea, estimación, historial con filtros, idioma del dictado ── */
+.ag-busqueda { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-bottom: 1px solid var(--borde); background: var(--bg-elevado); }
+.ag-busqueda input { flex: 1; min-width: 0; }
+.ag-busqueda-cuenta { font-size: 11px; color: var(--texto-suave); min-width: 64px; text-align: right; }
+.ag-coincide { border-radius: var(--radio-lg); outline: 1px solid rgba(250, 204, 21, 0.35); outline-offset: 4px; }
+.ag-coincide.actual { outline: 2px solid var(--acento); }
+
+.ag-estimacion { font-size: 11px; color: var(--texto-suave); padding: 0 4px 4px; }
+.ag-voz-idioma { min-width: 0; width: auto; padding-left: 6px; padding-right: 6px; }
+
+.ag-diff { border: 1px solid var(--borde); border-radius: 8px; overflow: hidden; margin: 4px 0; font-size: 12px; }
+.ag-diff.devuelto { opacity: 0.55; }
+.ag-diff-cab { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--bg-elevado); }
+.ag-diff-cab code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-diff-cab button { min-width: 0; padding: 2px 8px; font-size: 11px; }
+.ag-diff-mas { color: var(--ok); }
+.ag-diff-menos { color: var(--error); }
+.ag-diff-aviso { padding: 4px 8px; color: var(--error); font-size: 11px; }
+.ag-diff-cuerpo { margin: 0; max-height: 280px; overflow: auto; padding: 0; background: transparent; }
+.ag-diff-linea { display: block; padding: 0 8px; white-space: pre; font-family: var(--mono, monospace); }
+.ag-diff-linea > span { display: inline-block; width: 1.4ch; opacity: 0.7; user-select: none; }
+.ag-diff-linea.agregada { background: rgba(52, 211, 153, 0.12); }
+.ag-diff-linea.quitada { background: rgba(248, 113, 113, 0.12); }
+.ag-diff-mas-lineas { padding: 2px 8px; color: var(--texto-suave); }
+
+.ag-historial-filtros { display: flex; flex-direction: column; gap: 6px; padding: 0 4px 8px; }
+.ag-historial-etiquetas { display: flex; flex-wrap: wrap; gap: 4px; }
+.ag-historial-etiquetas .chip { cursor: pointer; }
+.ag-historial-etiquetas .chip.on { border-color: var(--acento); color: var(--acento); }
+.ag-historial-nota { font-size: 11px; color: var(--texto-suave); padding: 4px; }
+.ag-historial li { flex-wrap: wrap; }
+.ag-historial li.fijada .ag-historial-abrir { border-left: 2px solid var(--acento); }
+.ag-historial-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.ag-historial-accion { min-width: 0; padding: 4px 7px; opacity: 0.7; }
+.ag-historial-accion.on, .ag-historial-accion:hover:not(:disabled) { opacity: 1; color: var(--acento); }
+.ag-historial-editar { display: flex; gap: 4px; flex: 1 0 100%; }
+.ag-historial-editar input { flex: 1; min-width: 0; }

@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { LIMITES_GRABACION, MAX_MUESTRAS_VOZ, MUESTREO_VOZ, type CodigoVoz, type EstadoVoz, type ResultadoVoz } from '@shared/voz'
+import { IDIOMAS_VOZ, IDIOMA_VOZ_POR_DEFECTO, LIMITES_GRABACION, MAX_MUESTRAS_VOZ, MUESTREO_VOZ, esIdiomaVoz, type CodigoVoz, type EstadoVoz, type ResultadoVoz } from '@shared/voz'
 
 /** Modelo Whisper multilingüe (ONNX). «base» da buena transcripción en español y corre fluido en CPU. */
 export const MODELO_VOZ = 'onnx-community/whisper-base'
@@ -12,7 +12,8 @@ const ARCHIVOS_MODELO = ['onnx/encoder_model.onnx', 'onnx/decoder_model_merged_q
 export interface MotorVoz {
   /** ¿Está ya el modelo en disco? Si no, el primer dictado lo descarga. */
   listo(): boolean
-  transcribir(pcm: Float32Array): Promise<string>
+  /** `idioma`: nombre para Whisper («spanish»…); sin él, el modelo lo detecta. */
+  transcribir(pcm: Float32Array, idioma?: string): Promise<string>
 }
 
 class ErrorModelo extends Error {}
@@ -37,11 +38,11 @@ export function crearMotorWhisper(dirModelos: string): MotorVoz {
 
   return {
     listo: () => ARCHIVOS_MODELO.every((a) => existsSync(join(dirModelos, MODELO_VOZ, a))),
-    transcribir: (pcm) => {
+    transcribir: (pcm, idioma) => {
       // Una transcripción a la vez: dos en paralelo solo se estorbarían en la CPU.
       const r = cola.then(async () => {
         const t = await cargar()
-        const salida = await t(pcm, { language: 'spanish', task: 'transcribe', chunk_length_s: 30, stride_length_s: 5 })
+        const salida = await t(pcm, { ...(idioma ? { language: idioma } : {}), task: 'transcribe', chunk_length_s: 30, stride_length_s: 5 })
         return (Array.isArray(salida) ? salida.map((s) => s.text).join(' ') : salida.text).trim()
       })
       cola = r.catch(() => undefined)
@@ -58,14 +59,15 @@ export class ServicioVoz {
     return { ok: true, maxSegundos: LIMITES_GRABACION.maxMs / 1000, modeloListo: this.motor.listo() }
   }
 
-  async transcribir(pcm: unknown, duracionMs: number): Promise<ResultadoVoz> {
+  async transcribir(pcm: unknown, duracionMs: number, idioma?: unknown): Promise<ResultadoVoz> {
     const mal = (codigo: CodigoVoz, mensaje: string): ResultadoVoz => ({ ok: false, codigo, mensaje })
     if (!(pcm instanceof Float32Array)) return mal('VOZ_FORMATO', 'Formato de audio no admitido.')
     if (pcm.length === 0) return mal('VOZ_VACIO', 'La grabación está vacía.')
     if (pcm.length > MAX_MUESTRAS_VOZ || duracionMs > LIMITES_GRABACION.maxMs + 5_000) return mal('VOZ_DURACION', 'La grabación es demasiado larga.')
     if (pcm.length < (LIMITES_GRABACION.minMs / 1000) * MUESTREO_VOZ * 0.5) return mal('VOZ_VACIO', 'La grabación es demasiado corta.')
     try {
-      const texto = await this.motor.transcribir(pcm)
+      const codigo = esIdiomaVoz(idioma) ? idioma : IDIOMA_VOZ_POR_DEFECTO
+      const texto = await this.motor.transcribir(pcm, IDIOMAS_VOZ[codigo].whisper)
       if (!texto) return mal('VOZ_VACIO', 'No se entendió nada en la grabación: habla más cerca del micrófono.')
       return { ok: true, texto }
     } catch (err) {

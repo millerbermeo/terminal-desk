@@ -1,5 +1,31 @@
-import { formatoTiempo } from '@shared/voz'
-import type { ControlGrabadora } from '../agente/grabadora'
+import { useState } from 'react'
+import { IDIOMAS_VOZ, formatoTiempo, type IdiomaVoz } from '@shared/voz'
+import { fijarIdiomaDictado, idiomaDictado, type ControlGrabadora } from '../agente/grabadora'
+
+/** Idioma en el que se dicta (se recuerda en este equipo). «Detectar» deja que el modelo lo adivine. */
+export function SelectorIdiomaVoz({ desactivado }: { desactivado?: boolean }) {
+  const [idioma, setIdioma] = useState<IdiomaVoz>(idiomaDictado)
+  return (
+    <select
+      className="ag-modelo ag-voz-idioma"
+      value={idioma}
+      disabled={desactivado}
+      onChange={(e) => {
+        const nuevo = e.target.value as IdiomaVoz
+        setIdioma(nuevo)
+        fijarIdiomaDictado(nuevo)
+      }}
+      aria-label="Idioma del dictado"
+      title="Idioma en el que hablas al dictar. «Detectar» lo adivina, pero acierta menos con frases cortas."
+    >
+      {(Object.entries(IDIOMAS_VOZ) as [IdiomaVoz, { nombre: string }][]).map(([codigo, { nombre }]) => (
+        <option key={codigo} value={codigo}>
+          {codigo === 'auto' ? nombre : codigo.toUpperCase()}
+        </option>
+      ))}
+    </select>
+  )
+}
 
 /** Botón 🎤 de la barra del chat: empieza a grabar o, si ya graba, termina. */
 export function BotonMicrofono({ voz, desactivado }: { voz: ControlGrabadora; desactivado?: boolean }) {

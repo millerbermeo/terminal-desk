@@ -1,5 +1,11 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
-import { LIMITES_GRABACION, MUESTREO_VOZ, UMBRAL_SONIDO, elegirFormato, type CodigoVoz, type EstadoVoz, type ResultadoVoz } from '@shared/voz'
+import { IDIOMA_VOZ_POR_DEFECTO, LIMITES_GRABACION, MUESTREO_VOZ, UMBRAL_SONIDO, elegirFormato, esIdiomaVoz, type CodigoVoz, type EstadoVoz, type IdiomaVoz, type ResultadoVoz } from '@shared/voz'
+
+/**
+ * Texto en vivo: cada `cadaMs` se transcribe todo lo grabado hasta ahora (el audio no se puede cortar por la mitad: un trozo suelto de
+ * Opus no se decodifica). Cuesta CPU y crece con la duración, así que pasados `hastaMs` solo se espera al resultado final.
+ */
+export const PARCIAL = { desdeMs: 1500, cadaMs: 2500, hastaMs: 45_000 }
 
 export type FaseGrabacion = 'inactivo' | 'preparando' | 'grabando' | 'procesando' | 'error'
 
@@ -70,10 +76,14 @@ export class Grabadora {
   /** Cada grabación tiene su número: un resultado que llega tarde (cancelada mientras se procesaba) se descarta. */
   private turno = 0
   private modeloListo = true
+  private parcialEnCurso = false
+  private ultimoParcialMs = Number.NEGATIVE_INFINITY
 
   constructor(
     private readonly d: DependenciasGrabadora,
-    private readonly alTexto: (t: TextoDictado) => void
+    private readonly alTexto: (t: TextoDictado) => void,
+    /** Texto parcial mientras se graba (tiempo real). `null` = se descartó el dictado: hay que deshacer lo mostrado. */
+    private readonly alParcial?: (texto: string | null) => void
   ) {}
 
   get actual(): EstadoGrabacion {
@@ -94,6 +104,7 @@ export class Grabadora {
 
   private fallar(codigo: CodigoVoz, mensaje: string): void {
     this.liberar()
+    this.alParcial?.(null)
     this.fijar({ fase: 'error', ms: 0, nivel: 0, sinSonido: false, error: { codigo, mensaje } })
   }
 
@@ -103,6 +114,8 @@ export class Grabadora {
     this.cancelada = false
     this.cerrando = false
     this.picoTotal = 0
+    this.parcialEnCurso = false
+    this.ultimoParcialMs = Number.NEGATIVE_INFINITY
     this.fijar({ fase: 'preparando', ms: 0, nivel: 0, sinSonido: false })
     const e = await this.d.estadoVoz().catch((): EstadoVoz => ({ ok: false, codigo: 'VOZ_ERROR', mensaje: 'El dictado por voz no está disponible.' }))
     if (turno !== this.turno || this.cancelada) return
@@ -148,7 +161,27 @@ export class Grabadora {
       const nivel = this.medidor?.leer() ?? 0
       this.picoTotal = Math.max(this.picoTotal, nivel)
       this.fijar({ ms, nivel, sinSonido: Boolean(this.medidor) && ms >= 3000 && this.picoTotal < UMBRAL_SONIDO })
+      if (this.alParcial && !this.parcialEnCurso && ms >= PARCIAL.desdeMs && ms <= PARCIAL.hastaMs && ms - this.ultimoParcialMs >= PARCIAL.cadaMs) void this.transcribirParcial(turno, ms)
     }, 250)
+  }
+
+  /** Transcribe lo grabado hasta ahora (tiempo real). Los fallos se ignoran: el resultado final es el que cuenta. */
+  private async transcribirParcial(turno: number, ms: number): Promise<void> {
+    this.parcialEnCurso = true
+    this.ultimoParcialMs = ms
+    try {
+      const audio = new Blob([...this.trozos], { type: this.mime })
+      if (audio.size === 0) return
+      const pcm = await this.d.decodificar(audio)
+      if (turno !== this.turno || this.estado.fase !== 'grabando' || this.cerrando) return
+      const r = await this.d.transcribir(pcm, ms)
+      if (turno !== this.turno || this.estado.fase !== 'grabando' || this.cerrando) return
+      if (r.ok) this.alParcial?.(r.texto)
+    } catch {
+      /* el parcial es opcional */
+    } finally {
+      this.parcialEnCurso = false
+    }
   }
 
   /** Para y procesa lo grabado. Sigue grabando un instante más para no cortar la última palabra. */
@@ -177,6 +210,7 @@ export class Grabadora {
       this.grabador.stop()
     }
     this.liberar()
+    this.alParcial?.(null)
     this.fijar({ fase: 'inactivo', ms: 0, nivel: 0, sinSonido: false })
   }
 
@@ -221,6 +255,24 @@ export class Grabadora {
   }
 }
 
+const CLAVE_IDIOMA = 'voz:idioma'
+/** Idioma elegido para dictar (se recuerda en este equipo). */
+export const idiomaDictado = (): IdiomaVoz => {
+  try {
+    const v = localStorage.getItem(CLAVE_IDIOMA)
+    return esIdiomaVoz(v) ? v : IDIOMA_VOZ_POR_DEFECTO
+  } catch {
+    return IDIOMA_VOZ_POR_DEFECTO
+  }
+}
+export const fijarIdiomaDictado = (i: IdiomaVoz): void => {
+  try {
+    localStorage.setItem(CLAVE_IDIOMA, i)
+  } catch {
+    /* sin almacenamiento: vale solo hasta cerrar */
+  }
+}
+
 const dependenciasNavegador = (): DependenciasGrabadora => ({
   estadoVoz: () => window.api.voz.estado(),
   pedirMicrofono: () => navigator.mediaDevices.getUserMedia({ audio: { channelCount: { ideal: 1 }, sampleRate: { ideal: 48000 }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }),
@@ -238,7 +290,7 @@ const dependenciasNavegador = (): DependenciasGrabadora => ({
     }
     return mono
   },
-  transcribir: (pcm, ms) => window.api.voz.transcribir(pcm, ms),
+  transcribir: (pcm, ms) => window.api.voz.transcribir(pcm, ms, idiomaDictado()),
   esperar: (ms) => new Promise((ok) => window.setTimeout(ok, ms)),
   medirNivel: (stream) => {
     // Pico de volumen entre lecturas: se muestrea rápido (cada 50 ms) para no perder una sílaba corta.
@@ -275,11 +327,13 @@ const dependenciasNavegador = (): DependenciasGrabadora => ({
 })
 
 /** Grabadora de la interfaz: una por chat. Al desmontar se cancela (el micrófono nunca queda abierto). */
-export function useGrabadora(alTexto: (t: TextoDictado) => void) {
+export function useGrabadora(alTexto: (t: TextoDictado) => void, alParcial?: (texto: string | null) => void) {
   const alTextoRef = useRef(alTexto)
   alTextoRef.current = alTexto
+  const alParcialRef = useRef(alParcial)
+  alParcialRef.current = alParcial
   const g = useRef<Grabadora>(undefined as unknown as Grabadora)
-  g.current ??= new Grabadora(dependenciasNavegador(), (t) => alTextoRef.current(t))
+  g.current ??= new Grabadora(dependenciasNavegador(), (t) => alTextoRef.current(t), alParcial ? (t) => alParcialRef.current?.(t) : undefined)
   const estado = useSyncExternalStore(g.current.suscribir, () => g.current.actual)
   useEffect(() => () => g.current.cancelar(), [])
   return { estado, iniciar: () => void g.current.iniciar(), terminar: () => g.current.terminar(), cancelar: () => g.current.cancelar(), descartarError: () => g.current.descartarError() }
