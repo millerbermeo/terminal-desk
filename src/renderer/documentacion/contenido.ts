@@ -265,7 +265,7 @@ export const SECCIONES: Seccion[] = [
     pasos: [
       { titulo: '1. Elegir destino', texto: 'Proyecto (trabaja en su carpeta), grupo (consulta A2A entre proyectos) o ninguno (charla suelta).' },
       { titulo: '2. Elegir modo', texto: '«Chat» para trabajar paso a paso; «Flujo» para el ciclo planificar → aprobar → generar → probar → confirmar, normalmente aislado en una rama.' },
-      { titulo: '3. Escribir, adjuntar y enviar', texto: 'Admite imágenes, PDF y texto (📎, Ctrl+V o arrastrar), hasta 5 por mensaje. Con adjuntos y la caja vacía, Enter los envía solos.' },
+      { titulo: '3. Escribir, adjuntar y enviar', texto: 'Admite imágenes, PDF y texto (📎, Ctrl+V o arrastrar), hasta 5 por mensaje. Enter envía y Shift+Enter hace un salto de línea; con adjuntos y la caja vacía, Enter los envía solos.' },
       { titulo: '4. Atender las confirmaciones', texto: 'Cuando el agente necesita permiso, un modal muestra la acción exacta (comando o archivo y contenido). Esc rechaza; lo destructivo va en rojo y siempre pregunta.' },
       { titulo: '5. Revisar lo que hizo', texto: 'Las herramientas se despliegan con su resultado; Trazas guarda el árbol de la ejecución y Versiones muestra el diff real de los cambios.' }
     ],

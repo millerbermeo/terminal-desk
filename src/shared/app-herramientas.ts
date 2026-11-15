@@ -161,7 +161,7 @@ export const HERRAMIENTAS_APP: readonly DefHerramientaTareas[] = [
   {
     nombre: 'ajustes_fijar',
     descripcion:
-      'Cambia el modelo, la autonomía o el esfuerzo del Asistente de un proyecto (o globales). Pasar a «autonomo» pide confirmación en Odesk. «auto» en modelo o esfuerzo vuelve al valor por defecto.',
+      'Cambia el modelo, la autonomía o el esfuerzo del Asistente de un proyecto (o globales). Pasar a «autonomo» pide confirmación en Odesk. «auto» en modelo deja elegir al router y en esfuerzo usa el del modelo; null vuelve al valor por defecto (Sonnet más avanzado, esfuerzo medio, autónomo).',
     esquema: {
       type: 'object',
       properties: {

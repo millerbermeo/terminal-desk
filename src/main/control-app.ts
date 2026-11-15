@@ -342,7 +342,7 @@ export class ControlApp {
       case 'ajustes_fijar': {
         const clave = typeof e.proyecto_id === 'string' && e.proyecto_id ? e.proyecto_id : 'global'
         const cambios: Record<string, string | null> = {}
-        for (const k of ['modelo', 'autonomia', 'esfuerzo'] as const) if (k in e) cambios[k] = e[k] === null || e[k] === 'auto' ? null : String(e[k])
+        for (const k of ['modelo', 'autonomia', 'esfuerzo'] as const) if (k in e) cambios[k] = e[k] === null ? null : String(e[k])
         if (!Object.keys(cambios).length) throw new Error('Indica modelo, autonomia o esfuerzo.')
         return { ambito: clave, ajustes: await d.ajustes.fijar(clave, cambios), nota: 'Se aplica desde el siguiente mensaje del Asistente.' }
       }

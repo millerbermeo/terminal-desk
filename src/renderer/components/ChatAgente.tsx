@@ -7,7 +7,7 @@ import type { DatosProyectos } from '@shared/modelos'
 import type { EstadoTarea, Tarea } from '@shared/tareas'
 import type { Agente, Turno } from '../agente/useAgente'
 import { useCuenta } from '../agente/cuenta'
-import { ESFUERZOS_AJUSTE, type AjustesAsistente, type Esfuerzo } from '@shared/ajustes'
+import { AUTONOMIA_POR_DEFECTO, ESFUERZO_POR_DEFECTO, ESFUERZOS_AJUSTE, sonnetMasAvanzado, type AjustesAsistente, type Esfuerzo } from '@shared/ajustes'
 import type { ContextoUso } from '@shared/core/uso'
 import { useModelos, ventanaDe } from '../agente/uso'
 import { AdjuntosAgente } from './AdjuntosAgente'
@@ -359,9 +359,11 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const conSuscripcion = cuenta?.proveedor === 'suscripcion'
   // Modelo y autonomía por proyecto: viven en la cuenta (`ajustes/<proyecto>.json`, se sincronizan con tus demás equipos).
   const claveAjustes = proyectoFijo?.id ?? 'global'
-  const [modeloSel, setModeloSel] = useState<string>('auto')
-  const [autonomia, setAutonomiaEstado] = useState<ModoAutonomia>('preguntar')
-  const [esfuerzo, setEsfuerzoEstado] = useState<Esfuerzo | 'auto'>('auto')
+  // '' = nada guardado: se usa el Sonnet más avanzado de la lista (o el router si no hay ninguno).
+  const [modeloGuardado, setModeloSel] = useState<string>('')
+  const modeloSel = modeloGuardado || sonnetMasAvanzado(modelos) || 'auto'
+  const [autonomia, setAutonomiaEstado] = useState<ModoAutonomia>(AUTONOMIA_POR_DEFECTO)
+  const [esfuerzo, setEsfuerzoEstado] = useState<Esfuerzo | 'auto'>(ESFUERZO_POR_DEFECTO)
   const versionAjustes = useRef(0) // sube con cada cambio hecho aquí: una lectura que empezó antes se descarta
   const releerAjustes = useRef<() => Promise<void>>(async () => undefined)
   useEffect(() => {
@@ -371,9 +373,9 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
       let a = await window.api.ajustes.leer(claveAjustes).catch(() => ({}) as AjustesAsistente)
       if (migrar && a.modelo === undefined && a.autonomia === undefined) a = await migrarAjustesLocales(claveAjustes, a)
       if (!vigente || version !== versionAjustes.current) return
-      setModeloSel(a.modelo ?? 'auto')
-      setAutonomiaEstado(a.autonomia ?? 'preguntar')
-      setEsfuerzoEstado(a.esfuerzo ?? 'auto')
+      setModeloSel(a.modelo ?? '')
+      setAutonomiaEstado(a.autonomia ?? AUTONOMIA_POR_DEFECTO)
+      setEsfuerzoEstado(a.esfuerzo ?? ESFUERZO_POR_DEFECTO)
     }
     releerAjustes.current = () => leer(false)
     void leer(true)
@@ -386,16 +388,16 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
       clearInterval(cada)
     }
   }, [claveAjustes])
-  // Un modelo recordado que ya no está disponible vuelve al modo automático.
+  // Un modelo recordado que ya no está disponible vuelve al de por defecto.
   useEffect(() => {
-    if (modeloSel !== 'auto' && modelos.length > 0 && !modelos.some((m) => m.id === modeloSel)) setModeloSel('auto')
-  }, [modelos, modeloSel])
+    if (modeloGuardado && modeloGuardado !== 'auto' && modelos.length > 0 && !modelos.some((m) => m.id === modeloGuardado)) setModeloSel('')
+  }, [modelos, modeloGuardado])
   const nombreModelo = modeloSel === 'auto' ? 'Auto' : (modelos.find((m) => m.id === modeloSel)?.nombre ?? modeloSel).replace(/^Claude\s+/i, '')
   const cambiarModelo = (id: string): void => {
     versionAjustes.current++
     setModeloSel(id)
     // Al terminar de guardar se vuelve a subir la versión: una lectura que empezó mientras se guardaba trae el valor viejo y se descarta.
-    void window.api.ajustes.fijar(claveAjustes, { modelo: id === 'auto' ? null : id }).catch(() => undefined).finally(() => void versionAjustes.current++)
+    void window.api.ajustes.fijar(claveAjustes, { modelo: id }).catch(() => undefined).finally(() => void versionAjustes.current++)
   }
   const cambiarAutonomia = async (nuevo: ModoAutonomia): Promise<void> => {
     if (nuevo === 'autonomo' && !(await confirmar({ titulo: 'Activar el modo autónomo', tono: 'aviso', etiqueta: 'Activar', texto: 'El agente escribirá archivos, ejecutará typecheck, lint y pruebas, y (en el Flujo) aprobará el plan sin preguntarte, con un límite de tokens.\n\nSeguirá pidiendo confirmación para lo destructivo (borrar, git push…), para comandos desconocidos y para aceptar el resultado del Flujo.\n\nLo más seguro es usarlo con el Flujo aislado en una rama.\n\nEste modo solo vale en este equipo: no se sincroniza con tu cuenta.' }))) return
@@ -406,7 +408,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const cambiarEsfuerzo = (nuevo: Esfuerzo | 'auto'): void => {
     versionAjustes.current++
     setEsfuerzoEstado(nuevo)
-    void window.api.ajustes.fijar(claveAjustes, { esfuerzo: nuevo === 'auto' ? null : nuevo }).catch(() => undefined).finally(() => void versionAjustes.current++)
+    void window.api.ajustes.fijar(claveAjustes, { esfuerzo: nuevo }).catch(() => undefined).finally(() => void versionAjustes.current++)
   }
   // Uso real del contexto (lo informa el CLI mientras su proceso sigue vivo): se pide al terminar cada respuesta.
   const [detalleCtx, setDetalleCtx] = useState<ContextoUso | undefined>()
@@ -1269,7 +1271,8 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
                 e.preventDefault()
                 return enviar()
               }
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+              // Enter envía; Shift+Enter hace salto de línea (Ctrl/Cmd+Enter también envía).
+              if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.nativeEvent.isComposing) {
                 e.preventDefault()
                 enviar()
               }
@@ -1346,7 +1349,8 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               )}
             </Desplegable>
             <span className="cmp-ayuda" aria-hidden="true">
-              <span><kbd>Ctrl</kbd><kbd>↵</kbd> enviar</span>
+              <span><kbd>↵</kbd> enviar</span>
+              <span><kbd>⇧</kbd><kbd>↵</kbd> nueva línea</span>
               <span><kbd>/</kbd> comandos</span>
               <span><kbd>@</kbd> archivos</span>
               <span><kbd>#</kbd> tareas</span>
@@ -1392,7 +1396,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               onClick={enviar}
               disabled={(!texto.trim() && pendientes.length === 0) || subiendo > 0}
               aria-label={agente.enCurso ? 'Encolar' : !texto.trim() && pendientes.length > 0 ? 'Enviar archivos' : 'Enviar'}
-              title={agente.enCurso ? 'El agente está trabajando: el mensaje se enviará al terminar (o usa «Preguntar ahora»)' : 'Enviar (Ctrl+Enter)'}
+              title={agente.enCurso ? 'El agente está trabajando: el mensaje se enviará al terminar (o usa «Preguntar ahora»)' : 'Enviar (Enter · Shift+Enter para nueva línea)'}
             >
               {agente.enCurso ? <IconoCola /> : <IconoEnviar />}
             </button>
