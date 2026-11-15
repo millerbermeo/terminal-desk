@@ -9,6 +9,10 @@ files:
   - package.json
 asarUnpack:
   - node_modules/node-pty/**
+  # Dictado por voz (Whisper local): binarios nativos de onnxruntime y sharp.
+  - node_modules/onnxruntime-node/**
+  - node_modules/sharp/**
+  - node_modules/@img/**
   - out/main/**
 linux:
   icon: icon.png

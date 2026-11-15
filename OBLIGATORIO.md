@@ -93,11 +93,11 @@ Biblioteca de recursos (compartidos o individuales de un proyecto) con activaci�
 - Linux con `no permissions`: reglas udev (`sudo apt install android-sdk-platform-tools-common`) y `sudo usermod -aG plugdev $USER`, cerrar sesión y reconectar.
 - Ver `docs/movil.md`.
 
-## 11. Dictado por voz del Asistente (Groq)
+## 11. Dictado por voz del Asistente (Whisper local)
 
-- Crear una clave **gratuita** en https://console.groq.com/keys y añadir `GROQ_API_KEY=<clave>` al `.env` del **backend** (`terminal-desk-api`); reiniciar el API. **Nunca** en el escritorio: la app no la ve ni la necesita.
-- Sin la clave (o si Groq la rechaza) el botón 🎤 muestra estas instrucciones y no se graba ni se procesa nada.
-- El servidor tiene que estar actualizado (rutas `/voz/estado` y `/voz/transcribir`); un servidor antiguo responde 404 y el escritorio pide actualizar el backend.
+- No hace falta ninguna clave ni el backend: el audio se transcribe en el propio equipo con Whisper (`onnx-community/whisper-base`).
+- El **primer** dictado descarga el modelo (~130 MB, desde huggingface.co) a `~/.odesk-agent/modelos/`; hace falta conexión esa vez. Después funciona sin internet.
+- `GROQ_API_KEY` y las rutas `/voz/*` del backend ya no se usan: se pueden quitar del `.env` y del API.
 - En macOS la app empaquetada pide permiso de micrófono la primera vez (`NSMicrophoneUsageDescription` en `electron-builder.yml`); en Linux depende del sistema de audio (PipeWire/PulseAudio).
 
 ## 12. Chat entre cuentas

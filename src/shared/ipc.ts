@@ -382,11 +382,12 @@ export interface ApiCentro {
   historial: {
     operar<K extends NombreOperacionHistorial>(op: K, entrada: OperacionesHistorial[K]['entrada']): Promise<OperacionesHistorial[K]['salida']>
   }
-  /** Dictado por voz: el backend transcribe (Groq, solo transcripción literal) y la interfaz deja el texto en el campo para editarlo, sin enviarlo. */
+  /** Dictado por voz: se transcribe en este equipo con Whisper (solo transcripción literal) y la interfaz deja el texto en el campo para editarlo, sin enviarlo. */
   voz: {
-    /** ¿Está configurado el dictado en el servidor? (clave de Groq presente y válida). */
+    /** Límites y si el modelo ya está descargado. */
     estado(): Promise<EstadoVoz>
-    transcribir(audio: Uint8Array, mime: string, duracionMs: number): Promise<ResultadoVoz>
+    /** `pcm`: audio mono a 16 kHz (`MUESTREO_VOZ`). */
+    transcribir(pcm: Float32Array, duracionMs: number): Promise<ResultadoVoz>
   }
   /** Notificaciones del sistema (el Asistente terminó de responder). Al pulsar una, la ventana vuelve al frente y `onClic` dice de qué chat era. */
   notificaciones: {

@@ -24,6 +24,7 @@ export const COMPARTIDOS = new Set([
   'sesiones', // plugins de Claude Code generados (derivados, pueden estar en uso)
   'mcp', // configuración generada del servidor MCP
   'caveman', // plugin Caveman descargado de GitHub (global para todas las cuentas)
+  'modelos', // modelo Whisper del dictado por voz (descargado una vez, igual para todas las cuentas)
   'tareas.sock',
   'tareas.token'
 ])

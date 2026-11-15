@@ -1,47 +1,76 @@
-import { LIMITES_GRABACION, type CodigoVoz, type EstadoVoz, type ResultadoVoz } from '@shared/voz'
-import { ErrorServidor, ErrorSesion, type ClienteServidor } from './servidor/cliente'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { LIMITES_GRABACION, MAX_MUESTRAS_VOZ, MUESTREO_VOZ, type CodigoVoz, type EstadoVoz, type ResultadoVoz } from '@shared/voz'
 
-type Cliente = Pick<ClienteServidor, 'get' | 'binario'>
+/** Modelo Whisper multilingüe (ONNX). «base» da buena transcripción en español y corre fluido en CPU. */
+export const MODELO_VOZ = 'onnx-community/whisper-base'
+/** Codificador en fp32 (la calidad cae mucho cuantizado) y decodificador en q8: ~130 MB en total. */
+const DTYPE = { encoder_model: 'fp32', decoder_model_merged: 'q8' } as const
+const ARCHIVOS_MODELO = ['onnx/encoder_model.onnx', 'onnx/decoder_model_merged_quantized.onnx']
 
-const CODIGOS: readonly CodigoVoz[] = ['VOZ_SIN_CLAVE', 'VOZ_CLAVE_INVALIDA', 'VOZ_SIN_CONEXION', 'VOZ_LIMITE', 'VOZ_FORMATO', 'VOZ_TAMANO', 'VOZ_DURACION', 'VOZ_VACIO', 'VOZ_ERROR']
-
-/** Los errores viajan como datos (por IPC un `throw` pierde el código, que la interfaz necesita para mostrar instrucciones). */
-function fallo(err: unknown): { ok: false; codigo: CodigoVoz; mensaje: string } {
-  if (err instanceof ErrorSesion) return { ok: false, codigo: 'VOZ_SESION', mensaje: err.message }
-  if (err instanceof ErrorServidor) {
-    if (err.estado === 404) return { ok: false, codigo: 'VOZ_ERROR', mensaje: 'Este servidor aún no tiene el dictado por voz: actualiza el backend (terminal-desk-api).' }
-    const codigo = CODIGOS.find((c) => c === err.codigo) ?? (err.estado === 429 ? 'VOZ_LIMITE' : err.estado === undefined ? 'VOZ_SIN_CONEXION' : 'VOZ_ERROR')
-    return { ok: false, codigo, mensaje: err.message }
-  }
-  return { ok: false, codigo: 'VOZ_ERROR', mensaje: 'No se pudo procesar el audio.' }
+/** Lo que hace falta del reconocedor (así se prueba sin descargar el modelo). */
+export interface MotorVoz {
+  /** ¿Está ya el modelo en disco? Si no, el primer dictado lo descarga. */
+  listo(): boolean
+  transcribir(pcm: Float32Array): Promise<string>
 }
 
-/** Dictado: el audio va al backend, que lo transcribe con Groq. El escritorio nunca tiene la clave. */
-export class ServicioVoz {
-  constructor(private readonly cliente: Cliente) {}
+class ErrorModelo extends Error {}
 
-  async estado(): Promise<EstadoVoz> {
-    try {
-      const r = await this.cliente.get<{ disponible: boolean; codigo?: string; mensaje?: string; maxSegundos: number; maxBytes: number }>('/voz/estado')
-      if (r.disponible) return { ok: true, maxSegundos: r.maxSegundos, maxBytes: r.maxBytes }
-      return { ok: false, codigo: CODIGOS.find((c) => c === r.codigo) ?? 'VOZ_ERROR', mensaje: r.mensaje ?? 'El dictado no está disponible.' }
-    } catch (err) {
-      return fallo(err)
+/** Whisper local con transformers.js (onnxruntime-node). Se carga al primer uso y se queda en memoria. */
+export function crearMotorWhisper(dirModelos: string): MotorVoz {
+  type Transcriptor = (audio: Float32Array, opciones: Record<string, unknown>) => Promise<{ text: string } | { text: string }[]>
+  let cargando: Promise<Transcriptor> | undefined
+  let cola: Promise<unknown> = Promise.resolve()
+
+  const cargar = (): Promise<Transcriptor> =>
+    (cargando ??= (async () => {
+      const { pipeline, env } = await import('@huggingface/transformers')
+      env.cacheDir = dirModelos
+      env.allowLocalModels = false
+      const p = await pipeline('automatic-speech-recognition', MODELO_VOZ, { dtype: DTYPE, device: 'cpu' })
+      return p as unknown as Transcriptor
+    })().catch((err: unknown) => {
+      cargando = undefined // el siguiente intento vuelve a probar (p. ej. sin red la primera vez)
+      throw new ErrorModelo(err instanceof Error ? err.message : String(err))
+    }))
+
+  return {
+    listo: () => ARCHIVOS_MODELO.every((a) => existsSync(join(dirModelos, MODELO_VOZ, a))),
+    transcribir: (pcm) => {
+      // Una transcripción a la vez: dos en paralelo solo se estorbarían en la CPU.
+      const r = cola.then(async () => {
+        const t = await cargar()
+        const salida = await t(pcm, { language: 'spanish', task: 'transcribe', chunk_length_s: 30, stride_length_s: 5 })
+        return (Array.isArray(salida) ? salida.map((s) => s.text).join(' ') : salida.text).trim()
+      })
+      cola = r.catch(() => undefined)
+      return r
     }
   }
+}
 
-  async transcribir(audio: Uint8Array, mime: string, duracionMs: number): Promise<ResultadoVoz> {
-    // Defensa local: no se sube nada que el backend vaya a rechazar.
-    if (!(audio instanceof Uint8Array) || audio.byteLength === 0) return { ok: false, codigo: 'VOZ_VACIO', mensaje: 'La grabación está vacía.' }
-    if (audio.byteLength > LIMITES_GRABACION.maxBytes) return { ok: false, codigo: 'VOZ_TAMANO', mensaje: 'La grabación es demasiado grande.' }
-    if (!/^audio\/[a-z0-9.+-]+(;.*)?$/i.test(mime)) return { ok: false, codigo: 'VOZ_FORMATO', mensaje: 'Formato de audio no admitido.' }
-    const tipo = mime.split(';')[0]!
+/** Dictado: el audio se transcribe en este equipo. Nada sale a internet salvo la descarga única del modelo. */
+export class ServicioVoz {
+  constructor(private readonly motor: MotorVoz) {}
+
+  estado(): EstadoVoz {
+    return { ok: true, maxSegundos: LIMITES_GRABACION.maxMs / 1000, modeloListo: this.motor.listo() }
+  }
+
+  async transcribir(pcm: unknown, duracionMs: number): Promise<ResultadoVoz> {
+    const mal = (codigo: CodigoVoz, mensaje: string): ResultadoVoz => ({ ok: false, codigo, mensaje })
+    if (!(pcm instanceof Float32Array)) return mal('VOZ_FORMATO', 'Formato de audio no admitido.')
+    if (pcm.length === 0) return mal('VOZ_VACIO', 'La grabación está vacía.')
+    if (pcm.length > MAX_MUESTRAS_VOZ || duracionMs > LIMITES_GRABACION.maxMs + 5_000) return mal('VOZ_DURACION', 'La grabación es demasiado larga.')
+    if (pcm.length < (LIMITES_GRABACION.minMs / 1000) * MUESTREO_VOZ * 0.5) return mal('VOZ_VACIO', 'La grabación es demasiado corta.')
     try {
-      // Solo transcripción literal: nunca se pide al servidor que reescriba el texto con un modelo.
-      const r = await this.cliente.binario<{ texto: string }>('/voz/transcribir', audio, tipo, { 'x-duracion-ms': String(Math.round(duracionMs)) })
-      return { ok: true, texto: r.texto }
+      const texto = await this.motor.transcribir(pcm)
+      if (!texto) return mal('VOZ_VACIO', 'No se entendió nada en la grabación: habla más cerca del micrófono.')
+      return { ok: true, texto }
     } catch (err) {
-      return fallo(err)
+      if (err instanceof ErrorModelo) return mal('VOZ_MODELO', `No se pudo preparar el modelo de voz (la primera vez se descarga, ~130 MB; revisa la conexión). ${err.message}`)
+      return mal('VOZ_ERROR', 'No se pudo transcribir el audio.')
     }
   }
 }

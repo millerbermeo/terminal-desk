@@ -26,7 +26,7 @@ import { Repositorio } from './core/git/repositorio'
 import { importarProyectosLocales } from './servidor/importar'
 import { iniciarSesionGoogle } from './servidor/google'
 import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
-import { ServicioVoz } from './voz'
+import { ServicioVoz, crearMotorWhisper } from './voz'
 import { servidorPorDefecto } from './servidor/por-defecto'
 import { cifradorDelSistema } from './cifrador'
 import { URL_SERVIDOR_PRODUCCION, type CredencialesSesion, type EstadoSesion, type NombreOperacionCuenta, type ResultadoBoveda, type ResultadoPaso, type ResultadoSesion } from '@shared/sesion'
@@ -643,11 +643,9 @@ function registrarIpc(): void {
     throw new Error('Operación no válida')
   })
   ipcMain.handle(Canales.historialOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionHistorial(historial, op, entrada))
-  const voz = new ServicioVoz(servidor)
+  const voz = new ServicioVoz(crearMotorWhisper(join(DIR, 'modelos')))
   ipcMain.handle(Canales.vozEstado, () => voz.estado())
-  ipcMain.handle(Canales.vozTranscribir, (_e, audio: unknown, mime: unknown, duracionMs: unknown) =>
-    voz.transcribir(audio instanceof Uint8Array ? audio : new Uint8Array(0), String(mime ?? ''), Number(duracionMs) || 0)
-  )
+  ipcMain.handle(Canales.vozTranscribir, (_e, pcm: unknown, duracionMs: unknown) => voz.transcribir(pcm, Number(duracionMs) || 0))
   ipcMain.handle(Canales.arranqueOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionArranque(arranque, op as never, entrada as never))
   // Notificación del sistema pedida por la interfaz (el Asistente terminó). Al pulsarla, la ventana que la pidió vuelve al frente y se le
   // dice de qué chat era. Se guarda la referencia: sin ella el recolector de basura se la lleva y el clic no llega.

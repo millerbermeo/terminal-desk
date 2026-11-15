@@ -2,5 +2,7 @@ allowBuilds:
   electron: true
   electron-winstaller: false
   node-pty: true
+  onnxruntime-node: false # solo descarga binarios CUDA; los de CPU ya vienen en el paquete
+  protobufjs: false
 minimumReleaseAgeExclude:
   - electron@44.8.0

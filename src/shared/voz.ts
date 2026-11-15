@@ -1,18 +1,22 @@
-/** Dictado por voz: lo comparten el proceso principal y la interfaz. La clave de Groq vive solo en el backend. */
+/** Dictado por voz: lo comparten el proceso principal y la interfaz. Se transcribe en este equipo (Whisper local), sin claves ni servidor. */
+
+/** Frecuencia de muestreo que espera Whisper: la interfaz le entrega el audio ya convertido a 16 kHz mono. */
+export const MUESTREO_VOZ = 16_000
 
 export const LIMITES_GRABACION = {
-  /** Debe coincidir con VOZ_MAX_SEGUNDOS del backend (si el backend informa otro, manda el suyo). */
   maxMs: 180_000,
-  maxBytes: 5 * 1024 * 1024,
-  /** Menos de esto es un clic sin querer: no se envía. */
+  /** Menos de esto es un clic sin querer: no se transcribe. */
   minMs: 700,
-  /** Opus mono a 64 kbps: voz nítida (los consonantes se entienden) y ~480 KB por minuto; 3 min caben en `maxBytes`. */
+  /** Opus mono a 64 kbps: voz nítida (los consonantes se entienden). */
   bitsPorSegundo: 64_000,
   /** Margen que se sigue grabando tras pulsar «Terminar»: así no se come la última palabra. */
   colaMs: 350,
   /** Espera con el micrófono ya abierto antes de empezar a grabar: el control automático de ganancia necesita ese instante y sin él se pierde el comienzo. */
   calentamientoMs: 250
 }
+/** Muestras que se aceptan como máximo (3 min + la cola y un margen). */
+export const MAX_MUESTRAS_VOZ = Math.ceil(((LIMITES_GRABACION.maxMs + 5_000) / 1000) * MUESTREO_VOZ)
+
 /** Si en los primeros segundos no se oye nada por encima de esto (0–1), se avisa de que el micrófono no capta sonido. */
 export const UMBRAL_SONIDO = 0.03
 
@@ -21,27 +25,20 @@ export const FORMATOS_GRABACION = ['audio/webm;codecs=opus', 'audio/ogg;codecs=o
 
 export const elegirFormato = (admite: (mime: string) => boolean): string | undefined => FORMATOS_GRABACION.find((f) => admite(f))
 
-/** Códigos de error del backend (`/voz/*`) más los del propio escritorio. */
 export type CodigoVoz =
-  | 'VOZ_SIN_CLAVE'
-  | 'VOZ_CLAVE_INVALIDA'
-  | 'VOZ_SIN_CONEXION'
-  | 'VOZ_LIMITE'
+  /** No se pudo descargar o cargar el modelo de voz. */
+  | 'VOZ_MODELO'
   | 'VOZ_FORMATO'
-  | 'VOZ_TAMANO'
   | 'VOZ_DURACION'
   | 'VOZ_VACIO'
   | 'VOZ_ERROR'
-  | 'VOZ_SESION'
   | 'VOZ_MICROFONO'
 
-export type EstadoVoz = { ok: true; maxSegundos: number; maxBytes: number } | { ok: false; codigo: CodigoVoz; mensaje: string }
+/** `modeloListo: false` = el primer dictado descargará el modelo (una sola vez). */
+export type EstadoVoz = { ok: true; maxSegundos: number; modeloListo: boolean } | { ok: false; codigo: CodigoVoz; mensaje: string }
 
 /** Solo la transcripción literal: el texto no pasa por ninguna IA de redacción. */
 export type ResultadoVoz = { ok: true; texto: string } | { ok: false; codigo: CodigoVoz; mensaje: string }
-
-/** Errores de configuración del servidor: la interfaz muestra las instrucciones y no deja grabar. */
-export const esErrorConfiguracion = (c: CodigoVoz): boolean => c === 'VOZ_SIN_CLAVE' || c === 'VOZ_CLAVE_INVALIDA'
 
 /** 75 000 ms -> «1:15». */
 export const formatoTiempo = (ms: number): string => {

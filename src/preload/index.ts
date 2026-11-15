@@ -99,7 +99,7 @@ const api: ApiCentro = {
   },
   voz: {
     estado: () => ipcRenderer.invoke(Canales.vozEstado),
-    transcribir: (audio, mime, duracionMs) => ipcRenderer.invoke(Canales.vozTranscribir, audio, mime, duracionMs)
+    transcribir: (pcm, duracionMs) => ipcRenderer.invoke(Canales.vozTranscribir, pcm, duracionMs)
   },
   notificaciones: {
     mostrar: (n) => ipcRenderer.invoke(Canales.notificacionMostrar, n),

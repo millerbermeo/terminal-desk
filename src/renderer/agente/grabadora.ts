@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
-import { LIMITES_GRABACION, UMBRAL_SONIDO, elegirFormato, type CodigoVoz, type EstadoVoz, type ResultadoVoz } from '@shared/voz'
+import { LIMITES_GRABACION, MUESTREO_VOZ, UMBRAL_SONIDO, elegirFormato, type CodigoVoz, type EstadoVoz, type ResultadoVoz } from '@shared/voz'
 
 export type FaseGrabacion = 'inactivo' | 'preparando' | 'grabando' | 'procesando' | 'error'
 
@@ -12,6 +12,8 @@ export interface EstadoGrabacion {
   nivel: number
   /** Pasados unos segundos no se ha oído nada: el micrófono no capta sonido. */
   sinSonido: boolean
+  /** El modelo de voz aún no está en el equipo: esta transcripción lo descarga (una sola vez). */
+  descargaModelo?: boolean
   error?: { codigo: CodigoVoz; mensaje: string }
 }
 
@@ -31,7 +33,9 @@ export interface DependenciasGrabadora {
   pedirMicrofono(): Promise<MediaStream>
   admite(mime: string): boolean
   crearGrabador(stream: MediaStream, mime: string, bitsPorSegundo: number): Grabador
-  transcribir(audio: Uint8Array, mime: string, duracionMs: number): Promise<ResultadoVoz>
+  /** Convierte lo grabado (Opus, WebM…) en PCM mono a 16 kHz, lo que necesita Whisper. */
+  decodificar(audio: Blob): Promise<Float32Array>
+  transcribir(pcm: Float32Array, duracionMs: number): Promise<ResultadoVoz>
   ahora(): number
   cadaIntervalo(fn: () => void, ms: number): () => void
   /** Pausa (calentamiento antes de grabar y cola tras «Terminar»). Sin ella no se espera. */
@@ -46,9 +50,9 @@ export interface TextoDictado {
 }
 
 /**
- * Ciclo de una grabación: comprueba que el servidor tenga el dictado configurado ANTES de abrir el micrófono, graba Opus mono
- * comprimido, se para sola al llegar al máximo, y manda UNA sola petición de transcripción. Nunca envía el mensaje: entrega el texto
- * literal (sin pasar por ninguna IA de redacción) para que se edite en el campo.
+ * Ciclo de una grabación: graba Opus mono comprimido, se para sola al llegar al máximo, convierte el audio a PCM 16 kHz y lo
+ * transcribe UNA vez en este equipo (Whisper local, sin claves ni servidor). Nunca envía el mensaje: entrega el texto literal
+ * (sin pasar por ninguna IA de redacción) para que se edite en el campo.
  */
 export class Grabadora {
   private estado: EstadoGrabacion = { fase: 'inactivo', ms: 0, maxMs: LIMITES_GRABACION.maxMs, nivel: 0, sinSonido: false }
@@ -65,6 +69,7 @@ export class Grabadora {
   private picoTotal = 0
   /** Cada grabación tiene su número: un resultado que llega tarde (cancelada mientras se procesaba) se descarta. */
   private turno = 0
+  private modeloListo = true
 
   constructor(
     private readonly d: DependenciasGrabadora,
@@ -99,9 +104,10 @@ export class Grabadora {
     this.cerrando = false
     this.picoTotal = 0
     this.fijar({ fase: 'preparando', ms: 0, nivel: 0, sinSonido: false })
-    const e = await this.d.estadoVoz().catch((): EstadoVoz => ({ ok: false, codigo: 'VOZ_SIN_CONEXION', mensaje: 'No se pudo conectar con el servidor.' }))
+    const e = await this.d.estadoVoz().catch((): EstadoVoz => ({ ok: false, codigo: 'VOZ_ERROR', mensaje: 'El dictado por voz no está disponible.' }))
     if (turno !== this.turno || this.cancelada) return
     if (!e.ok) return this.fallar(e.codigo, e.mensaje)
+    this.modeloListo = e.modeloListo
     const maxMs = Math.min(LIMITES_GRABACION.maxMs, e.maxSegundos * 1000)
     const mime = elegirFormato((m) => this.d.admite(m))
     if (!mime) return this.fallar('VOZ_FORMATO', 'Este equipo no puede grabar audio comprimido.')
@@ -185,12 +191,20 @@ export class Grabadora {
     this.liberar()
     if (turno !== this.turno || this.cancelada) return
     if (ms < LIMITES_GRABACION.minMs || audio.size === 0) return this.fallar('VOZ_VACIO', 'La grabación es demasiado corta: habla y pulsa «Terminar» cuando acabes.')
-    this.fijar({ fase: 'procesando', nivel: 0, sinSonido: false })
-    const bytes = new Uint8Array(await audio.arrayBuffer())
-    const r = await this.d.transcribir(bytes, this.mime, ms).catch((): ResultadoVoz => ({ ok: false, codigo: 'VOZ_SIN_CONEXION', mensaje: 'No se pudo conectar con el servidor.' }))
+    this.fijar({ fase: 'procesando', nivel: 0, sinSonido: false, descargaModelo: !this.modeloListo })
+    let pcm: Float32Array
+    try {
+      pcm = await this.d.decodificar(audio)
+    } catch {
+      if (turno !== this.turno || this.cancelada) return
+      return this.fallar('VOZ_FORMATO', 'No se pudo leer el audio grabado.')
+    }
+    if (turno !== this.turno || this.cancelada) return
+    const r = await this.d.transcribir(pcm, ms).catch((): ResultadoVoz => ({ ok: false, codigo: 'VOZ_ERROR', mensaje: 'No se pudo transcribir el audio.' }))
     if (turno !== this.turno || this.cancelada) return
     if (!r.ok) return this.fallar(r.codigo, r.mensaje)
-    this.fijar({ fase: 'inactivo', ms: 0 })
+    this.modeloListo = true
+    this.fijar({ fase: 'inactivo', ms: 0, descargaModelo: false })
     this.alTexto({ texto: r.texto })
   }
 
@@ -212,7 +226,19 @@ const dependenciasNavegador = (): DependenciasGrabadora => ({
   pedirMicrofono: () => navigator.mediaDevices.getUserMedia({ audio: { channelCount: { ideal: 1 }, sampleRate: { ideal: 48000 }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }),
   admite: (m) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m),
   crearGrabador: (stream, mime, bits) => new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: bits }) as unknown as Grabador,
-  transcribir: (audio, mime, ms) => window.api.voz.transcribir(audio, mime, ms),
+  decodificar: async (audio) => {
+    // Un contexto offline a 16 kHz: decodeAudioData remuestrea solo a su frecuencia.
+    const ctx = new OfflineAudioContext(1, 1, MUESTREO_VOZ)
+    const buf = await ctx.decodeAudioData(await audio.arrayBuffer())
+    if (buf.numberOfChannels === 1) return buf.getChannelData(0).slice()
+    const mono = new Float32Array(buf.length)
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const datos = buf.getChannelData(c)
+      for (let i = 0; i < datos.length; i++) mono[i]! += datos[i]! / buf.numberOfChannels
+    }
+    return mono
+  },
+  transcribir: (pcm, ms) => window.api.voz.transcribir(pcm, ms),
   esperar: (ms) => new Promise((ok) => window.setTimeout(ok, ms)),
   medirNivel: (stream) => {
     // Pico de volumen entre lecturas: se muestrea rápido (cada 50 ms) para no perder una sílaba corta.

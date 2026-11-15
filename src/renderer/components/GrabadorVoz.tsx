@@ -1,4 +1,4 @@
-import { esErrorConfiguracion, formatoTiempo } from '@shared/voz'
+import { formatoTiempo } from '@shared/voz'
 import type { ControlGrabadora } from '../agente/grabadora'
 
 /** Botón 🎤 de la barra del chat: empieza a grabar o, si ya graba, termina. */
@@ -25,14 +25,13 @@ export function BotonMicrofono({ voz, desactivado }: { voz: ControlGrabadora; de
 
 /** Barra encima del campo de texto mientras se graba, se procesa o hubo un error. Sin nada de eso no pinta nada. */
 export function BarraGrabacion({ voz }: { voz: ControlGrabadora }) {
-  const { fase, ms, maxMs, error, nivel, sinSonido } = voz.estado
+  const { fase, ms, maxMs, error, nivel, sinSonido, descargaModelo } = voz.estado
   if (fase === 'inactivo') return null
   if (fase === 'error' && error) {
-    const config = esErrorConfiguracion(error.codigo)
     return (
-      <div className={`ag-voz ag-voz-error${config ? ' config' : ''}`} role="alert">
+      <div className="ag-voz ag-voz-error" role="alert">
         <div className="ag-voz-texto">
-          <strong>{config ? 'Dictado por voz no configurado' : 'No se pudo dictar'}</strong>
+          <strong>No se pudo dictar</strong>
           <span>{error.mensaje}</span>
         </div>
         <button onClick={voz.descartarError}>Entendido</button>
@@ -52,7 +51,7 @@ export function BarraGrabacion({ voz }: { voz: ControlGrabadora }) {
     return (
       <div className="ag-voz" role="status">
         <span className="ag-voz-giro" aria-hidden />
-        <span className="ag-voz-texto">Transcribiendo…</span>
+        <span className="ag-voz-texto">{descargaModelo ? 'Descargando el modelo de voz (solo la primera vez, ~130 MB) y transcribiendo…' : 'Transcribiendo…'}</span>
         <button onClick={voz.cancelar}>Cancelar</button>
       </div>
     )
