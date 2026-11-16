@@ -136,7 +136,7 @@ export function Acceso({ servidor, servidorPendiente, onEntrar, onServidor, onCa
       } else setError(r.mensaje)
     }, 'No se pudo cambiar el servidor.')
 
-  const entrarConGoogle = (): Promise<void> => correr(async () => tratarSesion(await window.api.sesion.iniciarConGoogle()), 'No se pudo completar el acceso con Google.')
+  const entrarConGoogle = (modo: 'abrir' | 'copiar' = 'abrir'): Promise<void> => correr(async () => tratarSesion(await window.api.sesion.iniciarConGoogle(modo)), 'No se pudo completar el acceso con Google.')
 
   const pideCodigo = modo === 'codigo' || modo === 'restablecer'
   const pidePassword = modo === 'entrar' || modo === 'registrar' || modo === 'restablecer'
@@ -274,9 +274,15 @@ export function Acceso({ servidor, servidorPendiente, onEntrar, onServidor, onCa
           </label>
         )}
         {modo === 'entrar' && googleListo && (
-          <button type="button" disabled={enviando} onClick={() => void entrarConGoogle()}>
-            {enviando ? 'Esperando al navegador…' : 'Continuar con Google'}
-          </button>
+          <>
+            <button type="button" disabled={enviando} onClick={() => void entrarConGoogle('abrir')}>
+              {enviando ? 'Esperando al navegador…' : 'Continuar con Google (abrir navegador)'}
+            </button>
+            <button type="button" disabled={enviando} onClick={() => void entrarConGoogle('copiar')}>
+              Continuar con Google (copiar enlace)
+            </button>
+            {enviando && <span className="ayuda">Si copiaste el enlace, pégalo en un navegador de esta computadora.</span>}
+          </>
         )}
         {aviso && !error && <p className="modal-texto">{aviso}</p>}
         {error && (

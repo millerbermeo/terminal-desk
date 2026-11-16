@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Notification, session, shell, webContents } from 'electron'
+import { app, BrowserWindow, clipboard, desktopCapturer, dialog, ipcMain, Notification, session, shell, webContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { homedir, hostname } from 'node:os'
 import { join } from 'node:path'
@@ -605,7 +605,8 @@ async function conSesion(entrar: () => Promise<EstadoSesion>): Promise<Resultado
     await session.defaultSession.clearStorageData({ storages: ['localstorage', 'indexdb'] }).catch(() => undefined)
     terminales.cerrarTodas()
     setTimeout(() => {
-      app.relaunch()
+      // En AppImage `process.execPath` apunta a un montaje que desaparece al salir: se relanza el .AppImage.
+      app.relaunch(process.env.APPIMAGE ? { execPath: process.env.APPIMAGE, args: process.argv.slice(1) } : undefined)
       app.exit(0)
     }, 200)
     return { ok: true, estado }
@@ -738,7 +739,10 @@ function registrarIpc(): void {
     conSesion(() => servidor.iniciar(String(c?.email ?? ''), String(c?.password ?? '')))
   )
   ipcMain.handle(Canales.sesionGoogleDisponible, () => servidor.googleDisponible().catch(() => false))
-  ipcMain.handle(Canales.sesionGoogle, () => conSesion(() => iniciarSesionGoogle(servidor, (url) => shell.openExternal(url))))
+  // 'copiar': el enlace va al portapapeles para pegarlo en el navegador que se quiera (el de esta misma computadora: la redirección vuelve a 127.0.0.1).
+  ipcMain.handle(Canales.sesionGoogle, (_e, modo?: string) =>
+    conSesion(() => iniciarSesionGoogle(servidor, modo === 'copiar' ? (url) => clipboard.writeText(url) : (url) => shell.openExternal(url)))
+  )
   ipcMain.handle(Canales.sesionCuenta, (_e, op: NombreOperacionCuenta, entrada: Record<string, unknown>) => operarCuenta(op, entrada ?? {}))
   ipcMain.handle(Canales.sesionServidor, async (_e, url: string): Promise<ResultadoSesion> => {
     try {

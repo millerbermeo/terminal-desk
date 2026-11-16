@@ -454,7 +454,7 @@ export interface ApiCentro {
     /** Registro, verificación, recuperación y cambio de contraseña, cerrar en todos los equipos. */
     cuenta<K extends NombreOperacionCuenta>(op: K, entrada: OperacionesCuenta[K]['entrada']): Promise<OperacionesCuenta[K]['salida']>
     /** Abre el navegador del sistema con el login de Google y espera el resultado (hasta 3 min). */
-    iniciarConGoogle(): Promise<ResultadoSesion>
+    iniciarConGoogle(modo?: 'abrir' | 'copiar'): Promise<ResultadoSesion>
     /** ¿Tiene el servidor configurado el acceso con Google? (`false` también si no responde). */
     googleDisponible(): Promise<boolean>
     /** Cambia la dirección del servidor (se guarda en `servidor.json`) y cierra la sesión actual, que era de otro servidor. */

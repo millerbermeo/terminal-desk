@@ -148,7 +148,7 @@ const api: ApiCentro = {
   sesion: {
     estado: () => ipcRenderer.invoke(Canales.sesionEstado),
     iniciar: (c) => ipcRenderer.invoke(Canales.sesionIniciar, c),
-    iniciarConGoogle: () => ipcRenderer.invoke(Canales.sesionGoogle),
+    iniciarConGoogle: (modo) => ipcRenderer.invoke(Canales.sesionGoogle, modo),
     googleDisponible: () => ipcRenderer.invoke(Canales.sesionGoogleDisponible),
     cuenta: (op, entrada) => ipcRenderer.invoke(Canales.sesionCuenta, op, entrada),
     fijarServidor: (url) => ipcRenderer.invoke(Canales.sesionServidor, url),
