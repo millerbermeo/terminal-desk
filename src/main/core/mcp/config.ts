@@ -28,7 +28,7 @@ export function analizarConfigMcp(crudo: unknown): ConfigMcp {
 }
 
 /**
- * Servidores que Odesk Agent trae de serie para todos los proyectos. Lo que el usuario declare en mcp.json con el mismo nombre
+ * Servidores que Odesk Code trae de serie para todos los proyectos. Lo que el usuario declare en mcp.json con el mismo nombre
  * manda (para cambiar los args o apagarlo: `"playwright": { "comando": "npx", "deshabilitado": true }`).
  */
 const SERVIDORES_DE_SERIE: Record<string, ServidorMcpConfig> = {

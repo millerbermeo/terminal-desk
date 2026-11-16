@@ -1,4 +1,4 @@
-/** Estado de la sesión contra el servidor (API de Odesk Agent). */
+/** Estado de la sesión contra el servidor (API de Odesk Code). */
 export interface EstadoSesion {
   activa: boolean
   email?: string

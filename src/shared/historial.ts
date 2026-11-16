@@ -26,7 +26,7 @@ export const ETIQUETA_ORIGEN: Record<OrigenVersion, string> = {
 export interface AutorVersion {
   /** Usuario de GitHub conectado en ese momento (o el nombre de git si no hay cuenta). */
   usuario?: string
-  /** Correo de la cuenta de Odesk Agent. */
+  /** Correo de la cuenta de Odesk Code. */
   cuenta?: string
   equipoId?: string
   equipo?: string

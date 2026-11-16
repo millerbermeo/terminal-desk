@@ -7,7 +7,7 @@ import { ErrorServidor, type ClienteServidor } from './cliente'
 const ESPERA_MAX_MS = 3 * 60_000
 
 const pagina = (titulo: string, texto: string): string =>
-  `<!doctype html><meta charset="utf-8"><title>Odesk Agent</title>` +
+  `<!doctype html><meta charset="utf-8"><title>Odesk Code</title>` +
   `<body style="font-family:system-ui,sans-serif;background:#0d0e12;color:#e8e9ee;display:grid;place-items:center;height:100vh;margin:0">` +
   `<div style="text-align:center"><h2>${titulo}</h2><p style="color:#9a9cab">${texto}</p></div></body>`
 
@@ -37,10 +37,10 @@ export async function iniciarSesionGoogle(
         }
         const code = url.searchParams.get('code')
         if (url.searchParams.get('nonce') !== nonce || !code) {
-          res.writeHead(400, { 'content-type': 'text/html; charset=utf-8' }).end(pagina('Solicitud no válida', 'Vuelve a intentarlo desde Odesk Agent.'))
+          res.writeHead(400, { 'content-type': 'text/html; charset=utf-8' }).end(pagina('Solicitud no válida', 'Vuelve a intentarlo desde Odesk Code.'))
           return
         }
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(pagina('Listo', 'Ya puedes cerrar esta pestaña y volver a Odesk Agent.'))
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(pagina('Listo', 'Ya puedes cerrar esta pestaña y volver a Odesk Code.'))
         resolver(code)
       })
       http.once('error', rechazar)

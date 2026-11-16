@@ -556,7 +556,7 @@ export class ControlApp {
       case 'notificar': {
         const cuerpo = String(e.cuerpo ?? '').trim()
         if (!cuerpo) throw new Error('El texto está vacío.')
-        const ok = falta(d.notificar, 'Notificaciones')(String(e.titulo ?? 'Odesk Agent'), cuerpo)
+        const ok = falta(d.notificar, 'Notificaciones')(String(e.titulo ?? 'Odesk Code'), cuerpo)
         return ok ? 'Notificación mostrada.' : 'El sistema no admite notificaciones.'
       }
     }

@@ -119,7 +119,7 @@ export function GitHubOauth({ gha, onEstado, onError }: Props) {
           <p className="oa-paso">Para entrar con un código, crea una vez una «OAuth App» propia (es gratis y tarda un minuto):</p>
           <ol className="gh-pasos">
             <li>
-              En GitHub crea una OAuth App: nombre <code>Odesk Agent</code>, cualquier URL en «Homepage» y en «Callback».
+              En GitHub crea una OAuth App: nombre <code>Odesk Code</code>, cualquier URL en «Homepage» y en «Callback».
               <div>
                 <button onClick={() => abrir(URL_CREAR_OAUTH)}>Crear OAuth App ↗</button>
               </div>

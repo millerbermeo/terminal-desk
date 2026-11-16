@@ -1,3 +1,4 @@
+import { coincide } from '@shared/atajos'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EventoAgente } from '@shared/core/agente'
 import { LIMITES_ADJUNTOS, type Adjunto } from '@shared/core/adjuntos'
@@ -904,10 +905,20 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     <div
       className={`ag-chat${arrastrando ? ' arrastrando' : ''}`}
       onKeyDown={(e) => {
-        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
-          e.preventDefault()
-          abrirBusqueda()
-        }
+        if (e.nativeEvent.isComposing) return
+        // Atajos del chat (registro en `shared/atajos.ts`): valen igual en el Asistente de un proyecto, de un grupo y el general.
+        const hacer = (f: () => void): void => (e.preventDefault(), e.stopPropagation(), f())
+        if (coincide(e, 'chat-buscar')) return hacer(abrirBusqueda)
+        if (coincide(e, 'chat-componer')) return hacer(() => areaTexto.current?.focus())
+        if (coincide(e, 'chat-nueva')) return hacer(() => void pedirNuevaConversacion())
+        if (coincide(e, 'chat-historial')) return hacer(() => setVerHistorial((v) => !v))
+        if (coincide(e, 'chat-exportar')) return hacer(() => agente.turnos.some((t) => t.estado !== 'en_curso') && exportarConversacion())
+        if (coincide(e, 'chat-cancelar')) return hacer(() => actual?.estado === 'en_curso' && cancelarTurno(actual))
+        if (coincide(e, 'chat-modo')) return hacer(() => proyecto && !conSuscripcion && setModo((m) => (m === 'chat' ? 'flujo' : 'chat')))
+        if (coincide(e, 'chat-tareas')) return hacer(() => proyecto && setVerTareas((v) => !v))
+        if (coincide(e, 'chat-adjuntar')) return hacer(() => selector.current?.click())
+        if (coincide(e, 'chat-inicio')) return hacer(() => ((pegado.current = false), hilo.current?.scrollTo({ top: 0, behavior: 'smooth' })))
+        if (coincide(e, 'chat-final')) return hacer(() => ((pegado.current = true), hilo.current?.scrollTo({ top: hilo.current.scrollHeight, behavior: 'smooth' })))
       }}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('Files')) {
@@ -1369,8 +1380,8 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
                 <>
                   {proyecto && <ItemMenu indice={0} icono={<IconoTareas />} texto="Tareas del proyecto" detalle="Menciónalas o pide que el Asistente implemente una" atajo="#" activo={verTareas} onClick={() => { cerrar(); setVerTareas((v) => !v) }} />}
                   <ItemMenu indice={1} icono={<IconoLupa />} texto="Buscar en la conversación" atajo="Ctrl F" disabled={agente.turnos.length === 0} onClick={() => { cerrar(); abrirBusqueda() }} />
-                  <ItemMenu indice={2} icono={<IconoReloj />} texto="Historial" detalle="Conversaciones guardadas" onClick={() => { cerrar(); setVerHistorial((v) => !v) }} />
-                  <ItemMenu indice={3} icono={<IconoDescargar />} texto="Exportar a Markdown" disabled={!agente.turnos.some((t) => t.estado !== 'en_curso')} onClick={() => { cerrar(); exportarConversacion() }} />
+                  <ItemMenu indice={2} icono={<IconoReloj />} texto="Historial" detalle="Conversaciones guardadas" atajo="Ctrl ⇧ H" onClick={() => { cerrar(); setVerHistorial((v) => !v) }} />
+                  <ItemMenu indice={3} icono={<IconoDescargar />} texto="Exportar a Markdown" atajo="Ctrl ⇧ E" disabled={!agente.turnos.some((t) => t.estado !== 'en_curso')} onClick={() => { cerrar(); exportarConversacion() }} />
                   <div className="cmp-sep" role="separator" />
                   <ItemMenu
                     indice={4}

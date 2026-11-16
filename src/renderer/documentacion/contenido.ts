@@ -48,12 +48,12 @@ export interface Seccion {
 export const SECCIONES: Seccion[] = [
   {
     id: 'que-es',
-    titulo: 'Qué es Odesk Agent',
+    titulo: 'Qué es Odesk Code',
     icono: 'info',
     categoria: 'Empezar',
     gancho: 'Un escritorio para tus proyectos: terminales, IA, tareas, git y pruebas en una ventana',
     resumen:
-      'Odesk Agent reúne en una sola ventana lo que normalmente está repartido entre la terminal, el editor, el cliente de git, el gestor de tareas, Postman y el navegador. Cada proyecto es una carpeta de tu equipo; la app abre terminales reales sobre ella, lanza CLIs de IA dentro de esas terminales y ofrece además su propio asistente conectado a la API de Anthropic.',
+      'Odesk Code reúne en una sola ventana lo que normalmente está repartido entre la terminal, el editor, el cliente de git, el gestor de tareas, Postman y el navegador. Cada proyecto es una carpeta de tu equipo; la app abre terminales reales sobre ella, lanza CLIs de IA dentro de esas terminales y ofrece además su propio asistente conectado a la API de Anthropic.',
     paraQue: [
       'Trabajar varios proyectos a la vez sin perder el contexto: una pestaña por grupo, una terminal por proyecto.',
       'Dar trabajo a la IA con límites claros: confirmaciones, permisos guardados y ramas aisladas.',
@@ -737,7 +737,7 @@ export const SECCIONES: Seccion[] = [
     categoria: 'Herramientas',
     gancho: 'Mensajes en tiempo real, archivos, notas de voz y llamadas con tus contactos',
     resumen:
-      'Un chat al estilo de las apps de mensajería, dentro de Odesk Agent: agregas contactos por correo, ellos aceptan, y desde ahí pueden escribirse al instante, enviarse fotos, archivos y notas de voz, y hacer llamadas de voz o video.',
+      'Un chat al estilo de las apps de mensajería, dentro de Odesk Code: agregas contactos por correo, ellos aceptan, y desde ahí pueden escribirse al instante, enviarse fotos, archivos y notas de voz, y hacer llamadas de voz o video.',
     donde: 'Pantalla «Chat» (barra lateral)',
     paraQue: [
       'Hablar con tu equipo sin salir de la app donde trabajas.',
@@ -969,7 +969,7 @@ export const SECCIONES: Seccion[] = [
       { titulo: 'No hay flujos ni grupos', texto: 'Son del modo «api»: en suscripción no están disponibles.' },
       { titulo: 'Las terminales desaparecieron al recargar', texto: 'Recargar la ventana mata sus procesos: es lo esperado, no un fallo.' },
       { titulo: 'El agente no carga mis agentes o skills', texto: 'Solo se cargan en terminales abiertas con ✦ y un proveedor claude, y con el recurso activado para ese proyecto o grupo.' },
-      { titulo: 'Las herramientas de tareas fallan desde el CLI', texto: 'El servidor MCP no tiene datos propios: necesita Odesk Agent abierto para hablar con él.' },
+      { titulo: 'Las herramientas de tareas fallan desde el CLI', texto: 'El servidor MCP no tiene datos propios: necesita Odesk Code abierto para hablar con él.' },
       { titulo: 'git pide contraseña y falla', texto: 'La app no puede pedir contraseñas: usa una clave SSH con ssh-agent, un credential helper, o conecta GitHub con un token (https funciona entonces sin configurar nada).' },
       { titulo: 'El token de GitHub se pierde al cerrar', texto: 'Tu sistema no ofrece un llavero seguro, así que el token solo vive en memoria. Instala un gestor de claves del escritorio o vuelve a pegarlo cada sesión.' }
     ],

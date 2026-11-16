@@ -1,4 +1,4 @@
-/* ===== Sistema de diseño de Odesk Agent: variables =====
+/* ===== Sistema de diseño de Odesk Code: variables =====
    Única fuente de verdad de color, tipografía, espaciado, forma, profundidad y movimiento.
    Se carga antes que cualquier otra hoja; ninguna otra debe volver a definir estas variables
    (salvo dentro de una media query de accesibilidad). Guía de uso: docs/diseno.md. */

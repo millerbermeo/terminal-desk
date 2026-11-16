@@ -1,7 +1,7 @@
 {
   "name": "odesk-agent",
   "version": "0.1.0",
-  "description": "Odesk Agent: gestor de proyectos con terminales, asistente de IA, tareas, git, navegador y cliente API",
+  "description": "Odesk Code: gestor de proyectos con terminales, asistente de IA, tareas, git, navegador y cliente API",
   "main": "./out/main/index.js",
   "private": true,
   "scripts": {

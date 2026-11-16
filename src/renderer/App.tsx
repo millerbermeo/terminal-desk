@@ -16,6 +16,10 @@ import { Inicio } from './components/Inicio'
 import { Versiones } from './components/Versiones'
 import { Api } from './components/Api'
 import { Navegador } from './components/Navegador'
+import { Atajos } from './components/Atajos'
+import { NavegadorRapido, type ItemRapido } from './components/NavegadorRapido'
+import { useAtajosGlobales } from './atajos/useAtajosGlobales'
+import { VISTAS_RAPIDAS, formatearCombo } from '@shared/atajos'
 import { escucharSolicitudes, useSolicitudes } from './agente/solicitudes'
 import { ArranqueProyecto } from './components/ArranqueProyecto'
 import { sinRaiz } from './raizGrupo'
@@ -626,6 +630,84 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     []
   )
 
+  // ---- Atajos de teclado globales y navegador rápido (Ctrl+Mayús+P). Los atajos del chat viven en `ChatAgente`.
+  const [paleta, setPaleta] = useState(false)
+  const recientes = useRef<string[]>([]) // `<ventana>|<terminal>`, la más reciente primero
+  const activaDe = ventanas.find((v) => v.id === ventanaActiva)?.activa
+  useEffect(() => {
+    if (!ventanaActiva || !activaDe || vista !== 'terminales') return
+    const clave = `${ventanaActiva}|${activaDe}`
+    recientes.current = [clave, ...recientes.current.filter((c) => c !== clave)].slice(0, 100)
+  }, [ventanaActiva, activaDe, vista])
+  /** Muestra la terminal y le devuelve el foco (si ya era la activa, el panel no lo recupera solo). */
+  const irATerminal = (ventanaId: string, termId: string): void => {
+    enfocar(ventanaId, termId)
+    window.setTimeout(() => document.querySelector<HTMLElement>('.panel.activa .xterm-helper-textarea, .panel.activa .ag-compositor textarea, .panel.activa textarea')?.focus(), 120)
+  }
+  const proyectoActivo = (): Proyecto | undefined => {
+    const v = ventanas.find((x) => x.id === ventanaActiva)
+    const t = v?.terminales.find((x) => x.id === v.activa)
+    return t?.proyectoId ? datos.proyectos.find((p) => p.id === t.proyectoId) : undefined
+  }
+  const moverPestana = (paso: number): void => {
+    if (ventanas.length === 0) return
+    const i = Math.max(0, ventanas.findIndex((v) => v.id === ventanaActiva))
+    setVentanaActiva(ventanas[(i + paso + ventanas.length) % ventanas.length]!.id)
+    setVista('terminales')
+  }
+  const moverTerminal = (paso: number): void => {
+    const v = ventanas.find((x) => x.id === ventanaActiva)
+    if (!v || v.terminales.length === 0) return
+    const i = Math.max(0, v.terminales.findIndex((t) => t.id === v.activa))
+    irATerminal(v.id, v.terminales[(i + paso + v.terminales.length) % v.terminales.length]!.id)
+  }
+  const accionesAtajos: Record<string, () => void> = {
+    ayuda: () => setVista('atajos'),
+    'navegador-rapido': () => setPaleta((p) => !p),
+    'pestana-siguiente': () => moverPestana(1),
+    'pestana-anterior': () => moverPestana(-1),
+    'terminal-siguiente': () => moverTerminal(1),
+    'terminal-anterior': () => moverTerminal(-1),
+    'terminal-nueva': abrirLibre,
+    'asistente-proyecto': () => {
+      const p = proyectoActivo()
+      if (p) void accionIa.current({ tipo: 'abrir-proyecto', proyectoId: p.id, vista: 'asistente' })
+      else setVista('asistente')
+    }
+  }
+  for (const v of VISTAS_RAPIDAS) accionesAtajos[`ir-${v}`] = () => setVista(v)
+  for (let n = 1; n <= 9; n++)
+    accionesAtajos[`terminal-${n}`] = () => {
+      const v = ventanas.find((x) => x.id === ventanaActiva)
+      const t = v?.terminales[n - 1]
+      if (v && t) irATerminal(v.id, t.id)
+    }
+  useAtajosGlobales(accionesAtajos)
+  const itemsRapidos = (): ItemRapido[] => {
+    const orden = (clave: string): number => {
+      const i = recientes.current.indexOf(clave)
+      return i < 0 ? 1e6 : i
+    }
+    const terminales: ItemRapido[] = ventanas.flatMap((v) =>
+      v.terminales.map((t, n) => {
+        const tipo = t.vista === 'asistente' ? 'asistente' : t.vista === 'archivos' ? 'archivos' : 'terminal'
+        return {
+          clave: `${v.id}|${t.id}`,
+          titulo: t.titulo,
+          detalle: v.nombre,
+          tipo,
+          activa: v.id === ventanaActiva && v.activa === t.id && vista === 'terminales',
+          ...(v.id === ventanaActiva && n < 9 ? { atajo: formatearCombo(`Alt+${n + 1}`) } : {}),
+          ir: () => irATerminal(v.id, t.id)
+        } satisfies ItemRapido
+      })
+    )
+    terminales.sort((a, b) => orden(a.clave) - orden(b.clave))
+    const servs: ItemRapido[] = servicios.map((t) => ({ clave: `s|${t.id}`, titulo: t.titulo, detalle: 'Servicios', tipo: 'servicio', ir: () => setVista('servicios') }))
+    const proyectos: ItemRapido[] = datos.proyectos.map((p) => ({ clave: `p|${p.id}`, titulo: p.nombre, detalle: p.ruta, tipo: 'proyecto', ir: () => abrirProyecto(p) }))
+    return [...terminales, ...servs, ...proyectos]
+  }
+
   const pedirCierre = (v: Ventana): void => (v.terminales.length > 0 ? setPorCerrar(v.id) : cerrarVentana(v.id))
   const abiertos = new Set(ventanas.map((v) => v.id))
   const terminalesPorProyecto: Record<string, number> = {}
@@ -670,6 +752,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
           }}
         />
       )}
+      {paleta && <NavegadorRapido items={itemsRapidos()} onCerrar={() => setPaleta(false)} />}
       {modalMulti && <ModalMultiproyecto datos={datos} onCerrar={() => setModalMulti(false)} onAbrir={abrirMulti} />}
       {modalAgregar && (
         <ModalAgregar
@@ -728,6 +811,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
         onDetener={detenerServicio}
         onDetenerProyectos={(ids) => ids.forEach((proyectoId) => void window.api.arranque.operar('detener', { proyectoId }).catch(() => undefined))}
       />
+      {vista === 'atajos' && <Atajos />}
       {guiaAbierta && (
         <Suspense fallback={null}>
           <Documentacion visible={vista === 'guia'} />

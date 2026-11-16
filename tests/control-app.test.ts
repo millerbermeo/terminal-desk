@@ -177,7 +177,7 @@ describe('confirmación en Odesk', () => {
 
   it('sin la app abierta responde con un error legible', async () => {
     const ej = crearEjecutorOdesk({ tareas: {} as never, github: {} as never, carpetaDe: async () => '/' })
-    expect((await ej('odesk_proyectos', {})).texto).toMatch(/Odesk Agent abierto/)
+    expect((await ej('odesk_proyectos', {})).texto).toMatch(/Odesk Code abierto/)
   })
 })
 

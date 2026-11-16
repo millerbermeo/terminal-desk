@@ -281,7 +281,7 @@ async function ejecutarApp(s: ServiciosOdesk, nombre: string, entrada: unknown, 
   const motivo = validarEntrada(def.esquema, e)
   if (motivo) return { texto: `Entrada inválida para ${nombre}: ${motivo}`, error: true }
   const control = s.app?.()
-  if (!control) return { texto: 'Esto solo se puede hacer con Odesk Agent abierto.', error: true }
+  if (!control) return { texto: 'Esto solo se puede hacer con Odesk Code abierto.', error: true }
   const pregunta = confirmacionApp(nombre, e as Entrada)
   if (pregunta) {
     const ok = s.confirmar ? await s.confirmar(pregunta, ctx.cliente).catch(() => false) : false
@@ -293,9 +293,9 @@ async function ejecutarApp(s: ServiciosOdesk, nombre: string, entrada: unknown, 
 export function crearEjecutorOdesk(s: ServiciosOdesk): EjecutorOdesk {
   return async (nombre, entrada, ctx = {}) => {
     if (HERRAMIENTAS_NAVEGADOR.some((h) => h.nombre === nombre))
-      return ejecutarControlado(HERRAMIENTAS_NAVEGADOR, s.navegador?.(), 'El navegador integrado solo está disponible con Odesk Agent abierto.', nombre, entrada)
+      return ejecutarControlado(HERRAMIENTAS_NAVEGADOR, s.navegador?.(), 'El navegador integrado solo está disponible con Odesk Code abierto.', nombre, entrada)
     if (HERRAMIENTAS_MOVIL.some((h) => h.nombre === nombre))
-      return ejecutarControlado(HERRAMIENTAS_MOVIL, s.movil?.(), 'Los dispositivos móviles solo están disponibles con Odesk Agent abierto.', nombre, entrada, conRutaApk(s, ctx))
+      return ejecutarControlado(HERRAMIENTAS_MOVIL, s.movil?.(), 'Los dispositivos móviles solo están disponibles con Odesk Code abierto.', nombre, entrada, conRutaApk(s, ctx))
     if (HERRAMIENTAS_APP.some((h) => h.nombre === nombre)) return ejecutarApp(s, nombre, entrada, ctx)
     if (HERRAMIENTAS_TAREAS.some((h) => h.nombre === nombre)) return ejecutarHerramientaTareas(s.tareas, nombre, entrada, ctx)
     if (HERRAMIENTAS_CREDENCIALES.some((h) => h.nombre === nombre)) return ejecutarCredenciales(s, nombre, entrada, ctx)

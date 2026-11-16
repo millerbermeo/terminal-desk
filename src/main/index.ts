@@ -65,6 +65,8 @@ import { iniciarServidorTareas, type ServidorTareas } from './core/tareas/servid
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto')
 // En Wayland, Chromium con Vulkan falla ("'--ozone-platform=wayland' is not compatible with Vulkan"); la app no lo necesita.
 if (process.platform === 'linux') app.commandLine.appendSwitch('disable-features', 'Vulkan')
+// Nombre de la app: «Odesk Code». Aquí se conserva el interno «Odesk Agent» a propósito: de él cuelgan la carpeta del perfil de Electron
+// y la entrada del llavero de `safeStorage` (sesión, token de GitHub, bóveda); cambiarlo cerraría todas las sesiones.
 app.setName('Odesk Agent')
 // Perfil de Electron (localStorage del renderer): carpeta fija con el nombre actual; si solo existe la de un nombre anterior, se mueve.
 app.setPath('userData', resolverPerfil(app.getPath('appData'), 'Odesk Agent'))
@@ -154,7 +156,7 @@ app.on('render-process-gone', (_e, wc, d) => {
   registro.registrar({ level: 'error', source: 'renderer', kind: 'render-process-gone', message: `La interfaz se cerró: ${d.reason}`, context: { reason: d.reason, exitCode: d.exitCode } })
   if (!motivoRecuperable(d.reason) || wc.isDestroyed()) return
   if (recargas.permitir(wc.id)) setTimeout(() => !wc.isDestroyed() && wc.reload(), 500)
-  else void dialog.showMessageBox({ type: 'error', title: 'Odesk Agent', message: 'La interfaz se sigue cerrando sola.', detail: 'Se dejó de recargar automáticamente. Cierra y vuelve a abrir la aplicación; el detalle quedó en el registro (~/.odesk-agent/logs/app.log).' })
+  else void dialog.showMessageBox({ type: 'error', title: 'Odesk Code', message: 'La interfaz se sigue cerrando sola.', detail: 'Se dejó de recargar automáticamente. Cierra y vuelve a abrir la aplicación; el detalle quedó en el registro (~/.odesk-agent/logs/app.log).' })
 })
 /** Ventana que no responde: se anota y, si sigue colgada tras 15 s, se ofrece recargarla. */
 app.on('web-contents-created', (_e, wc) => {
@@ -164,7 +166,7 @@ app.on('web-contents-created', (_e, wc) => {
     registro.registrar({ level: 'warn', source: 'renderer', kind: 'unresponsive', message: 'La ventana dejó de responder' })
     colgada = setTimeout(() => {
       if (wc.isDestroyed()) return
-      void dialog.showMessageBox({ type: 'warning', title: 'Odesk Agent', message: 'La ventana no responde.', detail: 'Puedes esperar un poco más o recargarla (las terminales de esa ventana se cerrarán).', buttons: ['Esperar', 'Recargar'], defaultId: 0, cancelId: 0 }).then((r) => {
+      void dialog.showMessageBox({ type: 'warning', title: 'Odesk Code', message: 'La ventana no responde.', detail: 'Puedes esperar un poco más o recargarla (las terminales de esa ventana se cerrarán).', buttons: ['Esperar', 'Recargar'], defaultId: 0, cancelId: 0 }).then((r) => {
         registro.registrar({ level: 'info', source: 'renderer', kind: 'unresponsive-decision', message: r.response === 1 ? 'recargar' : 'esperar' })
         if (r.response === 1 && !wc.isDestroyed()) wc.reload()
       })
@@ -245,7 +247,7 @@ function crearVentana(opciones: { token?: string; x?: number; y?: number; titulo
     width: esPrincipal ? 1280 : 1000,
     height: esPrincipal ? 800 : 700,
     ...(opciones.x !== undefined && opciones.y !== undefined ? { x: opciones.x, y: opciones.y } : {}),
-    title: opciones.titulo ?? 'Odesk Agent',
+    title: opciones.titulo ?? 'Odesk Code',
     icon: icono,
     backgroundColor: '#0f1115',
     autoHideMenuBar: true,
@@ -381,7 +383,7 @@ const confirmarEnOdesk = (pregunta: string, cliente?: string): Promise<boolean> 
     v.flashFrame(true)
     const r = await dialog.showMessageBox(v, {
       type: 'warning',
-      title: 'Odesk Agent · Confirmar',
+      title: 'Odesk Code · Confirmar',
       message: `${cliente ? `«${cliente}»` : 'Un asistente'} quiere hacer esto en Odesk:`,
       detail: pregunta,
       buttons: ['Rechazar', 'Permitir'],
@@ -652,7 +654,7 @@ function registrarIpc(): void {
   ipcMain.handle(Canales.notificacionMostrar, (e, n: { titulo?: unknown; cuerpo?: unknown; clave?: unknown }) => {
     if (!Notification.isSupported()) return false
     const emisor = e.sender
-    const aviso = new Notification({ title: String(n?.titulo ?? 'Odesk Agent').slice(0, 120), body: String(n?.cuerpo ?? '').slice(0, 300), icon: icono })
+    const aviso = new Notification({ title: String(n?.titulo ?? 'Odesk Code').slice(0, 120), body: String(n?.cuerpo ?? '').slice(0, 300), icon: icono })
     const clave = typeof n?.clave === 'string' ? n.clave.slice(0, 300) : undefined
     avisosVivos.add(aviso)
     const soltar = (): void => void avisosVivos.delete(aviso)
@@ -760,7 +762,7 @@ function registrarIpc(): void {
     pendientes.set(token, payload)
     crearVentana({
       token,
-      titulo: `${payload.nombre} · Odesk Agent`,
+      titulo: `${payload.nombre} · Odesk Code`,
       ...(pos ? { x: Math.round(pos.x - 120), y: Math.round(pos.y - 20) } : {})
     })
   })
@@ -819,7 +821,7 @@ app.whenReady().then(() => {
   marcarInicio(ARCHIVO_SESION)
   void registro.iniciar().then(() => {
     if (anterior) registro.registrar({ level: 'warn', source: 'main', kind: 'cierre-inesperado', message: 'La sesión anterior no terminó bien (se cerró de golpe, se colgó o hubo que matarla)', context: { minutosDesdeEseInicio: Math.round((Date.now() - anterior.inicio) / 60000) } })
-    registro.registrar({ level: 'info', source: 'main', kind: 'app-inicio', message: `Odesk Agent ${app.getVersion()} iniciado` })
+    registro.registrar({ level: 'info', source: 'main', kind: 'app-inicio', message: `Odesk Code ${app.getVersion()} iniciado` })
   })
   // Instalada (empaquetada o con install.sh/install.ps1): el servidor de producción; `servidor.json` y ODESK_API_URL mandan sobre él.
   const porDefecto = servidorPorDefecto({ rutaApp: app.getAppPath(), empaquetada: app.isPackaged, produccion: URL_SERVIDOR_PRODUCCION })

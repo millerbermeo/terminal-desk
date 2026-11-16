@@ -133,10 +133,10 @@ const COMANDO = 'command -v node >/dev/null 2>&1 || exit 0; HOOK_ROOT=$(printf %
 export function archivosGuardia(): Record<string, string> {
   return {
     '.claude-plugin/plugin.json':
-      JSON.stringify({ name: 'odesk-guardia', version: '1.0.0', description: 'Acota las imágenes que entran al contexto (menos tokens por llamada)', author: { name: 'Odesk Agent' } }, null, 2) + '\n',
+      JSON.stringify({ name: 'odesk-guardia', version: '1.0.0', description: 'Acota las imágenes que entran al contexto (menos tokens por llamada)', author: { name: 'Odesk Code' } }, null, 2) + '\n',
     'hooks/hooks.json':
       JSON.stringify(
-        { description: 'Guardia de consumo de Odesk Agent', hooks: { PreToolUse: [{ matcher: 'Read', hooks: [{ type: 'command', command: COMANDO, timeout: 20 }] }] } },
+        { description: 'Guardia de consumo de Odesk Code', hooks: { PreToolUse: [{ matcher: 'Read', hooks: [{ type: 'command', command: COMANDO, timeout: 20 }] }] } },
         null,
         2
       ) + '\n',

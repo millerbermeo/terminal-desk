@@ -4,7 +4,7 @@ import { proyectosConNombreRepetido, type DatosProyectos, type Proyecto, type Pr
 import { sinRaiz } from '../raizGrupo'
 import logo from '../assets/logo.png'
 import { useChat } from '../chat/almacen'
-import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoBuscar, IconoChat, IconoGitHub, IconoGlobo, IconoInicio, IconoLibro, IconoMas, IconoNube, IconoPanelLateral, IconoRama, IconoRayo, IconoTareas, IconoUsuario } from './Iconos'
+import { IconoCarpeta, IconoAbrirTodas, IconoAgente, IconoChevron, IconoChispa, IconoEngranaje, IconoApi, IconoBuscar, IconoChat, IconoGitHub, IconoGlobo, IconoInicio, IconoLibro, IconoMas, IconoNube, IconoPanelLateral, IconoRama, IconoRayo, IconoTareas, IconoTeclado, IconoUsuario } from './Iconos'
 
 interface Props {
   datos: DatosProyectos
@@ -70,7 +70,8 @@ const NAV: { grupo: string; items: ItemNav[] }[] = [
       { vista: 'agentes', icono: <IconoAgente />, texto: 'Agentes y skills' },
       { vista: 'proveedores', icono: <IconoChispa />, texto: 'Proveedores de IA' },
       { vista: 'config', icono: <IconoEngranaje />, texto: 'Configurar proyectos' },
-      { vista: 'guia', icono: <IconoLibro />, texto: 'Guía de la app', titulo: 'Qué trae la app, para qué sirve cada herramienta y cómo se usa' }
+      { vista: 'guia', icono: <IconoLibro />, texto: 'Guía de la app', titulo: 'Qué trae la app, para qué sirve cada herramienta y cómo se usa' },
+      { vista: 'atajos', icono: <IconoTeclado />, texto: 'Atajos de teclado', titulo: 'Todos los atajos de teclado (F1)' }
     ]
   }
 ]
@@ -107,7 +108,7 @@ function useBarraCompacta(): [boolean, boolean, () => void] {
   return [manual || estrecho, estrecho, alternar]
 }
 
-export type Vista = 'inicio' | 'chat' | 'terminales' | 'servicios' | 'config' | 'github' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones' | 'api' | 'navegador' | 'guia'
+export type Vista = 'inicio' | 'chat' | 'terminales' | 'servicios' | 'config' | 'github' | 'proveedores' | 'agentes' | 'asistente' | 'tareas' | 'versiones' | 'api' | 'navegador' | 'guia' | 'atajos'
 
 interface MenuIA {
   proyecto: Proyecto
@@ -270,8 +271,8 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
   return (
     <aside className={`sidebar${compacta ? ' compacta' : ''}`}>
       <header className="marca">
-        <img className="logo" src={logo} alt="Odesk Agent" />
-        <h1>Odesk Agent</h1>
+        <img className="logo" src={logo} alt="Odesk Code" />
+        <h1>Odesk Code</h1>
         <button
           className="icono sidebar-toggle"
           onClick={alternarCompacta}

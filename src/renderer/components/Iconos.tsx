@@ -130,6 +130,9 @@ export const IconoInfo = () => (
 export const IconoLibro = () => (
   <Icono><path d="M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 1-2-2zM11 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7" /></Icono>
 )
+export const IconoTeclado = () => (
+  <Icono><rect x="2" y="6" width="20" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" /></Icono>
+)
 export const IconoUsuario = () => (
   <Icono><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></Icono>
 )

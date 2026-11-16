@@ -56,7 +56,7 @@ describe('herramientas navegador_*', () => {
   })
 
   it('sin la app (o en tests) responde con un error legible', async () => {
-    expect(await crearEjecutorOdesk(servicios())('navegador_ventanas', {})).toMatchObject({ error: true, texto: expect.stringMatching(/Odesk Agent abierto/) })
+    expect(await crearEjecutorOdesk(servicios())('navegador_ventanas', {})).toMatchObject({ error: true, texto: expect.stringMatching(/Odesk Code abierto/) })
     const falla = crearEjecutorOdesk(servicios({ ejecutar: async () => Promise.reject(new Error('No hay ninguna ventana 9.')) }))
     expect(await falla('navegador_instantanea', { ventana: 9 })).toEqual({ texto: 'No hay ninguna ventana 9.', error: true })
   })

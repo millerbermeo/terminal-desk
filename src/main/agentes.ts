@@ -176,7 +176,7 @@ export function configGanchosHistorial(mcp: NonNullable<ReturnType<typeof config
   const grupo = (command: string) => [{ matcher: HERRAMIENTAS_QUE_ESCRIBEN, hooks: [{ type: 'command', command, timeout: 10 }] }]
   // La guardia de comandos solo actúa en las terminales sin confirmación (la app les pone ODESK_GUARDIA_AUTONOMA=1).
   const antes = [...grupo(pre), ...(bash ? [{ matcher: 'Bash', hooks: [{ type: 'command', command: bash, timeout: 10 }] }] : [])]
-  return JSON.stringify({ description: 'Historial local de versiones de Odesk Agent y guardia de comandos', hooks: { PreToolUse: antes, PostToolUse: grupo(post) } }, null, 2) + '\n'
+  return JSON.stringify({ description: 'Historial local de versiones de Odesk Code y guardia de comandos', hooks: { PreToolUse: antes, PostToolUse: grupo(post) } }, null, 2) + '\n'
 }
 
 /** Los valores van como cadenas JSON (YAML válido): sin problemas con comillas, dos puntos ni saltos de línea. */
@@ -207,7 +207,7 @@ export function archivosPlugin(nombreProyecto: string, activos: Recurso[], mcp?:
   const archivos: Record<string, string> = {
     '.claude-plugin/plugin.json':
       JSON.stringify(
-        { name: 'centro', version: '1.0.0', description: `Agentes y skills de Odesk Agent para ${nombreProyecto}`, author: { name: 'Odesk Agent' } },
+        { name: 'centro', version: '1.0.0', description: `Agentes y skills de Odesk Code para ${nombreProyecto}`, author: { name: 'Odesk Code' } },
         null,
         2
       ) + '\n'

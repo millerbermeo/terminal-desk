@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > **Cosas que el usuario debe hacer a mano (subir `.odesk/project.json` a git, API en marcha, migraciones, copias, secretos): ver `OBLIGATORIO.md`. Menciónalo si tocas el enlace local o el servidor.**
 
-**Odesk Agent** (antes «ODESK AI» y «Centro de Proyectos»; el icono está en `resources/`): app de escritorio (Electron + Vite + React + TypeScript) que gestiona proyectos con varias terminales reales (xterm.js + node-pty) y lanza CLIs de IA (hoy, Claude Code) dentro de ellas. Todo el código, los identificadores y la UI están en español; mantenlo así.
+**Odesk Code** (antes «ODESK AI» y «Centro de Proyectos»; el icono está en `resources/`): app de escritorio (Electron + Vite + React + TypeScript) que gestiona proyectos con varias terminales reales (xterm.js + node-pty) y lanza CLIs de IA (hoy, Claude Code) dentro de ellas. Todo el código, los identificadores y la UI están en español; mantenlo así.
 
 ## Comandos
 
