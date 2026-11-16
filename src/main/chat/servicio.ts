@@ -2,6 +2,7 @@ import { ErrorServidor } from '../servidor/cliente'
 import type { ClienteServidor } from '../servidor/cliente'
 import { LIMITE_ARCHIVO_CHAT, LIMITE_TEXTO_CHAT, MAX_NOTA_VOZ_MS, type AdjuntoChat, type ArchivoDescargado, type NombreOperacionChat, type OperacionesChat, type OrdenTiempoReal } from '@shared/chat'
 import type { ConexionChat } from './conexion'
+import type { MediosLlamada } from './medios'
 
 type Cliente = Pick<ClienteServidor, 'get' | 'post' | 'put' | 'delete' | 'binario' | 'descargar'>
 
@@ -9,6 +10,10 @@ export interface DepsServicioChat {
   conexion: Pick<ConexionChat, 'conexion' | 'enviar'>
   /** «Guardar como…»: pide el destino al usuario y escribe el archivo. `false` si canceló. */
   guardarArchivo(nombre: string, datos: Uint8Array): Promise<boolean>
+  /** Compartir pantalla y grabar llamadas (sin esto, esas operaciones dicen que no están disponibles). */
+  medios?: MediosLlamada
+  /** Abre la carpeta del sistema con el archivo seleccionado. */
+  mostrarEnCarpeta?(ruta: string): void
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -164,7 +169,22 @@ export class ServicioChat {
       return this.deps.guardarArchivo(String(e.nombre || a.nombre).slice(0, 200), a.datos)
     },
     ice: async () => this.servidor.get('/chat/ice'),
-    tiempoReal: async (e) => this.orden(e.orden)
+    tiempoReal: async (e) => this.orden(e.orden),
+    pantallaFuentes: async () => this.medios().listar(),
+    pantallaElegir: async (e) => this.medios().elegir(e.id),
+    grabacionIniciar: async (e) => this.medios().iniciarGrabacion(typeof e.con === 'string' ? e.con.slice(0, 120) : ''),
+    grabacionTrozo: async (e) => this.medios().trozo(e.id, e.datos),
+    grabacionTerminar: async (e) => this.medios().terminarGrabacion(e.id),
+    grabacionCancelar: async (e) => this.medios().cancelarGrabacion(e.id),
+    mostrarGrabacion: async (e) => {
+      if (!this.medios().esGuardada(e.ruta)) throw new ErrorServidor('Esa grabación no se hizo en esta sesión')
+      this.deps.mostrarEnCarpeta?.(e.ruta)
+    }
+  }
+
+  private medios(): MediosLlamada {
+    if (!this.deps.medios) throw new ErrorServidor('Compartir pantalla y grabar no están disponibles aquí')
+    return this.deps.medios
   }
 }
 

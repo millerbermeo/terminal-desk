@@ -179,6 +179,28 @@ export interface OperacionesChat {
   ice: { entrada: Record<string, never>; salida: { servidores: ServidorIce[] } }
   /** Manda una orden por el WebSocket (escribiendo, llamadas). `false` si no hay conexión. */
   tiempoReal: { entrada: { orden: OrdenTiempoReal }; salida: boolean }
+  /** Pantallas y ventanas que se pueden compartir en una llamada (con miniatura). `refrescar`: se pueden pedir otra vez sin molestar (en Wayland cada listado abre el diálogo del sistema). */
+  pantallaFuentes: { entrada: Record<string, never>; salida: { fuentes: FuentePantalla[]; refrescar: boolean } }
+  /** Deja elegida la fuente para el siguiente `getDisplayMedia` (caduca a los 15 s y sirve una sola vez). */
+  pantallaElegir: { entrada: { id: string }; salida: void }
+  /** Empieza a guardar una grabación de llamada en disco (los trozos llegan con `grabacionTrozo`). */
+  grabacionIniciar: { entrada: { con: string }; salida: { id: string } }
+  grabacionTrozo: { entrada: { id: string; datos: Uint8Array }; salida: void }
+  /** Cierra el archivo y lo deja en la carpeta de videos. */
+  grabacionTerminar: { entrada: { id: string }; salida: { ruta: string; nombre: string } }
+  grabacionCancelar: { entrada: { id: string }; salida: void }
+  /** Muestra en la carpeta una grabación guardada en esta sesión. */
+  mostrarGrabacion: { entrada: { ruta: string }; salida: void }
+}
+
+export interface FuentePantalla {
+  id: string
+  nombre: string
+  tipo: 'pantalla' | 'ventana'
+  /** Data URL (JPEG) de la miniatura. */
+  miniatura: string
+  /** Data URL (PNG) del icono de la app, solo en ventanas. */
+  icono?: string
 }
 
 export type NombreOperacionChat = keyof OperacionesChat

@@ -231,6 +231,33 @@ export const IAltavoz = ({ tam }: P) => (
     <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" />
   </Svg>
 )
+export const IPantalla = ({ tam }: P) => (
+  <Svg tam={tam}>
+    <rect x="2.5" y="4" width="19" height="13" rx="2.5" />
+    <path d="M8.5 21h7M12 17v4M12 13.5V8M9.5 10.5 12 8l2.5 2.5" />
+  </Svg>
+)
+export const IPantallaNo = ({ tam }: P) => (
+  <Svg tam={tam}>
+    <path d="M7 4h12a2.5 2.5 0 0 1 2.5 2.5v8a2.5 2.5 0 0 1-1.2 2.1M17 17H5a2.5 2.5 0 0 1-2.5-2.5v-8A2.5 2.5 0 0 1 3.4 4.6M8.5 21h7M12 17v4M3 3l18 18" />
+  </Svg>
+)
+export const IGrabar = ({ tam }: P) => (
+  <Svg tam={tam}>
+    <circle cx="12" cy="12" r="8.5" />
+    <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" />
+  </Svg>
+)
+export const IDetener = ({ tam }: P) => (
+  <Svg tam={tam} relleno>
+    <rect x="6" y="6" width="12" height="12" rx="2.5" />
+  </Svg>
+)
+export const ICarpeta = ({ tam }: P) => (
+  <Svg tam={tam}>
+    <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.8l2 2.2h7.2A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" />
+  </Svg>
+)
 
 /** ✓ (enviado) o ✓✓ (entregado / leído). */
 export const ITicks = ({ doble }: { doble: boolean }) => (

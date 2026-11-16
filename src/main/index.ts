@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Notification, session, shell, webContents } from 'electron'
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Notification, session, shell, webContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { homedir, hostname } from 'node:os'
 import { join } from 'node:path'
@@ -22,6 +22,7 @@ import { ejecutarOperacionGitHub } from './github/operaciones'
 import { ServicioEquipos, ejecutarOperacionEquipos, type DepsEquipos } from './servidor/equipos'
 import { ConexionChat } from './chat/conexion'
 import { ServicioChat, ejecutarOperacionChat } from './chat/servicio'
+import { MediosLlamada } from './chat/medios'
 import { Repositorio } from './core/git/repositorio'
 import { importarProyectosLocales } from './servidor/importar'
 import { iniciarSesionGoogle } from './servidor/google'
@@ -122,8 +123,8 @@ const ARCHIVO_SESION = join(DIR, 'logs', 'sesion.json')
 const registro = new Registro({
   archivo: join(DIR, 'logs', 'app.log'),
   archivoPendientes: join(DIR, 'logs', 'pendientes.json'),
-  version: app.getVersion(),
   plataforma: process.platform,
+  version: app.getVersion(),
   casa: homedir(),
   contexto: () => ({
     electron: process.versions.electron,
@@ -339,8 +340,18 @@ const conexionChat = new ConexionChat({
   token: () => servidor.tokenActual(),
   alEvento: (e) => avisarPrincipal(Canales.chatEvento, e)
 })
+// Compartir pantalla (selector propio con miniaturas) y grabaciones de llamadas en ~/Vídeos/Odesk Code.
+const mediosLlamada = new MediosLlamada({
+  listarFuentes: () => desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 480, height: 270 }, fetchWindowIcons: true }),
+  carpetaGrabaciones: () => join(app.getPath('videos'), 'Odesk Code'),
+  wayland: process.platform === 'linux' && (process.env.XDG_SESSION_TYPE === 'wayland' || !!process.env.WAYLAND_DISPLAY),
+  // Grabando, la ventana sigue dibujando la llamada aunque esté minimizada o detrás de otra.
+  alGrabar: (hay) => principal && !principal.isDestroyed() && principal.webContents.setBackgroundThrottling(!hay)
+})
 const servicioChat = new ServicioChat(servidor, {
   conexion: conexionChat,
+  medios: mediosLlamada,
+  mostrarEnCarpeta: (ruta) => shell.showItemInFolder(ruta),
   guardarArchivo: async (nombre, datos) => {
     const opciones = { title: 'Guardar archivo', defaultPath: join(app.getPath('downloads'), nombre) }
     const r = principal && !principal.isDestroyed() ? await dialog.showSaveDialog(principal, opciones) : await dialog.showSaveDialog(opciones)
@@ -879,6 +890,12 @@ app.whenReady().then(() => {
     .then((s) => (servidorTareas = s))
     .catch((err) => console.error('Servidor de tareas no iniciado:', err))
   registrarIpc()
+  // `getDisplayMedia` de la interfaz: solo la fuente elegida en el selector de la llamada, y solo para las ventanas de la app.
+  session.defaultSession.setDisplayMediaRequestHandler((peticion, responder) => {
+    const desdeLaApp = !!peticion.frame && BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.webContents.mainFrame === peticion.frame)
+    const r = desdeLaApp ? mediosLlamada.responderCaptura() : null
+    responder(r ? ({ video: r.video } as Electron.Streams) : null)
+  })
   void limpiarSesiones()
   mantenerCavemanActualizado()
   mantenerNavegadorPlaywright()
@@ -909,6 +926,7 @@ app.on('before-quit', (e) => {
     return
   }
   void servidorTareas?.cerrar()
+  void mediosLlamada.cerrarTodo()
   void nucleo.detener()
   marcarCierreLimpio(ARCHIVO_SESION)
   registro.detener()
