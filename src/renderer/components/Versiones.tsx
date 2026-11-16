@@ -128,7 +128,7 @@ export function Versiones({ datos, visible, onDatos, avisos = [] }: Props) {
   const local = pestana === 'historial-local' && Boolean(proyecto)
   let cuerpo: React.ReactNode
   if (local) {
-    cuerpo = <HistorialLocal key={proyectoId} proyectoId={proyectoId} tick={tick} avisar={avisar} />
+    cuerpo = <HistorialLocal key={proyectoId} proyectoId={proyectoId} tick={tick} avisar={avisar} visible={visible} />
   } else if (!proyecto) {
     cuerpo = <EstadoVacio icono={<IconoRama />} titulo="Aún no hay proyectos" texto="Agrega un proyecto desde la barra lateral para gestionar sus versiones con git." />
   } else if (!estado) {

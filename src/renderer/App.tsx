@@ -16,7 +16,6 @@ import { Inicio } from './components/Inicio'
 import { Versiones } from './components/Versiones'
 import { Api } from './components/Api'
 import { Navegador } from './components/Navegador'
-import { Atajos } from './components/Atajos'
 import { NavegadorRapido, type ItemRapido } from './components/NavegadorRapido'
 import { useAtajosGlobales } from './atajos/useAtajosGlobales'
 import { VISTAS_RAPIDAS, formatearCombo } from '@shared/atajos'
@@ -25,10 +24,6 @@ import { ArranqueProyecto } from './components/ArranqueProyecto'
 import { sinRaiz } from './raizGrupo'
 import { EVENTO_IR_A_ARCHIVO, type DestinoArchivo } from './irArchivo'
 import { Servicios } from './components/Servicios'
-import { ConfigAgentes } from './components/ConfigAgentes'
-import { GitHubCuenta } from './components/GitHubCuenta'
-import { ConfigProveedores } from './components/ConfigProveedores'
-import { ConfigProyectos } from './components/ConfigProyectos'
 import { ModalAgregar } from './components/ModalAgregar'
 import { ModalClonarPendientes } from './components/ModalClonarPendientes'
 import { ModalConfirmar } from './components/ModalConfirmar'
@@ -39,8 +34,15 @@ import { encolarExterno } from './agente/externos'
 import type { AccionIa } from '@shared/control-app'
 import { EVENTO_EJECUTAR_EN_TERMINAL, type DetalleEjecutarEnTerminal } from './components/Markdown'
 import { aPayload, extrasSinPty, ptysDeExtras, reducirPestanas, type OperacionPestana } from './duplicar'
+import { cadaVisible } from './sondeo'
 
 const Documentacion = lazy(() => import('./components/Documentacion').then((m) => ({ default: m.Documentacion })))
+// Pantallas de configuración: solo se montan al abrirlas, así que se cargan en ese momento (arranque más ligero).
+const ConfigProyectos = lazy(() => import('./components/ConfigProyectos').then((m) => ({ default: m.ConfigProyectos })))
+const ConfigAgentes = lazy(() => import('./components/ConfigAgentes').then((m) => ({ default: m.ConfigAgentes })))
+const GitHubCuenta = lazy(() => import('./components/GitHubCuenta').then((m) => ({ default: m.GitHubCuenta })))
+const ConfigProveedores = lazy(() => import('./components/ConfigProveedores').then((m) => ({ default: m.ConfigProveedores })))
+const Atajos = lazy(() => import('./components/Atajos').then((m) => ({ default: m.Atajos })))
 
 export interface TerminalInfo {
   id: string
@@ -172,10 +174,10 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   }, [])
   useEffect(() => {
     void cargarAvisos()
-    const t = setInterval(() => void cargarAvisos(), 30_000)
+    const parar = cadaVisible(() => void cargarAvisos(), 30_000)
     window.addEventListener('focus', cargarAvisos)
     return () => {
-      clearInterval(t)
+      parar()
       window.removeEventListener('focus', cargarAvisos)
     }
   }, [cargarAvisos, datos.proyectos.length])
@@ -190,8 +192,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   }, [pendientes, datos.proyectos.length])
   useEffect(() => {
     void cargarPendientes()
-    const t = setInterval(() => void cargarPendientes(), 60_000)
-    return () => clearInterval(t)
+    return cadaVisible(() => void cargarPendientes(), 60_000)
   }, [cargarPendientes, datos.proyectos.length])
 
   useEffect(() => {
@@ -233,11 +234,11 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     }
   }, [])
   useEffect(() => {
-    const t = setInterval(() => void refrescarDatos(), 20_000)
+    const parar = cadaVisible(() => void refrescarDatos(), 20_000)
     const alEnfocar = (): void => void refrescarDatos()
     window.addEventListener('focus', alEnfocar)
     return () => {
-      clearInterval(t)
+      parar()
       window.removeEventListener('focus', alEnfocar)
     }
   }, [refrescarDatos])
@@ -828,10 +829,12 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
         }}
         onAgregar={() => setModalAgregar({ rutas: [] })}
       />
-      {vista === 'config' && <ConfigProyectos datos={datos} onDatos={setDatos} />}
-      {vista === 'agentes' && <ConfigAgentes datos={datos} biblioteca={biblioteca} onBiblioteca={setBiblioteca} />}
-      {vista === 'github' && <GitHubCuenta datos={datos} onDatos={setDatos} />}
-      {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}
+      <Suspense fallback={null}>
+        {vista === 'config' && <ConfigProyectos datos={datos} onDatos={setDatos} />}
+        {vista === 'agentes' && <ConfigAgentes datos={datos} biblioteca={biblioteca} onBiblioteca={setBiblioteca} />}
+        {vista === 'github' && <GitHubCuenta datos={datos} onDatos={setDatos} />}
+        {vista === 'proveedores' && <ConfigProveedores proveedores={proveedores} onProveedores={setProveedores} />}
+      </Suspense>
       <Asistente datos={datos} visible={vista === 'asistente'} />
       <Tareas datos={datos} visible={vista === 'tareas'} />
       <Chat visible={vista === 'chat'} />
@@ -849,7 +852,11 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
         onDetener={detenerServicio}
         onDetenerProyectos={(ids) => ids.forEach((proyectoId) => void window.api.arranque.operar('detener', { proyectoId }).catch(() => undefined))}
       />
-      {vista === 'atajos' && <Atajos />}
+      {vista === 'atajos' && (
+        <Suspense fallback={null}>
+          <Atajos />
+        </Suspense>
+      )}
       {guiaAbierta && (
         <Suspense fallback={null}>
           <Documentacion visible={vista === 'guia'} />

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ETIQUETA_ORIGEN, type ArchivoHistorial, type EstadoHistorial, type OrigenVersion } from '@shared/historial'
 import { fechaRelativa } from '@shared/versiones'
 import { confirmar } from '../confirmar'
@@ -7,6 +7,7 @@ import { EstadoVacio } from './EstadoVacio'
 import { HistorialArchivo } from './HistorialArchivo'
 import { IconoArchivo, IconoReiniciar } from './Iconos'
 import { Esqueletos } from './Cargando'
+import { cadaVisible } from '../sondeo'
 
 const api = window.api.historial.operar
 
@@ -29,7 +30,7 @@ const VIGILANCIA: Record<EstadoHistorial['vigilancia'], { texto: string; clase: 
  * Historial local de versiones del proyecto, independiente de git: cada cambio en los archivos (a mano, de la IA, de otro programa o de git)
  * queda guardado en este equipo con fecha, origen y autor, sin commits. Aquí se consulta, se compara y se restaura.
  */
-export function HistorialLocal({ proyectoId, tick = 0, avisar }: { proyectoId: string; tick?: number; avisar: (texto: string) => void }) {
+export function HistorialLocal({ proyectoId, tick = 0, avisar, visible = true }: { proyectoId: string; tick?: number; avisar: (texto: string) => void; /** Con la sección Versiones oculta no se vuelve a leer cada 5 s. */ visible?: boolean }) {
   const [estado, setEstado] = useState<EstadoHistorial | null>(null)
   const [archivos, setArchivos] = useState<ArchivoHistorial[] | null>(null)
   const [hayMas, setHayMas] = useState(false)
@@ -61,10 +62,18 @@ export function HistorialLocal({ proyectoId, tick = 0, avisar }: { proyectoId: s
     return () => clearTimeout(t)
   }, [cargar, tick, refresco, texto])
   // El historial crece mientras se trabaja: se vuelve a leer cada pocos segundos.
+  const estuvoOculto = useRef(false)
   useEffect(() => {
-    const t = setInterval(() => void cargar(), 5000)
-    return () => clearInterval(t)
-  }, [cargar])
+    if (!visible) {
+      estuvoOculto.current = true
+      return
+    }
+    if (estuvoOculto.current) {
+      estuvoOculto.current = false
+      void cargar() // al volver a la sección se lee enseguida lo que cambió mientras no se veía
+    }
+    return cadaVisible(() => void cargar(), 5000)
+  }, [cargar, visible])
   useEffect(() => setRuta(null), [proyectoId])
   useEffect(() => {
     if (archivos && ruta && !archivos.some((a) => a.ruta === ruta) && !texto && !origen && periodo === 'todo') setRuta(null)

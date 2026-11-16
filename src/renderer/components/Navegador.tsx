@@ -3,6 +3,7 @@ import { normalizarUrl, type ServidorLocal } from '@shared/navegador'
 import { mensajeDe } from '../tareas/useTareas'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoGlobo, IconoReiniciar, IconoEstrella } from './Iconos'
+import { cadaVisible } from '../sondeo'
 
 const CLAVE_RECIENTES = 'navegador:recientes'
 const CLAVE_FAVORITOS = 'navegador:favoritos'
@@ -47,8 +48,7 @@ export function Navegador({ visible }: { visible: boolean }) {
   useEffect(() => {
     if (!visible) return
     void buscar()
-    const t = window.setInterval(() => void buscar(), 6000)
-    return () => window.clearInterval(t)
+    return cadaVisible(() => void buscar(), 6000)
   }, [visible, buscar])
 
   const recordar = (url: string): void => {

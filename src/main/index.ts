@@ -185,12 +185,34 @@ app.on('web-contents-created', (_e, wc) => {
     registro.registrar({ level: 'error', source: 'renderer', kind: 'did-fail-load', message: `No se pudo cargar la interfaz: ${descripcion} (${codigo})`, context: { url: url.startsWith('file:') ? 'file' : url.split('?')[0] ?? '' } })
   })
 })
+// Salida de las terminales en lotes: node-pty entrega muchos trozos pequeños (un build o un CLI pueden ser miles por segundo) y cada
+// mensaje IPC despierta a la ventana. Se agrupa lo que llega en 5 ms (imperceptible al teclear) en un solo mensaje con el `fin` del
+// último trozo. Antes de dar el historial (`terminal:adjuntar`) o avisar de la salida se vacía el lote, para no duplicar ni perder nada.
+const LOTE_TERMINAL_MS = 5
+const lotesTerminal = new Map<string, { datos: string[]; fin: number }>()
+let temporizadorLotes: ReturnType<typeof setTimeout> | null = null
+const vaciarLote = (id: string): void => {
+  const lote = lotesTerminal.get(id)
+  if (!lote) return
+  lotesTerminal.delete(id)
+  enviarA(id, Canales.terminalDatos, { id, datos: lote.datos.length === 1 ? lote.datos[0] : lote.datos.join(''), fin: lote.fin })
+}
+const vaciarLotes = (): void => {
+  temporizadorLotes = null
+  for (const id of [...lotesTerminal.keys()]) vaciarLote(id)
+}
 const terminales = new GestorTerminales({
   onDatos: (id, datos, fin) => {
-    enviarA(id, Canales.terminalDatos, { id, datos, fin })
+    const lote = lotesTerminal.get(id)
+    if (lote) {
+      lote.datos.push(datos)
+      lote.fin = fin
+    } else lotesTerminal.set(id, { datos: [datos], fin })
+    temporizadorLotes ??= setTimeout(vaciarLotes, LOTE_TERMINAL_MS)
     arranque.alDatos(id, datos)
   },
   onSalida: (id, codigo) => {
+    vaciarLote(id)
     enviarA(id, Canales.terminalSalida, { id, codigo })
     duenos.delete(id)
     metaTerminales.delete(id)
@@ -806,6 +828,7 @@ function registrarIpc(): void {
   })
   // La ventana que adjunta pasa a ser la dueña; se le devuelve lo ya mostrado para repintarlo.
   ipcMain.handle(Canales.terminalAdjuntar, (e, id: string, cols: number, rows: number) => {
+    vaciarLote(id) // lo pendiente sale ya al dueño anterior; el nuevo lo recibe dentro del historial (mismo `fin`)
     duenos.set(id, e.sender.id)
     terminales.redimensionar(id, cols, rows)
     return terminales.historialDe(id)

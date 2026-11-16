@@ -7,6 +7,7 @@ import { EstadoVacio } from './EstadoVacio'
 import { IconoMonitor, IconoReiniciar, IconoCerrar } from './Iconos'
 import { ModalConfirmar } from './ModalConfirmar'
 import { Esqueletos } from './Cargando'
+import { cadaVisible } from '../sondeo'
 
 const eq = window.api.equipos.operar
 
@@ -124,8 +125,7 @@ export function VersionesEquipos({ c }: { c: ContextoGit }) {
 
   useEffect(() => {
     void cargar()
-    const t = setInterval(() => void cargar(), 30_000)
-    return () => clearInterval(t)
+    return cadaVisible(() => void cargar(), 30_000)
   }, [cargar, tick])
 
   const yo = datos?.equipos.find((e) => e.esteEquipo)

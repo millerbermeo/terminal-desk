@@ -5,6 +5,7 @@ import { categoriaDe, resumirTareas, type EstadoTarea, type Tarea } from '@share
 import type { EstadoGit } from '@shared/versiones'
 import { IconoApi, IconoCarpeta, IconoChispa, IconoGlobo, IconoRama, IconoRayo, IconoTareas, IconoTerminal } from './Iconos'
 import type { Vista } from './Sidebar'
+import { cadaVisible } from '../sondeo'
 
 interface Props {
   datos: DatosProyectos
@@ -157,14 +158,14 @@ export function Inicio({ datos, visible, terminalesAbiertas, serviciosActivos, s
     void cargarTareas()
     void cargarGit()
     void window.api.core.uso().then(setUso).catch(() => undefined)
-    const t = setInterval(() => {
+    const parar = cadaVisible(() => {
       void cargarGit()
       void window.api.core.uso().then(setUso).catch(() => undefined)
     }, 45_000)
     const off = window.api.tareas.onCambio(() => void cargarTareas())
     const off2 = window.api.core.onUso(setUso)
     return () => {
-      clearInterval(t)
+      parar()
       off()
       off2()
     }

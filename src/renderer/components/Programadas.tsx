@@ -4,6 +4,7 @@ import type { ModoAutonomia } from '@shared/core/permisos'
 import { describirFrecuencia, type Frecuencia, type NuevaTareaProgramada, type TareaProgramada } from '@shared/programadas'
 import { confirmar } from '../confirmar'
 import { IconoCerrar, IconoReloj } from './Iconos'
+import { cadaVisible } from '../sondeo'
 
 interface Props {
   proyectos: { id: string; nombre: string }[]
@@ -197,8 +198,7 @@ export function Programadas({ proyectos, proyectoInicial, modelos, onAbrirSesion
 
   useEffect(() => {
     cargar()
-    const t = setInterval(cargar, 8000)
-    return () => clearInterval(t)
+    return cadaVisible(cargar, 8000)
   }, [filtro])
 
   useEffect(() => {

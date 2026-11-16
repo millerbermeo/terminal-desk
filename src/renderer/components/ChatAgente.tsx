@@ -40,6 +40,7 @@ import { Programadas } from './Programadas'
 import { ContextoFijadoBarra } from './ContextoFijado'
 import { cambiosDelTurno } from '../agente/utilidades-chat'
 import { Desplegable, IconoAjustes, IconoCola, IconoDescargar, IconoEnviar, IconoLupa, IconoNuevaConv, IconoPuntos, IconoRayito, ItemMenu, OpcionMenu, Pista, SeccionMenu } from './CompositorMenus'
+import { cadaVisible } from '../sondeo'
 
 const NOMBRE_ESFUERZO: Record<Esfuerzo | 'auto', string> = { auto: 'Auto', low: 'Bajo', medium: 'Medio', high: 'Alto', xhigh: 'Muy alto', max: 'Máximo' }
 const AUTONOMIAS: { valor: ModoAutonomia; texto: string; detalle: string }[] = [
@@ -476,11 +477,11 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     void leer(true)
     const alVolver = (): void => void leer(false)
     window.addEventListener('focus', alVolver)
-    const cada = window.setInterval(alVolver, 20_000)
+    const parar = cadaVisible(alVolver, 20_000)
     return () => {
       vigente = false
       window.removeEventListener('focus', alVolver)
-      clearInterval(cada)
+      parar()
     }
   }, [claveAjustes])
   // Un modelo recordado que ya no está disponible vuelve al de por defecto.
