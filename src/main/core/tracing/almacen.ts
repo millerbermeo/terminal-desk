@@ -27,7 +27,11 @@ export class AlmacenTrazas {
 
   constructor(private readonly dir: string, alGuardar?: (id: string, nuevo: Traza | undefined, previo: Traza | undefined) => void) {
     this.almacen = new AlmacenJson<Traza>(dir, 0o600, alGuardar)
+    this.resumenes = this.almacen.resumidor(resumir)
   }
+
+  /** Resúmenes de todas las trazas; solo se vuelven a leer las que cambiaron. */
+  private readonly resumenes: () => Promise<ResumenTraza[]>
 
   /** Incorpora una traza de otra computadora si aún no está aquí (las trazas no cambian una vez terminadas). */
   async fusionar(remota: Traza): Promise<boolean> {
@@ -59,7 +63,7 @@ export class AlmacenTrazas {
 
   /** Resúmenes de las trazas más recientes primero. */
   async listar(limite = 50): Promise<ResumenTraza[]> {
-    const trazas = (await Promise.all((await this.almacen.ids()).map((id) => this.almacen.leer(id).catch(() => undefined)))).filter((t): t is Traza => !!t)
-    return trazas.sort((a, b) => b.inicio - a.inicio).slice(0, limite).map(resumir)
+    const trazas = await this.resumenes()
+    return [...trazas].sort((a, b) => b.inicio - a.inicio).slice(0, limite).map((r) => ({ ...r, uso: { ...r.uso } })) // copias: la caché no se toca desde fuera
   }
 }

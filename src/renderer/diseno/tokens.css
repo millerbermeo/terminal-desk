@@ -109,3 +109,18 @@
   --rapido: 140ms;
   --medio: 240ms;
 }
+
+/* Sin GPU (render por software, ver `renderer/gpu.ts`): el desenfoque se calcula en la CPU y traba la interfaz. Se quita y los
+   materiales pasan a casi opacos para que el texto se siga leyendo igual. Con GPU real esta clase no se pone. */
+:root.sin-gpu {
+  --material-grueso: rgba(13, 14, 19, 0.97);
+  --material-medio: rgba(18, 20, 26, 0.97);
+  --material-fino: rgba(24, 26, 33, 0.98);
+  --vidrio: rgba(16, 18, 23, 0.97);
+}
+.sin-gpu *,
+.sin-gpu *::before,
+.sin-gpu *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}

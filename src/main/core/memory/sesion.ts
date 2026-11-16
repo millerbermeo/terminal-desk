@@ -64,7 +64,23 @@ export class MemoriaCortoPlazo {
 
   constructor(dir: string, alGuardar?: (id: string, nuevo: Sesion | undefined, previo: Sesion | undefined) => void) {
     this.almacen = new AlmacenJson<Sesion>(dir, 0o600, alGuardar) // contiene código y salidas del proyecto
+    this.resumenes = this.almacen.resumidor((s) =>
+      s.transcripcion.length > 0
+        ? {
+            id: s.id,
+            titulo: s.titulo,
+            ...(s.proyectoId ? { proyectoId: s.proyectoId } : {}),
+            actualizada: s.actualizada,
+            turnos: s.transcripcion.length,
+            tokens: s.uso.tokensEntrada + s.uso.tokensSalida,
+            ...(s.costo ? { costo: s.costo } : {})
+          }
+        : null
+    )
   }
+
+  /** Resumen de cada conversación guardada (`null` = sin turnos); solo se vuelven a leer las que cambiaron. */
+  private readonly resumenes: () => Promise<(ResumenSesion | null)[]>
 
   /** Incorpora una sesión de otra computadora si es más nueva que la local (o no existe). Devuelve si cambió algo. */
   async fusionar(remota: Sesion): Promise<boolean> {
@@ -176,20 +192,8 @@ export class MemoriaCortoPlazo {
 
   /** Más recientes primero; sin `proyectoId` devuelve las de todos los proyectos. */
   async listar(proyectoId?: string): Promise<ResumenSesion[]> {
-    const todas = (await Promise.all((await this.almacen.ids()).map((id) => this.almacen.leer(id).catch(() => undefined)))).filter(
-      (s): s is Sesion => !!s && s.transcripcion.length > 0 && (!proyectoId || s.proyectoId === proyectoId)
-    )
-    return todas
-      .sort((a, b) => b.actualizada.localeCompare(a.actualizada))
-      .map((s) => ({
-        id: s.id,
-        titulo: s.titulo,
-        ...(s.proyectoId ? { proyectoId: s.proyectoId } : {}),
-        actualizada: s.actualizada,
-        turnos: s.transcripcion.length,
-        tokens: s.uso.tokensEntrada + s.uso.tokensSalida,
-        ...(s.costo ? { costo: s.costo } : {})
-      }))
+    const todas = (await this.resumenes()).filter((r): r is ResumenSesion => !!r && (!proyectoId || r.proyectoId === proyectoId))
+    return todas.sort((a, b) => b.actualizada.localeCompare(a.actualizada)).map((r) => ({ ...r })) // copias: la caché no se toca desde fuera
   }
 
   private async podar(proyectoId?: string): Promise<void> {

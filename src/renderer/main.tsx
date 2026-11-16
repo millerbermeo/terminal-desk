@@ -11,6 +11,7 @@ import { VentanaSeparada } from './VentanaSeparada'
 import { LimiteErrores } from './components/LimiteErrores'
 import { IndicadorZoom } from './components/IndicadorZoom'
 import { capturarErroresGlobales, vigilarVistaVacia } from './vigilancia'
+import { marcarSinGpu } from './gpu'
 import { fuentesListas } from './diseno/fuentes'
 import './diseno/tokens.css'
 import './estilos.css'
@@ -111,6 +112,7 @@ function Raiz() {
 }
 
 capturarErroresGlobales()
+marcarSinGpu()
 // las terminales miden la letra al abrirse: se pinta con las fuentes ya cargadas
 void fuentesListas().then(() => {
   createRoot(document.getElementById('root')!).render(

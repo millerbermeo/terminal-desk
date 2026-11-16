@@ -9,6 +9,7 @@ import { FUENTE_MONO } from '../diseno/fuentes'
 import { IconoChispa, IconoCopiar, IconoPegar, IconoSeleccionar, IconoLimpiar } from './Iconos'
 import { fijarSugerencias, SugerenciasTerminal, sugerenciasActivadas } from '../terminal/sugerencias'
 import { fijarWebglDesactivado, VigilanteAtlas, webglDesactivado } from '../terminal/reparacion'
+import { sinGpu } from '../gpu'
 
 interface Props {
   id: string
@@ -122,7 +123,8 @@ export const TerminalPanel = memo(function TerminalPanel({ id, cwd, proveedorId,
       }
     }
     const activarWebgl = (): void => {
-      if (gl || !vivo || webglDesactivado() || contextosWebgl >= MAX_WEBGL) return
+      // Sin GPU el WebGL de xterm se emula en la CPU y va más lento que el renderer DOM: se usa el DOM.
+      if (gl || !vivo || webglDesactivado() || sinGpu() || contextosWebgl >= MAX_WEBGL) return
       const nuevo = new WebglAddon()
       contextosWebgl++
       try {
