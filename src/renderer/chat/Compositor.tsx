@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { LIMITE_TEXTO_CHAT, MAX_NOTA_VOZ_MS, duracionCorta, type MensajeChat } from '@shared/chat'
-import { elegirFormato } from '@shared/voz'
+import { GrabadorNota, type DependenciasNota, type FaseNota, type FlujoNota, type GrabadorNotaNativo, type NotaGrabada } from './nota-voz'
 import { errorDeMedios } from './llamadas'
 import { IBasura, IClip, ICerrar, IEditar, IEmoji, IEnviar, IMic, IPausa, IResponder } from './Iconos'
 
@@ -9,159 +9,92 @@ const GRUPOS_EMOJI: { nombre: string; emojis: string[] }[] = [
   { nombre: 'Gestos', emojis: ['👍', '👎', '👏', '🙌', '🙏', '💪', '👋', '🤝', '✌️', '🤞', '👌', '🤙', '👀', '🫡', '🫶'] },
   { nombre: 'Símbolos', emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '💔', '🔥', '✨', '🎉', '✅', '❌', '⚠️', '💯', '🚀', '💡', '⭐', '☕', '🍕', '🎂'] }
 ]
-const MIN_NOTA_MS = 700
-
-export interface NotaGrabada {
-  datos: Uint8Array
-  mime: string
-  duracionMs: number
-}
-
-type FaseNota = 'inactiva' | 'preparando' | 'grabando' | 'pausada'
-
 /** Barras de la onda en vivo mientras se graba (la más reciente a la derecha). */
 const BARRAS_VIVO = 56
 const CADA_MS = 70
+const ONDA_VACIA = (): number[] => Array(BARRAS_VIVO).fill(0.08)
+
+/** Micrófono, `MediaRecorder` y medidor de volumen reales para `GrabadorNota`. */
+const dependenciasNavegador = (): DependenciasNota => ({
+  abrir: async () => (await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })) as unknown as FlujoNota,
+  grabador: (flujo, mime) =>
+    new MediaRecorder(flujo as MediaStream, mime ? { mimeType: mime, audioBitsPerSecond: 64_000 } : { audioBitsPerSecond: 64_000 }) as unknown as GrabadorNotaNativo,
+  admite: (m) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m),
+  medidor: (flujo) => {
+    try {
+      const ctx = new AudioContext()
+      void ctx.resume().catch(() => undefined) // un contexto suspendido no mide nada y la onda quedaría plana
+      const an = ctx.createAnalyser()
+      an.fftSize = 1024
+      an.smoothingTimeConstant = 0.6
+      ctx.createMediaStreamSource(flujo as MediaStream).connect(an)
+      const datos = new Uint8Array(an.fftSize)
+      return {
+        nivel: () => {
+          an.getByteTimeDomainData(datos)
+          let suma = 0
+          for (const v of datos) suma += ((v - 128) / 128) ** 2
+          return Math.min(1, Math.sqrt(suma / datos.length) * 4.2)
+        },
+        cerrar: () => void ctx.close().catch(() => undefined)
+      }
+    } catch {
+      return null // sin análisis: la onda queda plana, la grabación sigue
+    }
+  },
+  esperar: (ms) => new Promise((ok) => window.setTimeout(ok, ms)),
+  ahora: () => Date.now(),
+  explicar: errorDeMedios
+})
 
 /**
- * Graba una nota de voz con el micrófono: empezar, pausar/reanudar, enviar (devuelve los bytes) o cancelar. Mientras graba mide el
- * volumen real (AnalyserNode) para dibujar la onda en vivo.
+ * Nota de voz con el micrófono: empezar, pausar/reanudar, enviar (devuelve los bytes) o cancelar. La lógica está en `GrabadorNota`;
+ * aquí solo se repinta el tiempo y la onda en vivo, y se avisa al otro de «grabando audio…».
  */
-function useNotaDeVoz(alError: (m: string) => void, alLatido: () => void) {
+function useNotaDeVoz(alError: (m: string) => void, alLatido: () => void, alAutomatica: (n: NotaGrabada) => void) {
   const [fase, setFase] = useState<FaseNota>('inactiva')
   const [ms, setMs] = useState(0)
-  const [niveles, setNiveles] = useState<number[]>(() => Array(BARRAS_VIVO).fill(0.08))
-  const grabador = useRef<MediaRecorder | null>(null)
-  const stream = useRef<MediaStream | null>(null)
-  const contexto = useRef<AudioContext | null>(null)
-  const analizador = useRef<AnalyserNode | null>(null)
-  const trozos = useRef<Blob[]>([])
-  const acumulado = useRef(0) // ms grabados antes de la última pausa
-  const desde = useRef(0) // inicio del tramo actual
-  const reloj = useRef<number | undefined>(undefined)
-  const descartar = useRef(false)
-  const alTerminar = useRef<((n: NotaGrabada | null) => void) | null>(null)
-  const latido = useRef(alLatido)
-  latido.current = alLatido
+  const [niveles, setNiveles] = useState<number[]>(ONDA_VACIA)
+  const avisos = useRef({ alError, alLatido, alAutomatica })
+  avisos.current = { alError, alLatido, alAutomatica }
+  const [g] = useState(
+    () =>
+      new GrabadorNota(dependenciasNavegador(), {
+        fase: setFase,
+        error: (m) => avisos.current.alError(m),
+        automatica: (n) => avisos.current.alAutomatica(n)
+      })
+  )
+  useEffect(() => () => g.cancelar(), [g])
 
-  const soltar = useCallback((): void => {
-    window.clearInterval(reloj.current)
-    stream.current?.getTracks().forEach((t) => t.stop())
-    stream.current = null
-    void contexto.current?.close().catch(() => undefined)
-    contexto.current = null
-    analizador.current = null
-    grabador.current = null
-    setFase('inactiva')
-    setMs(0)
-    setNiveles(Array(BARRAS_VIVO).fill(0.08))
-  }, [])
-
-  useEffect(() => () => {
-    descartar.current = true
-    if (grabador.current && grabador.current.state !== 'inactive') grabador.current.stop()
-    soltar()
-  }, [soltar])
-
-  const iniciar = useCallback(async (): Promise<void> => {
-    if (fase !== 'inactiva') return
-    setFase('preparando')
-    const transcurrido = (): number => acumulado.current + (grabador.current?.state === 'recording' ? Date.now() - desde.current : 0)
-    const medir = (): number => {
-      const a = analizador.current
-      if (!a) return 0
-      const datos = new Uint8Array(a.fftSize)
-      a.getByteTimeDomainData(datos)
-      let suma = 0
-      for (const v of datos) suma += ((v - 128) / 128) ** 2
-      return Math.min(1, Math.sqrt(suma / datos.length) * 4.2)
+  useEffect(() => {
+    if (fase === 'inactiva') {
+      setMs(0)
+      setNiveles(ONDA_VACIA())
+      return
     }
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
-      stream.current = s
-      try {
-        const ctx = new AudioContext()
-        const an = ctx.createAnalyser()
-        an.fftSize = 1024
-        an.smoothingTimeConstant = 0.6
-        ctx.createMediaStreamSource(s).connect(an)
-        contexto.current = ctx
-        analizador.current = an
-      } catch {
-        // sin análisis: la onda queda plana, la grabación sigue
-      }
-      const mime = elegirFormato((m) => MediaRecorder.isTypeSupported(m))
-      const g = new MediaRecorder(s, mime ? { mimeType: mime, audioBitsPerSecond: 64_000 } : { audioBitsPerSecond: 64_000 })
-      trozos.current = []
-      descartar.current = false
-      acumulado.current = 0
-      g.ondataavailable = (e) => e.data.size > 0 && trozos.current.push(e.data)
-      g.onstop = async () => {
-        const duracionMs = acumulado.current
-        const tipo = g.mimeType || mime || 'audio/webm'
-        const blob = new Blob(trozos.current, { type: tipo })
-        const cb = alTerminar.current
-        alTerminar.current = null
-        soltar()
-        if (descartar.current || duracionMs < MIN_NOTA_MS || blob.size === 0) return cb?.(null)
-        cb?.({ datos: new Uint8Array(await blob.arrayBuffer()), mime: tipo, duracionMs })
-      }
-      g.start(250)
-      grabador.current = g
-      desde.current = Date.now()
-      setFase('grabando')
-      let vueltas = 0
-      reloj.current = window.setInterval(() => {
-        const t = transcurrido()
-        setMs(t)
-        if (grabador.current?.state === 'recording') {
-          const nivel = medir()
-          setNiveles((n) => [...n.slice(1), Math.max(0.08, nivel)])
-          if (++vueltas % 40 === 0) latido.current() // ~cada 3 s: «grabando audio…» al otro
-        }
-        if (t >= MAX_NOTA_VOZ_MS && grabador.current?.state === 'recording') {
-          acumulado.current = t
-          grabador.current.stop() // al llegar al máximo se envía sola
-        }
-      }, CADA_MS)
-      latido.current()
-    } catch (err) {
-      soltar()
-      alError(errorDeMedios(err))
-    }
-  }, [fase, soltar, alError])
+    setMs(g.transcurrido())
+    if (fase !== 'grabando') return
+    avisos.current.alLatido()
+    let vueltas = 0
+    const reloj = window.setInterval(() => {
+      const nivel = g.revisar()
+      setMs(g.transcurrido())
+      setNiveles((n) => [...n.slice(1), Math.max(0.08, nivel)])
+      if (++vueltas % 40 === 0) avisos.current.alLatido() // ~cada 3 s: «grabando audio…» al otro
+    }, CADA_MS)
+    return () => window.clearInterval(reloj)
+  }, [fase, g])
 
-  const pausar = useCallback((): void => {
-    const g = grabador.current
-    if (!g) return
-    if (g.state === 'recording') {
-      acumulado.current += Date.now() - desde.current
-      g.pause()
-      setFase('pausada')
-    } else if (g.state === 'paused') {
-      desde.current = Date.now()
-      g.resume()
-      setFase('grabando')
-    }
-  }, [])
-
-  const terminar = useCallback((): Promise<NotaGrabada | null> => {
-    const g = grabador.current
-    if (!g || g.state === 'inactive') return Promise.resolve(null)
-    if (g.state === 'recording') acumulado.current += Date.now() - desde.current
-    return new Promise((ok) => {
-      alTerminar.current = ok
-      g.stop()
-    })
-  }, [])
-
-  const cancelar = useCallback((): void => {
-    descartar.current = true
-    if (grabador.current && grabador.current.state !== 'inactive') grabador.current.stop()
-    else soltar()
-  }, [soltar])
-
-  return { fase, ms, niveles, iniciar, pausar, terminar, cancelar }
+  return {
+    fase,
+    ms,
+    niveles,
+    iniciar: useCallback(() => g.iniciar(), [g]),
+    pausar: useCallback(() => g.pausar(), [g]),
+    terminar: useCallback(() => g.terminar(), [g]),
+    cancelar: useCallback(() => g.cancelar(), [g])
+  }
 }
 
 interface Props {
@@ -188,7 +121,7 @@ export function Compositor({ conversacionId, respondiendo, editando, autorRespon
   const [emojis, setEmojis] = useState(false)
   const area = useRef<HTMLTextAreaElement>(null)
   const archivo = useRef<HTMLInputElement>(null)
-  const nota = useNotaDeVoz(alError, () => alEscribir(true))
+  const nota = useNotaDeVoz(alError, () => alEscribir(true), (n) => (alEnviarNota(n), alDejarDeEscribir()))
   const [lanzado, setLanzado] = useState(0) // sube en cada envío: reinicia la animación del botón
 
   // Cada conversación empieza con su campo limpio; al editar, con el texto del mensaje.
@@ -240,7 +173,7 @@ export function Compositor({ conversacionId, respondiendo, editando, autorRespon
     const grabando = nota.fase === 'grabando'
     return (
       <div className={`ch-compositor grabando${nota.fase === 'pausada' ? ' pausada' : ''}`} role="status">
-        <button className="ch-boton-redondo ch-boton-tenue ch-grabando-borrar" onClick={() => (nota.cancelar(), alDejarDeEscribir())} aria-label="Cancelar la grabación" title="Descartar">
+        <button className="ch-boton-redondo ch-boton-tenue ch-grabando-borrar" disabled={nota.fase === 'cerrando'} onClick={() => (nota.cancelar(), alDejarDeEscribir())} aria-label="Cancelar la grabación" title="Descartar">
           <IBasura />
         </button>
         <div className="ch-grabando-cuerpo">
@@ -255,12 +188,24 @@ export function Compositor({ conversacionId, respondiendo, editando, autorRespon
           )}
           <span className="ch-grabando-tope">{nota.fase === 'pausada' ? 'En pausa' : `máx. ${duracionCorta(MAX_NOTA_VOZ_MS / 1000)}`}</span>
         </div>
-        {nota.fase !== 'preparando' && (
+        {(nota.fase === 'grabando' || nota.fase === 'pausada') && (
           <button className="ch-boton-redondo ch-boton-tenue ch-grabando-pausa" onClick={nota.pausar} aria-label={grabando ? 'Pausar la grabación' : 'Seguir grabando'} title={grabando ? 'Pausar' : 'Seguir grabando'}>
             {grabando ? <IPausa tam={16} /> : <IMic />}
           </button>
         )}
-        <button className="ch-boton-redondo ch-boton-enviar" disabled={nota.fase === 'preparando'} onClick={() => void nota.terminar().then((n) => n && alEnviarNota(n))} aria-label="Enviar la nota de voz" title="Enviar">
+        <button
+          className="ch-boton-redondo ch-boton-enviar"
+          disabled={nota.fase === 'preparando' || nota.fase === 'cerrando'}
+          onClick={() =>
+            void nota.terminar().then((n) => {
+              alDejarDeEscribir()
+              if (n) alEnviarNota(n)
+              else alError('La nota era demasiado corta: mantén la grabación al menos un segundo.')
+            })
+          }
+          aria-label="Enviar la nota de voz"
+          title="Enviar"
+        >
           <IEnviar />
         </button>
       </div>
