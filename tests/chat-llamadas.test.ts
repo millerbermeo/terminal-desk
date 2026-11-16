@@ -193,4 +193,42 @@ describe('llamadas: quien recibe', () => {
     controlLlamada.alternarSilencio()
     expect(local.getAudioTracks()[0].enabled).toBe(true)
   })
+
+  it('una videollamada sigue solo con audio si este equipo no tiene cámara', async () => {
+    pedirMedios.mockImplementation(async (c: { video: unknown }) => {
+      if (c.video) throw Object.assign(new Error('sin cámara'), { name: 'NotFoundError' })
+      return new FlujoFalso([new Pista('audio')])
+    })
+    const { controlLlamada } = await montar()
+    emitir({ t: 'llamada.entrante', llamadaId: LLAMADA, de: ANA, video: true })
+    await controlLlamada.contestar()
+    const v = controlLlamada.obtener()
+    expect(v.fase).toBe('conectando')
+    expect(v.video).toBe(true)
+    expect(v.camaraDisponible).toBe(false)
+    expect(v.sinCamara).toBe(true)
+    expect(v.avisoCamara).toMatch(/no tiene cámara/)
+    expect(ordenes.at(-1)).toMatchObject({ t: 'llamada.responder', aceptar: true })
+  })
+
+  it('sin micrófono la llamada no empieza', async () => {
+    pedirMedios.mockImplementation(async () => {
+      throw Object.assign(new Error('nada'), { name: 'NotAllowedError' })
+    })
+    const { controlLlamada } = await montar()
+    await controlLlamada.llamar(ANA as never, true)
+    expect(controlLlamada.obtener().fase).toBe('terminada')
+  })
+
+  it('la otra persona avisa si apaga o enciende su cámara', async () => {
+    const { controlLlamada } = await montar()
+    emitir({ t: 'llamada.entrante', llamadaId: LLAMADA, de: ANA, video: true })
+    await controlLlamada.contestar()
+    expect(controlLlamada.obtener().camaraRemota).toBe(true)
+    emitir({ t: 'llamada.senal', llamadaId: LLAMADA, datos: { tipo: 'camara', activa: false } })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(controlLlamada.obtener().camaraRemota).toBe(false)
+    controlLlamada.alternarVistaPropia()
+    expect(controlLlamada.obtener().ocultarPropia).toBe(true)
+  })
 })

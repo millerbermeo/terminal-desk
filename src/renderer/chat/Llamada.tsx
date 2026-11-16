@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { duracionCorta } from '@shared/chat'
 import { Avatar, colorDe } from './Avatar'
-import { IColgar, IMic, IMicNo, ITelefono, IVideo, IVideoNo } from './Iconos'
+import { IColgar, IMic, IMicNo, IOjo, IOjoNo, ITelefono, IVideo, IVideoNo } from './Iconos'
 import { controlLlamada, useLlamada } from './llamadas'
 
 function Flujo({ stream, silenciar, className }: { stream?: MediaStream; silenciar?: boolean; className?: string }) {
@@ -29,7 +29,9 @@ export function Llamada() {
   const l = useLlamada()
   if (l.fase === 'inactiva' || !l.con) return null
   const { con } = l
-  const conVideoRemoto = l.video && !!l.remoto
+  // Solo se muestra la imagen del otro si la manda: sin cámara (o apagada) se ve su avatar y el audio sigue sonando igual.
+  const conVideoRemoto = l.video && !!l.remoto && l.camaraRemota && l.remoto.getVideoTracks().length > 0
+  const miCamara = l.video && !l.sinCamara && !!l.local?.getVideoTracks().some((t) => t.readyState === 'live')
   const sonando = l.fase === 'entrante' || l.fase === 'llamando'
   const estado =
     l.fase === 'entrante' ? (l.video ? 'Videollamada entrante…' : 'Llamada entrante…') :
@@ -61,6 +63,11 @@ export function Llamada() {
           </div>
           <h2>{con.nombre}</h2>
           <p aria-live="polite">{estado}</p>
+          {l.video && l.fase === 'en-curso' && !l.camaraRemota && (
+            <span className="ch-llamada-etiqueta">
+              <IVideoNo tam={13} /> {con.nombre} tiene la cámara apagada
+            </span>
+          )}
         </div>
       )}
       {conVideoRemoto && (
@@ -69,7 +76,24 @@ export function Llamada() {
           <span aria-live="polite">{estado}</span>
         </div>
       )}
-      {l.video && l.local && !l.sinCamara && <Flujo stream={l.local} silenciar className="ch-llamada-local" />}
+      {miCamara && !l.ocultarPropia && (
+        <div className="ch-llamada-propia">
+          <Flujo stream={l.local} silenciar className="ch-llamada-local" />
+          <button className="ch-llamada-ocultar" onClick={() => controlLlamada.alternarVistaPropia()} aria-label="Ocultar mi imagen" title="Ocultar mi imagen (el otro te sigue viendo)">
+            <IOjoNo tam={15} />
+          </button>
+        </div>
+      )}
+      {miCamara && l.ocultarPropia && (
+        <button className="ch-llamada-mostrar" onClick={() => controlLlamada.alternarVistaPropia()} title="Mostrar mi imagen">
+          <IOjo tam={15} /> Mostrar mi imagen
+        </button>
+      )}
+      {l.avisoCamara && (
+        <div className="ch-llamada-aviso" role="status">
+          <IVideoNo tam={15} /> {l.avisoCamara}
+        </div>
+      )}
 
       <div className="ch-llamada-botones">
         {l.fase === 'entrante' ? (
@@ -87,7 +111,7 @@ export function Llamada() {
               {l.silenciado ? <IMicNo tam={24} /> : <IMic tam={24} />}
             </Control>
             {l.video && (
-              <Control etiqueta={l.sinCamara ? 'Encender cámara' : 'Cámara'} activo={l.sinCamara} onClick={() => controlLlamada.alternarCamara()} disabled={!l.local}>
+              <Control etiqueta={l.sinCamara ? (l.camaraDisponible ? 'Encender cámara' : 'Probar cámara') : 'Apagar cámara'} activo={l.sinCamara} onClick={() => void controlLlamada.alternarCamara()} disabled={!l.local}>
                 {l.sinCamara ? <IVideoNo tam={24} /> : <IVideo tam={24} />}
               </Control>
             )}

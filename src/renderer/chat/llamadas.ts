@@ -12,7 +12,16 @@ export interface VistaLlamada {
   /** Segundos desde que se estableció la llamada. */
   segundos: number
   silenciado: boolean
+  /** Mi cámara está apagada (por elección, o porque este equipo no tiene: ver `camaraDisponible`). */
   sinCamara: boolean
+  /** Este equipo pudo abrir una cámara al empezar. Sin ella la videollamada sigue solo con audio (se puede reintentar). */
+  camaraDisponible: boolean
+  /** La otra persona está mandando imagen (lo avisa ella por la señalización). */
+  camaraRemota: boolean
+  /** Ocultar la miniatura de mi propia cámara (sigue enviándose). */
+  ocultarPropia: boolean
+  /** Aviso pasajero sobre la cámara («No se encontró una cámara»…). */
+  avisoCamara?: string
   local?: MediaStream
   remoto?: MediaStream
   /** Por qué terminó (o no pudo empezar), para mostrarlo unos segundos. */
@@ -78,7 +87,34 @@ class Timbre {
   }
 }
 
-const inactiva = (): VistaLlamada => ({ fase: 'inactiva', video: false, segundos: 0, silenciado: false, sinCamara: false, mensaje: '' })
+const inactiva = (): VistaLlamada => ({ fase: 'inactiva', video: false, segundos: 0, silenciado: false, sinCamara: false, camaraDisponible: false, camaraRemota: false, ocultarPropia: false, mensaje: '' })
+
+const AUDIO: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+const VIDEO: MediaTrackConstraints = { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+
+/** Mensaje corto cuando la cámara no se puede abrir (la llamada sigue con audio). */
+function avisoDeCamara(err: unknown): string {
+  const nombre = (err as { name?: string } | undefined)?.name
+  if (nombre === 'NotFoundError' || nombre === 'OverconstrainedError') return 'Este equipo no tiene cámara: estás solo con audio.'
+  if (nombre === 'NotReadableError') return 'La cámara está en uso por otra aplicación: estás solo con audio.'
+  if (nombre === 'NotAllowedError' || nombre === 'SecurityError') return 'Sin permiso para la cámara: estás solo con audio.'
+  return 'No se pudo abrir la cámara: estás solo con audio.'
+}
+
+/**
+ * Micrófono (obligatorio) y, en videollamada, la cámara si la hay. Si la cámara falla (no hay, está ocupada o sin permiso) se sigue
+ * solo con audio en vez de cancelar la llamada: así se puede hacer una videollamada entre un equipo con cámara y otro sin ella.
+ */
+async function abrirMedios(video: boolean): Promise<{ flujo: MediaStream; camara: boolean; aviso?: string }> {
+  if (!video) return { flujo: await navigator.mediaDevices.getUserMedia({ audio: AUDIO, video: false }), camara: false }
+  try {
+    return { flujo: await navigator.mediaDevices.getUserMedia({ audio: AUDIO, video: VIDEO }), camara: true }
+  } catch (err) {
+    // Sin cámara se sigue con el micrófono; si tampoco hay micrófono (o permiso), este segundo intento lanza y la llamada no empieza.
+    const flujo = await navigator.mediaDevices.getUserMedia({ audio: AUDIO, video: false })
+    return { flujo, camara: false, aviso: avisoDeCamara(err) }
+  }
+}
 
 /**
  * Llamadas de voz y video (WebRTC). El audio y el video van directos entre los dos equipos; el servidor solo pasa la oferta, la
@@ -130,9 +166,12 @@ class ControlLlamada {
     if (!this.libre) return
     window.clearTimeout(this.fin)
     this.soyLlamante = true
-    this.fijar({ ...inactiva(), fase: 'preparando', con, video })
+    this.fijar({ ...inactiva(), fase: 'preparando', con, video, camaraRemota: video })
     try {
-      this.local = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: video ? { width: 1280, height: 720 } : false })
+      const m = await abrirMedios(video)
+      this.local = m.flujo
+      this.fijar({ camaraDisponible: m.camara, sinCamara: video && !m.camara, ...(m.aviso ? { avisoCamara: m.aviso } : {}) })
+      if (m.aviso) this.quitarAvisoLuego()
     } catch (err) {
       return this.terminar(errorDeMedios(err))
     }
@@ -150,9 +189,12 @@ class ControlLlamada {
     const { fase, llamadaId, video } = this.vista
     if (fase !== 'entrante' || !llamadaId) return
     this.timbre.detener()
-    this.fijar({ fase: 'preparando' })
+    this.fijar({ fase: 'preparando', camaraRemota: video })
     try {
-      this.local = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: video ? { width: 1280, height: 720 } : false })
+      const m = await abrirMedios(video)
+      this.local = m.flujo
+      this.fijar({ camaraDisponible: m.camara, sinCamara: video && !m.camara, ...(m.aviso ? { avisoCamara: m.aviso } : {}) })
+      if (m.aviso) this.quitarAvisoLuego()
       this.ice = (await window.api.chat.operar('ice', {})).servidores
     } catch (err) {
       this.orden({ t: 'llamada.responder', llamadaId, aceptar: false })
@@ -181,17 +223,78 @@ class ControlLlamada {
     this.fijar({ silenciado })
   }
 
-  alternarCamara(): void {
-    const sinCamara = !this.vista.sinCamara
-    this.local?.getVideoTracks().forEach((t) => (t.enabled = !sinCamara))
-    this.fijar({ sinCamara })
+  /** El emisor de video de la conexión (existe aunque no haya cámara: se negocia siempre en videollamada). */
+  private emisorVideo(): RTCRtpSender | undefined {
+    return this.pc?.getTransceivers?.().find((t) => t.receiver.track?.kind === 'video')?.sender
+  }
+
+  /**
+   * Apaga o enciende mi cámara. Apagar suelta la cámara de verdad (se apaga su luz) y avisa al otro; encender la vuelve a abrir y la
+   * pone en la misma conexión (sin renegociar). Si el equipo no tenía cámara al empezar, encender lo vuelve a intentar.
+   */
+  async alternarCamara(): Promise<void> {
+    if (!this.local || !this.vista.video) return
+    const apagar = !this.vista.sinCamara
+    const pistas = this.local.getVideoTracks()
+    if (apagar) {
+      pistas.forEach((t) => (t.enabled = false))
+      const emisor = this.emisorVideo()
+      if (emisor) {
+        await emisor.replaceTrack(null).catch(() => undefined)
+        pistas.forEach((t) => (t.stop(), this.local!.removeTrack(t)))
+        this.local = new MediaStream(this.local.getTracks())
+      }
+      this.fijar({ sinCamara: true, local: this.local })
+      return this.avisarCamara(false)
+    }
+    // Encender: si la pista sigue viva (sin conexión aún) basta con activarla.
+    const viva = pistas.find((t) => t.readyState === 'live')
+    if (viva) {
+      viva.enabled = true
+      this.fijar({ sinCamara: false })
+      return this.avisarCamara(true)
+    }
+    try {
+      const nueva = (await navigator.mediaDevices.getUserMedia({ video: VIDEO, audio: false })).getVideoTracks()[0]
+      if (!nueva || !this.local) return
+      const emisor = this.emisorVideo()
+      if (emisor) await emisor.replaceTrack(nueva)
+      else this.pc?.addTrack(nueva, this.local) // sin transceptor de video (no debería pasar): se añade y se renegocia
+      this.local = new MediaStream([...this.local.getAudioTracks(), nueva])
+      this.fijar({ sinCamara: false, camaraDisponible: true, local: this.local, avisoCamara: undefined })
+      this.avisarCamara(true)
+    } catch (err) {
+      this.fijar({ avisoCamara: avisoDeCamara(err) })
+      this.quitarAvisoLuego()
+    }
+  }
+
+  /** Ocultar o mostrar la miniatura de mi cámara (no cambia lo que ve el otro). */
+  alternarVistaPropia(): void {
+    this.fijar({ ocultarPropia: !this.vista.ocultarPropia })
+  }
+
+  private avisarCamara(activa: boolean): void {
+    if (this.vista.llamadaId && this.pc) this.orden({ t: 'llamada.senal', llamadaId: this.vista.llamadaId, datos: { tipo: 'camara', activa } })
+  }
+
+  private avisoTimer?: number
+  private quitarAvisoLuego(): void {
+    window.clearTimeout(this.avisoTimer)
+    this.avisoTimer = window.setTimeout(() => this.fijar({ avisoCamara: undefined }), 5000)
   }
 
   private crearConexion(): void {
     const pc = new RTCPeerConnection({ iceServers: this.ice })
     this.pc = pc
     this.local?.getTracks().forEach((t) => pc.addTrack(t, this.local!))
+    // Videollamada sin cámara en este equipo: se negocia igual el video (para recibir el del otro y poder encender una cámara luego).
+    if (this.vista.video && !this.local?.getVideoTracks().length) pc.addTransceiver?.('video', { direction: 'sendrecv' })
     pc.ontrack = (e) => this.fijar({ remoto: e.streams[0] ?? new MediaStream([e.track]) })
+    pc.onnegotiationneeded = () => {
+      // Solo a mitad de llamada (la primera oferta la hace `ofrecer`): p. ej. una cámara añadida sin transceptor previo.
+      if (pc.connectionState === 'connected' && pc.signalingState === 'stable') void this.ofrecer()
+    }
     pc.onicecandidate = (e) => {
       if (e.candidate && this.vista.llamadaId) this.orden({ t: 'llamada.senal', llamadaId: this.vista.llamadaId, datos: { tipo: 'ice', candidato: e.candidate.toJSON() } })
     }
@@ -199,6 +302,8 @@ class ControlLlamada {
       if (pc !== this.pc) return
       if (pc.connectionState === 'connected' && this.vista.fase !== 'en-curso') {
         this.fijar({ fase: 'en-curso', segundos: 0 })
+        // Cada lado dice si manda imagen (el otro muestra su avatar si no).
+        if (this.vista.video) this.avisarCamara(!this.vista.sinCamara && !!this.local?.getVideoTracks().some((t) => t.readyState === 'live'))
         const inicio = Date.now()
         this.reloj = window.setInterval(() => this.fijar({ segundos: Math.round((Date.now() - inicio) / 1000) }), 1000)
       } else if (pc.connectionState === 'failed') {
@@ -228,7 +333,7 @@ class ControlLlamada {
         this.crearConexion()
         return void this.ofrecer()
       case 'llamada.senal':
-        if (e.llamadaId === this.vista.llamadaId) await this.alSenal(e.datos as { tipo?: string; sdp?: RTCSessionDescriptionInit; candidato?: RTCIceCandidateInit })
+        if (e.llamadaId === this.vista.llamadaId) await this.alSenal(e.datos as { tipo?: string; sdp?: RTCSessionDescriptionInit; candidato?: RTCIceCandidateInit; activa?: boolean })
         return
       case 'llamada.fin':
         if (e.llamadaId !== this.vista.llamadaId) return
@@ -249,13 +354,16 @@ class ControlLlamada {
     }
   }
 
-  private async alSenal(d: { tipo?: string; sdp?: RTCSessionDescriptionInit; candidato?: RTCIceCandidateInit }): Promise<void> {
+  private async alSenal(d: { tipo?: string; sdp?: RTCSessionDescriptionInit; candidato?: RTCIceCandidateInit; activa?: boolean }): Promise<void> {
     const pc = this.pc
     const id = this.vista.llamadaId
     if (!pc || !id || !d || typeof d !== 'object') return
+    if (d.tipo === 'camara') return this.fijar({ camaraRemota: d.activa === true })
     try {
       if (d.tipo === 'oferta' && d.sdp) {
         await pc.setRemoteDescription({ type: 'offer', sdp: String(d.sdp.sdp ?? '') })
+        // Aunque este equipo no tenga cámara, el video queda en «enviar y recibir»: así se puede encender una cámara a mitad de llamada.
+        if (this.vista.video) pc.getTransceivers?.().forEach((t) => t.receiver.track?.kind === 'video' && t.direction === 'recvonly' && (t.direction = 'sendrecv'))
         const respuesta = await pc.createAnswer()
         await pc.setLocalDescription(respuesta)
         this.orden({ t: 'llamada.senal', llamadaId: id, datos: { tipo: 'respuesta', sdp: { type: respuesta.type, sdp: respuesta.sdp } } })
@@ -281,12 +389,13 @@ class ControlLlamada {
 
   private limpiar(): void {
     this.timbre.detener()
+    window.clearTimeout(this.avisoTimer)
     window.clearInterval(this.reloj)
     this.reloj = undefined
     this.local?.getTracks().forEach((t) => t.stop())
     this.local = undefined
     if (this.pc) {
-      this.pc.ontrack = this.pc.onicecandidate = this.pc.onconnectionstatechange = null
+      this.pc.ontrack = this.pc.onicecandidate = this.pc.onconnectionstatechange = this.pc.onnegotiationneeded = null
       this.pc.close()
     }
     this.pc = undefined

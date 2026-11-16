@@ -45,6 +45,17 @@ export const IVideoNo = ({ tam }: P) => (
     <path d="m15.5 10.5 5-3v9l-3.2-1.9M3 3l18 18" />
   </Svg>
 )
+export const IOjo = ({ tam }: P) => (
+  <Svg tam={tam}>
+    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </Svg>
+)
+export const IOjoNo = ({ tam }: P) => (
+  <Svg tam={tam}>
+    <path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.7 3.6M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18" />
+  </Svg>
+)
 export const IMic = ({ tam }: P) => (
   <Svg tam={tam}>
     <rect x="9" y="3" width="6" height="11" rx="3" />
