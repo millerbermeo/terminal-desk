@@ -3,6 +3,8 @@ import { servidorSeguro, type CuentaGuardada, type EstadoSesion, type ResultadoS
 
 interface Props {
   servidor: string
+  /** Primer arranque: aún no se ha elegido un servidor, así que se pide antes de entrar. */
+  servidorPendiente?: boolean
   onEntrar: (estado: EstadoSesion) => void
   /** Se cambió la dirección del servidor: hay que recargar el estado de la sesión. */
   onServidor: (estado: EstadoSesion) => void
@@ -22,7 +24,7 @@ const TITULOS: Record<Modo, string> = {
 }
 
 /** Pantalla de acceso al servidor: entrar, crear la cuenta y activarla con el código del correo, o recuperar la contraseña. */
-export function Acceso({ servidor, onEntrar, onServidor, onCancelar }: Props) {
+export function Acceso({ servidor, servidorPendiente, onEntrar, onServidor, onCancelar }: Props) {
   const [modo, setModo] = useState<Modo>('entrar')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -31,8 +33,8 @@ export function Acceso({ servidor, onEntrar, onServidor, onCancelar }: Props) {
   const [aviso, setAviso] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [verPassword, setVerPassword] = useState(false)
-  const [editandoServidor, setEditandoServidor] = useState(false)
-  const [urlNueva, setUrlNueva] = useState(servidor)
+  const [editandoServidor, setEditandoServidor] = useState(!!servidorPendiente)
+  const [urlNueva, setUrlNueva] = useState(servidorPendiente ? '' : servidor)
   const [googleListo, setGoogleListo] = useState(false)
   useEffect(() => {
     let vigente = true
@@ -165,7 +167,11 @@ export function Acceso({ servidor, onEntrar, onServidor, onCancelar }: Props) {
             <span className="ayuda">O entra con otra:</span>
           </div>
         )}
-        {modo === 'entrar' || modo === 'registrar' ? (
+        {servidorPendiente ? (
+          <p className="modal-texto">
+            Primer arranque: escribe la dirección de tu servidor (la API de Odesk). Usa <code>http://localhost:3000</code> si lo corres en esta máquina.
+          </p>
+        ) : modo === 'entrar' || modo === 'registrar' ? (
           <p className="modal-texto">
             Tus proyectos y agentes viven en el servidor ({servidor}){' '}
             <button type="button" className="icono" disabled={enviando} onClick={() => setEditandoServidor(!editandoServidor)}>
@@ -182,7 +188,7 @@ export function Acceso({ servidor, onEntrar, onServidor, onCancelar }: Props) {
         {editandoServidor && (
           <label style={{ maxWidth: 'none' }}>
             Dirección del servidor
-            <input value={urlNueva} placeholder="https://api.midominio.com" onChange={(e) => setUrlNueva(e.target.value)} />
+            <input value={urlNueva} autoFocus={!!servidorPendiente} placeholder="https://api.midominio.com" onChange={(e) => setUrlNueva(e.target.value)} />
             <span className="ayuda">
               <button type="button" disabled={enviando || !urlNueva.trim()} onClick={() => void cambiarServidor()}>
                 Usar este servidor

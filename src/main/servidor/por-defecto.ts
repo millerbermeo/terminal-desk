@@ -15,10 +15,9 @@ const esUrlHttp = (v: string): boolean => {
  * 2. `servidor-por-defecto.txt`, que los instaladores (`install.sh`, `install.ps1`) dejan junto a la carpeta `repo/` de la instalación:
  *    el lanzador no es una app empaquetada, así que no hay otra forma de saber que es una copia instalada (y el acceso del menú
  *    Inicio de Windows arranca Electron directamente, sin variables);
- * 3. la app empaquetada (`.deb`, AppImage…): el servidor de producción.
- * En desarrollo (`pnpm dev`) no hay ninguno y se usa `http://localhost:3000`.
+ * Sin ninguno de los dos no hay servidor por defecto: la app lo pide en el primer arranque y lo guarda en `servidor.json`.
  */
-export function servidorPorDefecto(o: { rutaApp: string; empaquetada: boolean; produccion: string; env?: NodeJS.ProcessEnv }): string | undefined {
+export function servidorPorDefecto(o: { rutaApp: string; env?: NodeJS.ProcessEnv }): string | undefined {
   const delEntorno = (o.env ?? process.env).ODESK_SERVIDOR_POR_DEFECTO?.trim()
   if (delEntorno && esUrlHttp(delEntorno)) return delEntorno
   try {
@@ -27,5 +26,5 @@ export function servidorPorDefecto(o: { rutaApp: string; empaquetada: boolean; p
   } catch {
     // sin archivo: no es una copia hecha con el instalador
   }
-  return o.empaquetada ? o.produccion : undefined
+  return undefined
 }

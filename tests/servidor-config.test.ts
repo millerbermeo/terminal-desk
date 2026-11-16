@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { servidorSeguro, URL_SERVIDOR_PRODUCCION } from '@shared/sesion'
+import { servidorSeguro } from '@shared/sesion'
 import { ClienteServidor, ErrorServidor, ErrorSesion } from '../src/main/servidor/cliente'
 import { servidorPorDefecto } from '../src/main/servidor/por-defecto'
 import { avisoDeGit, vincularProyectoLocal } from '../src/main/servidor/vinculo'
@@ -41,6 +41,8 @@ beforeAll(async () => {
   url = `http://127.0.0.1:${(api.address() as AddressInfo).port}`
 })
 afterAll(() => new Promise<void>((ok) => api.close(() => ok())))
+
+const EJEMPLO = 'https://api.ejemplo.com'
 
 describe('dirección del servidor', () => {
   it('https siempre vale; http solo hacia esta máquina', () => {
@@ -81,21 +83,21 @@ describe('dirección del servidor', () => {
     const dir = await carpeta()
     const archivoUrl = join(dir, 'servidor.json')
     const sola = new ClienteServidor()
-    sola.usarPorDefecto(URL_SERVIDOR_PRODUCCION)
+    sola.usarPorDefecto(EJEMPLO)
     sola.configurar(join(dir, 's.json'), cifradorFalso, archivoUrl) // no hay servidor.json
     expect(sola.url).toBe('https://api.ejemplo.com')
     expect(servidorSeguro(sola.url)).toBe(true) // https: la app acepta mandar la sesión
 
     await writeFile(archivoUrl, JSON.stringify({ url: 'https://elegido-por-el-usuario.com' }))
     const guardado = new ClienteServidor()
-    guardado.usarPorDefecto(URL_SERVIDOR_PRODUCCION)
+    guardado.usarPorDefecto(EJEMPLO)
     guardado.configurar(join(dir, 's.json'), cifradorFalso, archivoUrl)
     expect(guardado.url).toBe('https://elegido-por-el-usuario.com')
 
     process.env.ODESK_API_URL = 'http://localhost:4000'
     try {
       const entorno = new ClienteServidor()
-      entorno.usarPorDefecto(URL_SERVIDOR_PRODUCCION)
+      entorno.usarPorDefecto(EJEMPLO)
       expect(entorno.url).toBe('http://localhost:4000')
     } finally {
       delete process.env.ODESK_API_URL
@@ -191,29 +193,28 @@ describe('sesión en el servidor', () => {
 
 describe('servidorPorDefecto (copias hechas con install.sh / install.ps1)', () => {
   const PROD = 'https://api.ejemplo.com'
-  it('el instalador deja servidor-por-defecto.txt junto a repo/: esa copia usa producción aunque no esté empaquetada', async () => {
+  it('el instalador deja servidor-por-defecto.txt junto a repo/: esa copia usa ese servidor', async () => {
     const dir = await carpeta()
     const repo = join(dir, 'repo')
     await mkdir(repo)
     await writeFile(join(dir, 'servidor-por-defecto.txt'), `${PROD}\n`)
-    expect(servidorPorDefecto({ rutaApp: repo, empaquetada: false, produccion: PROD, env: {} })).toBe(PROD)
+    expect(servidorPorDefecto({ rutaApp: repo, env: {} })).toBe(PROD)
   })
-  it('en desarrollo (sin archivo ni empaquetar) no hay valor: queda localhost; empaquetada usa producción', async () => {
+  it('sin archivo ni variable no hay valor: la app pide el servidor en el primer arranque', async () => {
     const dir = await carpeta()
     const repo = join(dir, 'repo')
     await mkdir(repo)
-    expect(servidorPorDefecto({ rutaApp: repo, empaquetada: false, produccion: PROD, env: {} })).toBeUndefined()
-    expect(servidorPorDefecto({ rutaApp: repo, empaquetada: true, produccion: PROD, env: {} })).toBe(PROD)
+    expect(servidorPorDefecto({ rutaApp: repo, env: {} })).toBeUndefined()
   })
   it('la variable ODESK_SERVIDOR_POR_DEFECTO manda sobre el archivo; un valor que no es http(s) se ignora', async () => {
     const dir = await carpeta()
     const repo = join(dir, 'repo')
     await mkdir(repo)
     await writeFile(join(dir, 'servidor-por-defecto.txt'), 'https://del-archivo.com')
-    expect(servidorPorDefecto({ rutaApp: repo, empaquetada: false, produccion: PROD, env: { ODESK_SERVIDOR_POR_DEFECTO: 'https://del-entorno.com' } })).toBe('https://del-entorno.com')
-    expect(servidorPorDefecto({ rutaApp: repo, empaquetada: false, produccion: PROD, env: { ODESK_SERVIDOR_POR_DEFECTO: 'ftp://raro' } })).toBe('https://del-archivo.com')
+    expect(servidorPorDefecto({ rutaApp: repo, env: { ODESK_SERVIDOR_POR_DEFECTO: 'https://del-entorno.com' } })).toBe('https://del-entorno.com')
+    expect(servidorPorDefecto({ rutaApp: repo, env: { ODESK_SERVIDOR_POR_DEFECTO: 'ftp://raro' } })).toBe('https://del-archivo.com')
     await writeFile(join(dir, 'servidor-por-defecto.txt'), 'no es una url')
-    expect(servidorPorDefecto({ rutaApp: repo, empaquetada: false, produccion: PROD, env: {} })).toBeUndefined()
+    expect(servidorPorDefecto({ rutaApp: repo, env: {} })).toBeUndefined()
   })
   it('lo que el usuario guardó en servidor.json y ODESK_API_URL siguen mandando sobre el valor por defecto', async () => {
     const dir = await carpeta()
@@ -223,5 +224,19 @@ describe('servidorPorDefecto (copias hechas con install.sh / install.ps1)', () =
     c.usarPorDefecto(PROD)
     c.configurar(join(dir, 's.json'), cifradorFalso, archivoUrl)
     expect(c.url).toBe('https://mio.com')
+  })
+})
+
+describe('servidor pendiente (primer arranque)', () => {
+  it('sin servidor elegido el estado lo marca; al fijarlo deja de estar pendiente', async () => {
+    const dir = await carpeta()
+    const c = new ClienteServidor()
+    c.configurar(join(dir, 's.json'), cifradorFalso, join(dir, 'servidor.json'))
+    expect((await c.estado()).servidorPendiente).toBe(true)
+    await c.fijarUrl('https://api.ejemplo.com')
+    expect((await c.estado()).servidorPendiente).toBeUndefined()
+    const reabierto = new ClienteServidor()
+    reabierto.configurar(join(dir, 's.json'), cifradorFalso, join(dir, 'servidor.json'))
+    expect((await reabierto.estado()).servidorPendiente).toBeUndefined()
   })
 })

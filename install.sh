@@ -6,7 +6,7 @@
 # Ejecutarlo de nuevo actualiza a la última versión (solo reconstruye lo que cambió).
 # Opciones (después de `bash -s --`):  --desinstalar · --ref <rama|etiqueta|commit> · --ayuda
 # Variables: ODESK_REPO, ODESK_REF, ODESK_DIR (carpeta de instalación), ODESK_BIN (carpeta del lanzador),
-# ODESK_SERVIDOR (servidor al que se conecta la app por defecto; sin ella, https://api.ejemplo.com).
+# ODESK_SERVIDOR (servidor al que se conecta la app por defecto; sin ella, la app pide la dirección en el primer arranque).
 # (Se siguen aceptando las antiguas CENTRO_REPO, CENTRO_REF, CENTRO_DIR y CENTRO_BIN.)
 set -euo pipefail
 
@@ -212,7 +212,7 @@ printf '%s' "$NUEVO" > "$DIR/instalado.commit"
 arreglar_sandbox
 
 # --- Servidor por defecto (la app lo lee de aquí; lo que el usuario elija en la pantalla de acceso manda sobre él) ---
-printf '%s\n' "${ODESK_SERVIDOR:-https://api.ejemplo.com}" > "$DIR/servidor-por-defecto.txt"
+if [ -n "${ODESK_SERVIDOR:-}" ]; then printf '%s\n' "$ODESK_SERVIDOR" > "$DIR/servidor-por-defecto.txt"; else rm -f "$DIR/servidor-por-defecto.txt"; fi
 
 # --- Lanzador ---
 cat > "$LANZADOR" <<EOF

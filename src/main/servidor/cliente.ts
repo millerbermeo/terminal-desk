@@ -68,16 +68,21 @@ export class ClienteServidor {
   /** Se avisa cuando el servidor rechaza el token y la sesión se cierra sola (la interfaz vuelve al acceso). */
   alPerderSesion?: () => void
 
-  constructor(url = process.env.ODESK_API_URL || 'http://localhost:3000') {
-    this.direccion = limpiarUrl(url)
+  /** ¿Se eligió ya un servidor (entorno, archivo, instalador o pantalla de acceso)? Si no, la app lo pide en el primer arranque. */
+  private configurado: boolean
+
+  constructor(url?: string) {
+    this.configurado = url !== undefined || !!process.env.ODESK_API_URL
+    this.direccion = limpiarUrl(url ?? (process.env.ODESK_API_URL || 'http://localhost:3000'))
   }
 
   /**
-   * Dirección por defecto de esta instalación (la app empaquetada usa el servidor de producción; en desarrollo sigue `localhost`).
+   * Dirección por defecto de esta instalación (la que deja el instalador en `servidor-por-defecto.txt` o `ODESK_SERVIDOR_POR_DEFECTO`).
    * Se llama antes de `configurar`: lo que el usuario guardó en `servidor.json` y la variable `ODESK_API_URL` mandan sobre ella.
    */
   usarPorDefecto(url: string): void {
     if (!process.env.ODESK_API_URL) this.direccion = limpiarUrl(url)
+    this.configurado = true
   }
 
   get url(): string {
@@ -95,7 +100,10 @@ export class ClienteServidor {
     if (archivoUrl && !process.env.ODESK_API_URL) {
       try {
         const j = JSON.parse(readFileSync(archivoUrl, 'utf8')) as { url?: unknown }
-        if (typeof j.url === 'string') this.direccion = limpiarUrl(j.url)
+        if (typeof j.url === 'string') {
+          this.direccion = limpiarUrl(j.url)
+          this.configurado = true
+        }
       } catch {
         // sin archivo o ilegible: se queda la dirección por defecto
       }
@@ -114,6 +122,7 @@ export class ClienteServidor {
     const nueva = limpiarUrl(u.origin + u.pathname)
     if (nueva !== this.direccion) await this.olvidarTodas() // las sesiones eran del otro servidor: aquí no hay que revocarlas
     this.direccion = nueva
+    this.configurado = true
     if (this.archivoUrl) {
       await mkdir(dirname(this.archivoUrl), { recursive: true })
       await writeFile(this.archivoUrl, JSON.stringify({ url: nueva }, null, 2) + '\n', 'utf8')
@@ -140,6 +149,7 @@ export class ClienteServidor {
       ...(this.email ? { email: this.email } : {}),
       ...(this.usuarioId ? { usuarioId: this.usuarioId } : {}),
       servidor: this.url,
+      ...(this.configurado ? {} : { servidorPendiente: true }),
       persistente: this.persistente
     }
   }

@@ -80,7 +80,7 @@ function Raiz() {
       <Cargando variante="pantalla" />
     )
   }
-  if (!sesion.activa) return <Acceso servidor={sesion.servidor} onEntrar={setSesion} onServidor={setSesion} />
+  if (!sesion.activa) return <Acceso servidor={sesion.servidor} servidorPendiente={sesion.servidorPendiente} onEntrar={setSesion} onServidor={setSesion} />
   if (agregando)
     return (
       <Acceso

@@ -30,7 +30,7 @@ import { ErrorServidor, ErrorSesion, servidor } from './servidor/cliente'
 import { ServicioVoz, crearMotorWhisper } from './voz'
 import { servidorPorDefecto } from './servidor/por-defecto'
 import { cifradorDelSistema } from './cifrador'
-import { URL_SERVIDOR_PRODUCCION, type CredencialesSesion, type EstadoSesion, type NombreOperacionCuenta, type ResultadoBoveda, type ResultadoPaso, type ResultadoSesion } from '@shared/sesion'
+import { type CredencialesSesion, type EstadoSesion, type NombreOperacionCuenta, type ResultadoBoveda, type ResultadoPaso, type ResultadoSesion } from '@shared/sesion'
 import { cambiarPerfil } from './perfiles'
 import { Boveda } from './servidor/boveda'
 import { seccionesSecretas } from './servidor/secretos'
@@ -858,8 +858,8 @@ app.whenReady().then(() => {
     if (anterior) registro.registrar({ level: 'warn', source: 'main', kind: 'cierre-inesperado', message: 'La sesión anterior no terminó bien (se cerró de golpe, se colgó o hubo que matarla)', context: { minutosDesdeEseInicio: Math.round((Date.now() - anterior.inicio) / 60000) } })
     registro.registrar({ level: 'info', source: 'main', kind: 'app-inicio', message: `Odesk Code ${app.getVersion()} iniciado` })
   })
-  // Instalada (empaquetada o con install.sh/install.ps1): el servidor de producción; `servidor.json` y ODESK_API_URL mandan sobre él.
-  const porDefecto = servidorPorDefecto({ rutaApp: app.getAppPath(), empaquetada: app.isPackaged, produccion: URL_SERVIDOR_PRODUCCION })
+  // Servidor por defecto (entorno o `servidor-por-defecto.txt` del instalador); `servidor.json` y ODESK_API_URL mandan sobre él. Sin ninguno, la app lo pide.
+  const porDefecto = servidorPorDefecto({ rutaApp: app.getAppPath() })
   if (porDefecto) servidor.usarPorDefecto(porDefecto)
   servidor.configurar(join(DIR, 'sesion.json'), cifradorDelSistema(), join(DIR, 'servidor.json'))
   servidor.alPerderSesion = () => {

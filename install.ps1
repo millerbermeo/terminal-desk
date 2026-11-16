@@ -152,8 +152,9 @@ Ejecutar 'pnpm' @('build')
 Set-Content -NoNewline -Path $fCommit -Value $nuevo
 
 # --- Servidor por defecto (la app lo lee de aquí; lo que el usuario elija en la pantalla de acceso manda sobre él) ---
-$Servidor = if ($env:ODESK_SERVIDOR) { $env:ODESK_SERVIDOR } else { 'https://api.ejemplo.com' }
-Set-Content -NoNewline -Path (Join-Path $Dir 'servidor-por-defecto.txt') -Value $Servidor -Encoding ASCII
+$ArchivoServidor = Join-Path $Dir 'servidor-por-defecto.txt'
+if ($env:ODESK_SERVIDOR) { Set-Content -NoNewline -Path $ArchivoServidor -Value $env:ODESK_SERVIDOR -Encoding ASCII }
+else { Remove-Item -Path $ArchivoServidor -ErrorAction SilentlyContinue }
 
 # --- Lanzador, acceso del menú Inicio y PATH ---
 $electron = Join-Path $RepoDir 'node_modules\electron\dist\electron.exe'

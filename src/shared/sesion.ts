@@ -5,6 +5,8 @@ export interface EstadoSesion {
   usuarioId?: string
   /** Dirección del servidor al que se conecta esta instalación. */
   servidor: string
+  /** Nadie ha elegido aún un servidor en esta instalación: la pantalla de acceso lo pide antes de nada. */
+  servidorPendiente?: boolean
   /** El token se guardó cifrado en disco; si no, se pierde al cerrar la app. */
   persistente?: boolean
 }
@@ -104,7 +106,5 @@ export interface OperacionesCuenta {
   /** Borra la bóveda del servidor (si se olvidó la frase). */
   bovedaReiniciar: { entrada: Record<string, never>; salida: ResultadoBoveda }
 }
-/** Servidor al que se conecta la app instalada (empaquetada); en desarrollo se usa `http://localhost:3000` salvo que se indique otro. */
-export const URL_SERVIDOR_PRODUCCION = 'https://api.ejemplo.com'
 
 export type NombreOperacionCuenta = keyof OperacionesCuenta
