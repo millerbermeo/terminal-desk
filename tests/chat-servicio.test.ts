@@ -18,11 +18,26 @@ function montar() {
   }
   const enviadas: object[] = []
   const guardados: { nombre: string; datos: Uint8Array }[] = []
+  // Cifrado simulado: aquí solo se prueba el armado de rutas y la validación (el cifrado real está en chat-e2e.test.ts).
+  const cifrado = {
+    olvidar: vi.fn(),
+    cerrarMensaje: vi.fn(async (m: { texto: string; adjunto?: { nombre: string; mime: string } }) => `SOBRE(${m.texto}${m.adjunto ? `|${m.adjunto.nombre}|${m.adjunto.mime}` : ''})`),
+    abrirMensaje: vi.fn(async (m: object) => ({ ...m, cifrado: 'si' })),
+    abrirConversaciones: vi.fn(async (l: unknown[]) => l),
+    recordarConversaciones: vi.fn(),
+    cifrarArchivo: vi.fn(async (d: Uint8Array) => ({ blob: Buffer.concat([Buffer.from('CIF'), Buffer.from(d)]), clave: Buffer.alloc(32) })),
+    esAdjuntoCifrado: vi.fn(() => false),
+    abrirArchivo: vi.fn(() => null),
+    exigirContactoSeguro: vi.fn(async () => undefined),
+    recordarLlamada: vi.fn(),
+    cerrarSenal: vi.fn(async (_id: string, d: unknown) => ({ e2e: JSON.stringify(d) }))
+  }
   const svc = new ServicioChat(servidor as never, {
     conexion: { conexion: 'conectado', enviar: (o) => (enviadas.push(o), true) },
+    cifrado: cifrado as never,
     guardarArchivo: async (nombre, datos) => (guardados.push({ nombre, datos }), true)
   })
-  return { svc, servidor, llamadas, respuesta, enviadas, guardados }
+  return { svc, servidor, llamadas, respuesta, enviadas, guardados, cifrado }
 }
 
 describe('operaciones del chat', () => {
@@ -45,26 +60,34 @@ describe('operaciones del chat', () => {
     await svc.operaciones.solicitar({ email: ' Ana@Ejemplo.com ' })
     await svc.operaciones.responder({ contactoId: ID, aceptar: true })
     await svc.operaciones.reaccionar({ mensajeId: ID, emoji: null })
-    await svc.operaciones.buscar({ q: 'a&b=1' })
     await svc.operaciones.leido({ conversacionId: ID, seq: 7 })
+    // El texto sale cifrado (aquí, el sobre simulado): nunca en claro hacia el servidor.
     expect(llamadas).toEqual([
-      { m: 'POST', ruta: `/chat/conversaciones/${ID}/mensajes`, cuerpo: { tipo: 'text', texto: 'hola', clienteId: 'abcdefgh', respondeA: ID2 } },
+      { m: 'POST', ruta: `/chat/conversaciones/${ID}/mensajes`, cuerpo: { tipo: 'text', texto: 'SOBRE(hola)', clienteId: 'abcdefgh', respondeA: ID2 } },
       { m: 'GET', ruta: `/chat/conversaciones/${ID}/mensajes?antes=20&limite=100` },
       { m: 'GET', ruta: `/chat/conversaciones/${ID}/mensajes?desde=0` },
       { m: 'POST', ruta: '/chat/contactos', cuerpo: { email: 'Ana@Ejemplo.com' } },
       { m: 'POST', ruta: `/chat/contactos/${ID}/respuesta`, cuerpo: { aceptar: true } },
       { m: 'PUT', ruta: `/chat/mensajes/${ID}/reaccion`, cuerpo: { emoji: null } },
-      { m: 'GET', ruta: '/chat/buscar?q=a%26b%3D1' },
       { m: 'POST', ruta: `/chat/conversaciones/${ID}/leido`, cuerpo: { seq: 7 } }
     ])
   })
 
-  it('enviar un archivo: sube los bytes y luego manda el mensaje con el adjunto', async () => {
-    const { svc, llamadas } = montar()
-    const datos = new Uint8Array([1, 2, 3, 4])
+  it('enviar un archivo: sube solo bytes cifrados (sin nombre ni tipo) y el nombre y el tipo real van en el sobre', async () => {
+    const { svc, llamadas, cifrado } = montar()
+    // Cabecera webm: el tipo se comprueba aquí por los bytes (el servidor ya no puede).
+    const datos = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1, 2])
     await svc.operaciones.enviarArchivo({ conversacionId: ID, tipo: 'audio', nombre: 'nota de voz.webm', mime: 'audio/webm;codecs=opus', datos, duracionMs: 4200.4, texto: '', clienteId: 'abcdefgh' })
-    expect(llamadas[0]).toMatchObject({ m: 'BIN', ruta: `/chat/conversaciones/${ID}/archivos?nombre=nota%20de%20voz.webm&duracionMs=4200`, tipo: 'audio/webm;codecs=opus' })
-    expect(llamadas[1]).toEqual({ m: 'POST', ruta: `/chat/conversaciones/${ID}/mensajes`, cuerpo: { tipo: 'audio', texto: '', adjuntoId: ID2, clienteId: 'abcdefgh' } })
+    expect(llamadas[0]).toMatchObject({ m: 'BIN', ruta: `/chat/conversaciones/${ID}/archivos?cifrado=1`, tipo: 'application/octet-stream' })
+    expect([...llamadas[0].datos!.slice(0, 3)]).toEqual([...Buffer.from('CIF')])
+    expect(cifrado.cerrarMensaje.mock.calls[0][0]).toMatchObject({ adjunto: { id: ID2, nombre: 'nota de voz.webm', mime: 'audio/webm', tamano: 6, duracionMs: 4200 } })
+    expect(llamadas[1]).toEqual({ m: 'POST', ruta: `/chat/conversaciones/${ID}/mensajes`, cuerpo: { tipo: 'audio', texto: 'SOBRE(|nota de voz.webm|audio/webm)', adjuntoId: ID2, clienteId: 'abcdefgh' } })
+  })
+
+  it('no deja enviar como imagen o audio algo que por sus bytes no lo es', async () => {
+    const { svc, servidor } = montar()
+    await expect(svc.operaciones.enviarArchivo({ conversacionId: ID, tipo: 'image', nombre: 'x.png', mime: 'image/png', datos: new Uint8Array([1, 2, 3]), clienteId: 'abcdefgh' })).rejects.toThrow('no corresponde')
+    expect(servidor.binario).not.toHaveBeenCalled()
   })
 
   it('rechaza archivos vacíos, enormes o con tipos y duraciones absurdos sin tocar la red', async () => {
@@ -97,7 +120,7 @@ describe('operaciones del chat', () => {
     await svc.operaciones.tiempoReal({ orden: { t: 'escribiendo', conversacionId: ID, escribiendo: 'sí' as never } })
     expect(enviadas).toEqual([
       { t: 'llamada.invitar', llamadaId: ID, usuarioId: ID2, video: true },
-      { t: 'llamada.senal', llamadaId: ID, datos: { sdp: 'o' } },
+      { t: 'llamada.senal', llamadaId: ID, datos: { e2e: '{"sdp":"o"}' } },
       { t: 'escribiendo', conversacionId: ID, escribiendo: false }
     ])
     await expect(svc.operaciones.tiempoReal({ orden: { t: 'auth', token: 'robado' } as never })).rejects.toThrow('Orden no válida')

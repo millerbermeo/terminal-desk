@@ -692,6 +692,45 @@
   .ch-lateral { width: 300px; }
   .ch-fila-cuerpo { max-width: 84%; }
 }
+/* ---------------------------------------------------------------- cifrado de extremo a extremo */
+.ch-cifrado { flex: 1; display: grid; place-items: center; padding: 24px; overflow: auto; }
+.ch-cifrado-tarjeta { display: flex; flex-direction: column; gap: 12px; width: min(100%, 440px); padding: 28px; border-radius: 22px; background: var(--material-fino); backdrop-filter: var(--desenfoque-grueso); -webkit-backdrop-filter: var(--desenfoque-grueso); border: 1px solid var(--borde-tenue); box-shadow: var(--sombra); animation: ch-zoom var(--muelle-t) var(--muelle) both; }
+.ch-cifrado-tarjeta h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: var(--texto); }
+.ch-cifrado-tarjeta p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--texto-suave); }
+.ch-cifrado-tarjeta .primario { height: 38px; border-radius: var(--radio-pildora); margin-top: 4px; }
+.ch-cifrado-icono { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 18px; background: var(--acento-suave); color: var(--acento); }
+.ch-cifrado-campo { display: flex; flex-direction: column; gap: 6px; font-size: var(--t-nota); color: var(--texto-suave); }
+.ch-cifrado-campo > div { display: flex; gap: 6px; }
+.ch-cifrado-campo input { flex: 1; min-width: 0; height: 38px; border-radius: 10px; font-size: 14px; }
+.ch-cifrado-ver { height: 38px; padding: 0 12px; border-radius: 10px; font-size: 12px; }
+.ch-cifrado-error { color: var(--error) !important; }
+.ch-cifrado-nota { padding: 10px 12px; border-radius: 12px; background: var(--aviso-suave); color: var(--texto) !important; font-size: 12px !important; }
+.ch-cifrado-enlace { align-self: center; border: 0 !important; background: transparent !important; color: var(--acento); font-size: 12.5px; cursor: pointer; }
+.ch-cifrado-enlace:hover { text-decoration: underline; }
+.ch-boton-cifrado { color: var(--texto-suave); }
+.ch-boton-cifrado.verificada { color: var(--ok); }
+.ch-boton-cifrado.nueva, .ch-boton-cifrado.sin-claves { color: var(--aviso); }
+.ch-cifrado-aviso { background: var(--aviso-suave); }
+.ch-cifrado-aviso.sin-claves { background: var(--error-suave); }
+.ch-cifrado-aviso > svg { flex: none; color: var(--aviso); }
+.ch-cifrado-panel { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--borde-tenue); background: var(--material-fino); backdrop-filter: var(--desenfoque-grueso); -webkit-backdrop-filter: var(--desenfoque-grueso); font-size: 12.5px; animation: ch-entrar-abajo var(--medio) var(--ease) both; }
+.ch-cifrado-panel header { display: flex; align-items: center; gap: 8px; color: var(--acento); }
+.ch-cifrado-panel header strong { flex: 1; color: var(--texto); font-size: 13.5px; }
+.ch-cifrado-panel header .icono { width: 28px; height: 28px; padding: 0; display: grid; place-items: center; border-radius: 50%; }
+.ch-cifrado-panel p { margin: 0; line-height: 1.5; color: var(--texto-suave); }
+.ch-cifrado-panel .primario { align-self: flex-start; height: 32px; border-radius: var(--radio-pildora); padding: 0 16px; }
+.ch-cifrado-numero { display: grid; grid-template-columns: repeat(6, auto); justify-content: start; gap: 6px 14px; padding: 12px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--borde-tenue); }
+.ch-cifrado-numero code { font-family: var(--fuente-mono, 'JetBrains Mono Variable', monospace); font-size: 14px; letter-spacing: 0.06em; color: var(--texto); }
+.ch-sin-descifrar { display: flex; align-items: center; gap: 6px; }
+.ch-clave-nueva { color: var(--aviso); }
+.ch-cifrado-ajustes { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 1px solid var(--borde-tenue); }
+.ch-cifrado-ajustes .ch-nada { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ch-cifrado-ajustes form { display: flex; flex-direction: column; gap: 8px; }
+.ch-cifrado-ajustes form > div:last-child { display: flex; gap: 8px; justify-content: flex-end; }
+.ch-cifrado-ajustes > button, .ch-cifrado-ajustes form button { height: 32px; border-radius: 10px; padding: 0 14px; align-self: flex-start; }
+@media (max-width: 520px) {
+  .ch-cifrado-numero { grid-template-columns: repeat(4, auto); }
+}
 @media (prefers-reduced-motion: reduce) {
   .chat *, .ch-llamada, .ch-llamada *, .ch-grabacion-guardada { animation: none !important; transition: none !important; }
 }

@@ -4,6 +4,7 @@ import type { EventoAgente, SolicitudAgente } from '@shared/core/agente'
 import type { Adjunto } from '@shared/core/adjuntos'
 import type { EstadoTurno, TurnoGuardado } from '@shared/core/sesion'
 import { etiquetarEjecucion, limpiarEjecucion } from './solicitudes'
+import { bloqueFijado, FIJADO_VACIO, guardarFijado, guardarHuellaEnviada, huellaFijado, leerFijado, leerHuellaEnviada, type ContextoFijado } from './fijado'
 
 export type { EstadoTurno }
 
@@ -27,6 +28,15 @@ export interface Turno {
   mensajeId?: string
   /** Cuándo empezó (ms): el cronómetro de la barra «trabajando». Los turnos recuperados del historial no lo tienen. */
   inicio?: number
+  /** Copiado de la conversación original al ramificar (sus ids del CLI son de aquella: no se deshace desde aquí). */
+  heredado?: boolean
+  /** Respuesta descartada con «Regenerar». */
+  descartado?: boolean
+  /**
+   * Cuándo llegó cada evento (ms, paralelo a `eventos`): la línea de tiempo de «Ver trabajo». Solo en turnos vistos en vivo; los
+   * recuperados del historial no lo tienen y la vista ordena por secuencia.
+   */
+  tiempos?: number[]
 }
 
 export interface OpcionesEnvio {
@@ -34,6 +44,8 @@ export interface OpcionesEnvio {
   destino: string
   /** Archivos ya subidos (se envían por id y se muestran en el mensaje). */
   adjuntos?: Adjunto[]
+  /** Va delante del mensaje para el modelo, pero no se muestra (p. ej. la indicación de «Regenerar»). */
+  oculto?: string
 }
 
 export interface ContextoActual {
@@ -58,8 +70,17 @@ export function contextoDe(turnos: readonly Turno[], estimado?: number): Context
   return estimado !== undefined ? { tokens: estimado, aprox: true } : undefined
 }
 
-/** Aplica un evento a un turno (el resultado de `fin`/`flujo_fin` cierra el turno). */
+/** Aplica un evento a un turno y anota cuándo llegó (si los tiempos siguen alineados con los eventos). */
 function aplicar(t: Turno, e: EventoAgente): Turno {
+  const n = aplicarEvento(t, e)
+  if (n.eventos.length === t.eventos.length) return n
+  const previos = t.tiempos ?? (t.eventos.length === 0 ? [] : undefined)
+  if (!previos || previos.length !== t.eventos.length) return n
+  return { ...n, tiempos: [...previos, Date.now()] }
+}
+
+/** Aplica un evento a un turno (el resultado de `fin`/`flujo_fin` cierra el turno). */
+function aplicarEvento(t: Turno, e: EventoAgente): Turno {
   switch (e.tipo) {
     case 'texto_delta':
       return { ...t, parcial: t.parcial + e.texto }
@@ -121,6 +142,11 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
   const enVuelo = useRef(0)
   const contador = useRef(0)
   const salidasPendientes = useRef<string[]>([]) // salidas de comandos `/`: el agente las ve en el siguiente mensaje
+  /** Contexto fijado de esta conversación (archivos clave y una nota): viaja delante del mensaje solo cuando cambia. */
+  const [fijado, setFijado] = useState<ContextoFijado>(FIJADO_VACIO)
+  const fijadoRef = useRef(fijado)
+  fijadoRef.current = fijado
+  const fijadoDesde = useRef(0) // turnos que había cuando se envió por última vez (una compactación posterior obliga a reenviarlo)
 
   const opcionesRef = useRef(opciones)
   opcionesRef.current = opciones
@@ -170,6 +196,8 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
         const recuperados: Turno[] = s.transcripcion.map((t, i) => ({ ...t, clave: `r${i}`, parcial: '' }))
         guardados.current = recuperados.length
         contador.current = recuperados.length
+        fijadoDesde.current = recuperados.length
+        setFijado(leerFijado(s.id) ?? FIJADO_VACIO)
         actualizar(() => recuperados)
         setSesionId(s.id)
         setContextoEstimado(s.tokensContexto)
@@ -206,7 +234,7 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
   )
 
   const enviar = useCallback(
-    async ({ solicitud: solicitudBase, destino, adjuntos }: OpcionesEnvio): Promise<void> => {
+    async ({ solicitud: solicitudBase, destino, adjuntos, oculto }: OpcionesEnvio): Promise<void> => {
       const solicitud: SolicitudAgente = adjuntos?.length ? { ...solicitudBase, adjuntos: adjuntos.map((a) => a.id) } : solicitudBase
       const clave = `t${++contador.current}`
       const modo = solicitud.modo === 'flujo' ? 'flujo' : solicitud.grupoId ? 'grupo' : 'chat'
@@ -219,8 +247,11 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
       try {
         // Las salidas de comandos `/` recientes se adjuntan al mensaje para que el agente sepa qué pasó.
         // Un comando oficial de Claude Code (`/compact`…) va solo: cualquier texto delante dejaría de ser un comando.
-        const contexto = solicitud.prompt.startsWith('/') ? '' : salidasPendientes.current.splice(0).join('\n\n')
-        const heredado = !sesionId && herencia && !solicitud.prompt.startsWith('/') ? herencia : undefined
+        const esComando = solicitud.prompt.startsWith('/')
+        const compactado = ref.current.slice(fijadoDesde.current).some((t) => t.eventos.some((e) => e.tipo === 'contexto_compactado' || e.tipo === 'contexto'))
+        const fijo = esComando ? undefined : bloqueFijado(fijadoRef.current, sesionId ? leerHuellaEnviada(sesionId) : '', compactado)
+        const contexto = esComando ? '' : [fijo, ...salidasPendientes.current.splice(0), oculto].filter(Boolean).join('\n\n')
+        const heredado = !sesionId && herencia && !esComando ? herencia : undefined
         const { ejecucionId, sesionId: sid } = await window.api.core.ejecutar({
           ...solicitud,
           ...(contexto ? { prompt: `${contexto}\n\n${solicitud.prompt}` } : {}),
@@ -228,6 +259,11 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
           ...(heredado ? { contextoPrevio: heredado.resumen } : {})
         })
         if (heredado) setHerencia(undefined)
+        if (!esComando) {
+          guardarHuellaEnviada(sid, huellaFijado(fijadoRef.current))
+          guardarFijado(sid, fijadoRef.current)
+          fijadoDesde.current = ref.current.length
+        }
         setSesionId(sid)
         etiquetarEjecucion(ejecucionId, destino)
         const previos = huerfanos.current.get(ejecucionId) ?? []
@@ -312,6 +348,8 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
   /** La conversación actual queda en el historial; se empieza una nueva en blanco. */
   const nuevaConversacion = useCallback((): void => {
     setHerencia(undefined)
+    setFijado(FIJADO_VACIO)
+    fijadoDesde.current = 0
     guardarActiva(claveActiva, undefined)
     setSesionId(undefined)
     setContextoEstimado(undefined)
@@ -345,10 +383,55 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
       const recuperados: Turno[] = s.transcripcion.map((t, i) => ({ ...t, clave: `r${i}`, parcial: '' }))
       guardados.current = recuperados.length
       contador.current = recuperados.length
+      fijadoDesde.current = recuperados.length
+      setHerencia(undefined)
+      setFijado(leerFijado(s.id) ?? FIJADO_VACIO)
       actualizar(() => recuperados)
       setSesionId(s.id)
       setContextoEstimado(s.tokensContexto)
     },
+    [actualizar]
+  )
+
+  /** Cambia el contexto fijado (se guarda ya si la conversación existe; si no, con el primer mensaje). */
+  const fijar = useCallback(
+    (f: ContextoFijado): void => {
+      setFijado(f)
+      if (sesionId) guardarFijado(sesionId, f)
+    },
+    [sesionId]
+  )
+
+  /**
+   * Ramifica desde un turno: empieza otra conversación con los turnos hasta ese (copiados, se ven como historia) y un resumen de ellos
+   * que viaja con el primer mensaje. La original no cambia y sigue en el historial. Los archivos no se tocan aquí.
+   */
+  const ramificar = useCallback(
+    async (clave: string): Promise<void> => {
+      const i = ref.current.findIndex((t) => t.clave === clave)
+      if (i < 0) return
+      const llevados = ref.current.slice(0, i + 1).filter((t) => !t.lateral && !t.descartado && t.estado !== 'en_curso')
+      if (!llevados.length) throw new Error('No hay nada terminado que llevar a la rama.')
+      const guardables: TurnoGuardado[] = llevados.map(({ clave: _c, ejecucionId: _e, parcial: _p, inicio: _i, ...t }) => t)
+      const { resumen } = await window.api.core.ramificar(guardables).catch((err: Error) => {
+        throw new Error(err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
+      })
+      const fijo = fijadoRef.current
+      const origen = (llevados[0]!.prompt.replace(/\s+/g, ' ').trim() || 'conversación').slice(0, 60)
+      nuevaConversacion()
+      setFijado(fijo) // la rama conserva el contexto fijado de la original
+      const copias: Turno[] = guardables.map((t, j) => ({ ...t, clave: `h${j}`, parcial: '', heredado: true }))
+      contador.current = copias.length
+      guardados.current = 0 // se guardan con el primer mensaje de la rama (antes no hay conversación a la que guardarlos)
+      actualizar(() => copias)
+      setHerencia({ resumen, titulo: origen, conModelo: true, rama: true })
+    },
+    [actualizar, nuevaConversacion]
+  )
+
+  /** Marca una respuesta como descartada (la sustituye la regenerada). */
+  const descartar = useCallback(
+    (clave: string): void => actualizar((ts) => ts.map((t) => (t.clave === clave ? { ...t, descartado: true } : t))),
     [actualizar]
   )
 
@@ -368,13 +451,15 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
   return {
     contexto,
     tokensSesion, turnos, enCurso, sesionId, enviar, preguntarAhora, ejecutarComando, avisar, cancelar, nuevaConversacion, abrirSesion, borrarSesion,
-    herencia, traspasando, nuevaConContexto, quitarHerencia: () => setHerencia(undefined), editarHerencia: (resumen: string) => setHerencia((h) => (h ? { ...h, resumen } : h)) }
+    herencia, traspasando, nuevaConContexto, ramificar, descartar, fijado, fijar, quitarHerencia: () => setHerencia(undefined), editarHerencia: (resumen: string) => setHerencia((h) => (h ? { ...h, resumen } : h)) }
 }
 
 export interface Herencia {
   resumen: string
   titulo: string
   conModelo: boolean
+  /** Viene de ramificar (los turnos de la original ya se ven en pantalla). */
+  rama?: boolean
 }
 
 export type Agente = ReturnType<typeof useAgente>

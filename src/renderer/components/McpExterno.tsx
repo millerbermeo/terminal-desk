@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { ClienteMcpExterno, EstadoMcpExterno } from '@shared/control-app'
 import { Esqueletos } from './Cargando'
+import { IconoAlerta, IconoCheck, IconoCopiar, IconoServidor } from './Iconos'
+import { EstadoFila, Monograma, SeccionAjustes, rutaCorta } from './SeccionAjustes'
 
 /**
  * Instala el servidor MCP «odesk» en asistentes externos (Claude Code fuera de Odesk, Claude Desktop, Cursor, VS Code): desde ellos se
@@ -34,34 +36,71 @@ export function McpExterno() {
     })
   }
 
+  const instalados = estado?.clientes.filter((c) => c.instalado).length ?? 0
+
   return (
-    <>
-      <h3 className="cfg-subtitulo">Controlar Odesk desde otros asistentes (MCP)</h3>
-      <p className="cfg-intro cfg-intro-sub">
-        Con Odesk abierto, estos asistentes pueden usar las herramientas de la app: proyectos, terminales, servicios de arranque, el Asistente, tareas, git, GitHub, el navegador
-        integrado e historial. Lo que cierra, para, quita o restaura se pregunta aquí antes de hacerse. Reinicia el cliente tras instalarlo.
-      </p>
-      <section className="cfg-grupo">
-        {!estado && !error && <Esqueletos cuantos={4} />}
-        {estado?.clientes.map((c) => (
-          <div className="cfg-proyecto" key={c.id}>
+    <SeccionAjustes
+      icono={<IconoServidor />}
+      titulo="Controlar Odesk desde otros asistentes"
+      texto={
+        <>
+          Con Odesk abierto, estos asistentes usan las herramientas de la app (proyectos, terminales, servicios, el Asistente, tareas, git, GitHub, el navegador integrado e
+          historial) por MCP. Lo que cierra, para, quita o restaura se pregunta aquí antes de hacerse. Reinicia el cliente tras instalarlo.
+        </>
+      }
+      resumen={estado && `${instalados} de ${estado.clientes.length} conectados`}
+    >
+      {!estado && !error && <Esqueletos cuantos={4} />}
+      {estado?.clientes.map((c) => (
+        <div className="prov-fila" key={c.id}>
+          <Monograma nombre={c.nombre} />
+          <div className="prov-texto">
             <strong>{c.nombre}</strong>
-            {c.ruta && <code title={c.ruta}>{c.ruta}</code>}
-            <span className={`chip ${c.instalado ? 'chip-ok' : c.disponible ? '' : 'chip-aviso'}`}>{c.instalado ? 'Instalado' : c.disponible ? 'Disponible' : 'No detectado'}</span>
-            <button disabled={ocupado !== null} onClick={() => cambiar(c.id, !c.instalado)} title={c.instalado ? 'Quitar la entrada «odesk» de su configuración' : 'Añadir la entrada «odesk» a su configuración'}>
-              {ocupado === c.id ? '…' : c.instalado ? 'Quitar' : 'Instalar'}
+            {c.ruta && (
+              <span className="prov-detalle">
+                <code title={c.ruta}>{rutaCorta(c.ruta)}</code>
+              </span>
+            )}
+          </div>
+          <EstadoFila
+            tipo={c.instalado ? 'ok' : c.disponible ? 'neutro' : 'aviso'}
+            texto={c.instalado ? 'Instalado' : c.disponible ? 'Disponible' : 'No detectado'}
+            titulo={c.instalado ? 'La entrada «odesk» está en su configuración' : c.disponible ? 'El cliente está en este equipo; falta instalar la entrada «odesk»' : 'No se encontró este cliente en el equipo'}
+          />
+          <div className="prov-acciones visible">
+            <button
+              className={`prov-btn${c.instalado ? '' : ' acento'}`}
+              disabled={ocupado !== null}
+              aria-busy={ocupado === c.id}
+              onClick={() => cambiar(c.id, !c.instalado)}
+              title={c.instalado ? 'Quitar la entrada «odesk» de su configuración' : 'Añadir la entrada «odesk» a su configuración'}
+            >
+              {ocupado === c.id ? <span className="prov-giro" aria-label="Aplicando" /> : c.instalado ? 'Quitar' : 'Instalar'}
             </button>
           </div>
-        ))}
-        {estado && (
-          <div className="cfg-proyecto">
+        </div>
+      ))}
+      {estado && (
+        <div className="prov-fila">
+          <Monograma nombre="Otro" />
+          <div className="prov-texto">
             <strong>Otro cliente MCP</strong>
-            <span className="cfg-intro-sub">Pega esta configuración en su archivo de servidores MCP.</span>
-            <button onClick={copiar}>{copiado ? 'Copiado' : 'Copiar JSON'}</button>
+            <span className="prov-detalle prov-nota">Pega esta configuración en su archivo de servidores MCP.</span>
           </div>
-        )}
-        {error && <div className="cfg-proyecto chip-aviso">{error}</div>}
-      </section>
-    </>
+          <div className="prov-acciones visible">
+            <button className={`prov-btn${copiado ? ' hecho' : ''}`} onClick={copiar} aria-live="polite">
+              {copiado ? <IconoCheck /> : <IconoCopiar />}
+              {copiado ? 'Copiado' : 'Copiar JSON'}
+            </button>
+          </div>
+        </div>
+      )}
+      {error && (
+        <div className="prov-alerta" role="alert">
+          <IconoAlerta />
+          {error}
+        </div>
+      )}
+    </SeccionAjustes>
   )
 }

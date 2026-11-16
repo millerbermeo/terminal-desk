@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join, relative } from 'node:path'
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, Notification, ipcMain } from 'electron'
 import type { InfoSuite, ResultadoEvals } from '@shared/core/evals'
 import type { TurnoGuardado } from '@shared/core/sesion'
 import { LIMITES_ADJUNTOS } from '@shared/core/adjuntos'
@@ -42,7 +42,7 @@ import { AlmacenTrazas } from './tracing/almacen'
 import { LlmTrazado } from './tracing/llm-trazado'
 import { Trazador } from './tracing/trazador'
 import { credencialesDe, eliminarCredencialPorNombre, guardarCredencialPorNombre } from '../credenciales'
-import { crearAprobadorHumano } from './hitl/aprobador'
+import { crearAprobadorHumano, crearConfirmadorSecretos } from './hitl/aprobador'
 import { crearPermisoCli } from './hitl/permiso-cli'
 import { verificarSudo } from './hitl/sudo'
 import { AlmacenAdjuntos } from './adjuntos/almacen'
@@ -58,13 +58,15 @@ import { leerConfigMcp, navegadorCompartido } from './mcp/config'
 import { validarId } from './memory/almacen'
 import { herramientasMemoria } from './memory/herramientas'
 import { MemoriaLargoPlazo } from './memory/largo-plazo'
-import { MemoriaCortoPlazo, type Sesion } from './memory/sesion'
+import { MemoriaCortoPlazo, sanearTranscripcion, type Sesion } from './memory/sesion'
 import type { Tarea } from '@shared/tareas'
 import { OrquestadorMcp } from './mcp/orquestador'
 import { Cuentas, llevarSesion } from './cuentas'
 import { consultarUsoPlan } from './uso/plan'
 import { Repositorio } from './git/repositorio'
 import { AlmacenJson } from './memory/almacen'
+import { ServicioProgramadas } from './programadas'
+import type { OperacionProgramadas } from '@shared/programadas'
 import { ServicioTareas, type Documento as DocumentoTareas } from './tareas/servicio'
 import { crearEjecutorOdesk, herramientasOdesk, type ControlAppOdesk, type ControlNavegador, type EjecutorOdesk } from './herramientas-odesk'
 import { AlmacenToken } from '../github/token'
@@ -326,7 +328,9 @@ export class Nucleo {
     const autonomia: ModoAutonomia = sol.autonomia === 'ediciones' || sol.autonomia === 'autonomo' ? sol.autonomia : 'preguntar'
     // En modo autónomo solo se ejecutan solas las verificaciones del propio proyecto (typecheck, lint, test).
     const verificaciones = autonomia === 'autonomo' && proyecto ? (await detectarVerificaciones(proyecto.ruta)).map((v) => v.comando) : []
-    const harness = new Harness({ llm, registro: this.registro, validar: this.validar, trazador: this.trazador, ...(autonomia === 'autonomo' ? { presupuestoTokens: PRESUPUESTO_AUTONOMO } : {}), ...(this.aprobar ? { aprobar: this.aprobar } : {}) })
+    // Credenciales en lo que va al modelo: se pregunta a la persona (con un aprobador inyectado, p. ej. en pruebas, se tapan sin preguntar).
+    const confirmarSecretos = this.aprobar ? undefined : crearConfirmadorSecretos({ puerta: this.puerta, ejecucionId: id, alEvento, senal: ctl.signal, autonomia })
+    const harness = new Harness({ llm, registro: this.registro, validar: this.validar, trazador: this.trazador, ...(autonomia === 'autonomo' ? { presupuestoTokens: PRESUPUESTO_AUTONOMO } : {}), ...(this.aprobar ? { aprobar: this.aprobar } : {}), ...(confirmarSecretos ? { confirmarSecretos } : {}) })
     // Human-in-the-loop: escrituras y ejecuciones esperan la confirmación del usuario (salvo un aprobador inyectado).
     const aprobarHumano = this.aprobar ?? crearAprobadorHumano({
         puerta: this.puerta,
@@ -632,6 +636,7 @@ export class Nucleo {
           autonomia
         })
         const probadas = new Set<string>()
+        let costoPendiente = 0 // USD que informó el CLI en este turno (se suma a la conversación al terminar)
         let cuenta = await this.cuentaParaEjecutar()
         let previa = await this.sesionesCli.obtener(sesionId)
         let meta = await this.metaCli.obtener(sesionId)
@@ -714,6 +719,7 @@ export class Nucleo {
             alUso: (u) => {
               u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo }))
               const costo = u.reduce((t, x) => t + x.costo, 0)
+              costoPendiente += costo
               if (costo >= AVISO_COSTO_TURNO) emitir({ tipo: 'aviso_consumo', motivo: 'costo', costo })
               this.planPronto()
             },
@@ -770,7 +776,8 @@ export class Nucleo {
             if (eraNueva && r.resultado.estado === 'completado') void this.titular(sesionId, sol.prompt, r.resultado.texto, this.cuentas.carpetaDe(cuenta))
           }
           this.trazador.anotarUso(id, r.resultado.uso)
-          void this.sesiones.anotarUso(sesionId, r.resultado.uso).catch(() => undefined)
+          void this.sesiones.anotarUso(sesionId, r.resultado.uso, costoPendiente).catch(() => undefined)
+          costoPendiente = 0
           if (r.limite) {
             await this.cuentas.marcarLimite(cuenta, r.limite.hasta ?? Date.now() + LIMITE_SIN_FECHA_MS)
             const siguiente = (await this.cuentas.automatico()) ? await this.siguienteCuentaConSesion(probadas) : undefined
@@ -1472,6 +1479,29 @@ export function registrarIpcCore(nucleo: Nucleo): void {
   ipcMain.handle(Canales.corePermisosEliminar, (_e, id: string, ambito?: string) => nucleo.permisos.eliminar(String(id), ambito || undefined))
   ipcMain.handle(Canales.coreSesionesListar, (_e, proyectoId?: string) => nucleo.sesiones.listar(proyectoId ? String(proyectoId) : undefined))
   ipcMain.handle(Canales.coreTraspasar, (_e, id: string) => nucleo.traspasarContexto(validarId(String(id))))
+  ipcMain.handle(Canales.coreRamificar, (_e, turnos: TurnoGuardado[]) => {
+    if (!Array.isArray(turnos) || turnos.length > 500) throw new Error('Turnos no válidos')
+    const validos = turnos.filter((t) => t && typeof t.prompt === 'string' && Array.isArray(t.eventos))
+    return { resumen: digestDeConversacion(sanearTranscripcion(validos), 30_000) }
+  })
+  // Tareas programadas: se ejecutan en main (sin interfaz) y dejan su conversación en el historial del proyecto.
+  const programadas = new ServicioProgramadas(join(DIR, 'programadas'), {
+    ejecutar: (sol, alEvento) =>
+      nucleo.ejecutar(sol, (ev) => {
+        nucleo.registrarArchivoTocado(sol.proyectoId, ev)
+        alEvento(ev)
+      }),
+    responder: (id, d) => nucleo.responder(id, d),
+    cancelar: (id) => nucleo.cancelar(id),
+    guardarTranscripcion: (id, turnos, pid) => nucleo.sesiones.guardarTranscripcion(id, turnos, pid),
+    fijarTitulo: (id, titulo) => nucleo.sesiones.fijarTitulo(id, titulo),
+    nombreProyecto: async (pid) => (await leerProyectos()).proyectos.find((p) => p.id === pid)?.nombre,
+    avisar: (titulo, cuerpo) => {
+      if (Notification.isSupported()) new Notification({ title: titulo.slice(0, 120), body: cuerpo.slice(0, 300) }).show()
+    }
+  })
+  programadas.iniciar()
+  ipcMain.handle(Canales.coreProgramadas, (_e, o: OperacionProgramadas) => programadas.operar(o))
   ipcMain.handle(Canales.coreSesionObtener, (_e, id: string) => nucleo.sesiones.transcripcion(validarId(String(id))))
   ipcMain.handle(Canales.coreSesionTranscripcion, async (_e, id: string, turnos: TurnoGuardado[], proyectoId?: string) => {
     await nucleo.sesiones.guardarTranscripcion(validarId(String(id)), Array.isArray(turnos) ? turnos : [], proyectoId ? validarId(String(proyectoId)) : undefined)

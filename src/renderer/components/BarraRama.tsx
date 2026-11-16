@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { validarNombreRef, type EstadoGit, type Rama } from '@shared/versiones'
 import { mensajeDe } from '../tareas/useTareas'
 import { git } from '../versiones/useGit'
+import { revisarSecretosAntesDeCommit } from '../versiones/secretos'
 import { IconoRama, IconoCerrar } from './Iconos'
 
 /** Qué se quiere hacer cuando hay cambios pendientes y hay que decidir antes qué hacer con ellos. */
@@ -128,7 +129,14 @@ export function BarraRama({ proyectoId, ocupadoAgente }: Props) {
     setError('')
     try {
       await git('preparar', { proyectoId })
-      await git('commit', { proyectoId, mensaje: mensaje.trim() })
+      setTrabajando('Revisando credenciales…')
+      const extra = await revisarSecretosAntesDeCommit(proyectoId)
+      if (!extra) {
+        setTrabajando('')
+        return setError('Commit cancelado: revisa las posibles credenciales en los cambios (quedaron preparados).')
+      }
+      setTrabajando('Haciendo commit…')
+      await git('commit', { proyectoId, mensaje: mensaje.trim(), ...extra })
     } catch (e) {
       setTrabajando('')
       return setError(mensajeDe(e))

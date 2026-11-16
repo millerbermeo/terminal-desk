@@ -22,6 +22,7 @@ import { ejecutarOperacionGitHub } from './github/operaciones'
 import { ServicioEquipos, ejecutarOperacionEquipos, type DepsEquipos } from './servidor/equipos'
 import { ConexionChat } from './chat/conexion'
 import { ServicioChat, ejecutarOperacionChat } from './chat/servicio'
+import { CifradoChat } from './chat/e2e/cifrado'
 import { MediosLlamada } from './chat/medios'
 import { Repositorio } from './core/git/repositorio'
 import { importarProyectosLocales } from './servidor/importar'
@@ -62,6 +63,8 @@ import { ejecutarOperacionCredenciales } from './credenciales'
 import { fijarAjustes, leerAjustes } from './ajustes'
 import { iniciarServidorTareas, type ServidorTareas } from './core/tareas/servidor'
 
+// Contraseñas, token y chat nunca por http a otra máquina: en la app instalada no se puede desactivar (solo en desarrollo).
+if (app.isPackaged) delete process.env.ODESK_PERMITIR_HTTP
 // Wayland: auto-detectar X11/Wayland. Debe ir antes de app.ready.
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto')
 // En Wayland, Chromium con Vulkan falla ("'--ozone-platform=wayland' is not compatible with Vulkan"); la app no lo necesita.
@@ -338,7 +341,15 @@ void equipos
 const conexionChat = new ConexionChat({
   url: () => servidor.url,
   token: () => servidor.tokenActual(),
-  alEvento: (e) => avisarPrincipal(Canales.chatEvento, e)
+  // Los mensajes y las señales de llamada llegan cifrados: `ServicioChat` los abre (en orden) antes de pasarlos a la interfaz.
+  alEvento: (e) => servicioChat.recibirEvento(e, (abierto) => avisarPrincipal(Canales.chatEvento, abierto))
+})
+// Cifrado de extremo a extremo del chat: claves privadas en el llavero del sistema, respaldo (cifrado con la frase) en el servidor.
+const cifradoChat = new CifradoChat({
+  servidor,
+  archivo: join(DIR, 'chat-cifrado.json'),
+  cifrador: cifradorDelSistema(),
+  alCambio: () => avisarPrincipal(Canales.chatEvento, { t: 'cifrado.cambio' })
 })
 // Compartir pantalla (selector propio con miniaturas) y grabaciones de llamadas en ~/Vídeos/Odesk Code.
 const mediosLlamada = new MediosLlamada({
@@ -350,6 +361,7 @@ const mediosLlamada = new MediosLlamada({
 })
 const servicioChat = new ServicioChat(servidor, {
   conexion: conexionChat,
+  cifrado: cifradoChat,
   medios: mediosLlamada,
   mostrarEnCarpeta: (ruta) => shell.showItemInFolder(ruta),
   guardarArchivo: async (nombre, datos) => {
@@ -545,6 +557,8 @@ function iniciarBucleCuenta(): void {
 
 function detenerBucleCuenta(): void {
   conexionChat.detener()
+  // Nada descifrado de esta cuenta se queda en memoria (otra cuenta puede entrar en el mismo proceso).
+  servicioChat.olvidar()
   if (bucleCuenta) clearInterval(bucleCuenta)
   bucleCuenta = undefined
 }

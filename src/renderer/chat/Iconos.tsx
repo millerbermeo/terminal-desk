@@ -208,6 +208,20 @@ export const IReloj = ({ tam }: P) => (
     <path d="M12 7.5V12l3 2" />
   </Svg>
 )
+export const ICandado = ({ tam }: P) => (
+  <Svg tam={tam}>
+    <rect x="5" y="11" width="14" height="10" rx="2.5" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </Svg>
+)
+
+export const IEscudo = ({ tam }: P) => (
+  <Svg tam={tam}>
+    <path d="M12 3 5 6v5c0 4.4 3 8.3 7 10 4-1.7 7-5.6 7-10V6z" />
+    <path d="m9 12 2 2 4-4" />
+  </Svg>
+)
+
 export const IAlerta = ({ tam }: P) => (
   <Svg tam={tam}>
     <circle cx="12" cy="12" r="9" />

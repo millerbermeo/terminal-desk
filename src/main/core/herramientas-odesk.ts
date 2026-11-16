@@ -16,7 +16,7 @@ import { HERRAMIENTAS_TAREAS } from '@shared/tareas-herramientas'
 import type { ServicioGitHub } from '../github/servicio'
 import { ejecutarHerramientaTareas } from './tareas/herramientas'
 import type { ServicioTareas } from './tareas/servicio'
-import { Repositorio, type ProveedorCredenciales } from './git/repositorio'
+import { ERROR_SECRETOS, Repositorio, type ProveedorCredenciales } from './git/repositorio'
 import { validarEntrada, type Herramienta } from './tools/registro'
 
 export interface ContextoOdesk {
@@ -122,7 +122,11 @@ async function ejecutarGit(s: ServiciosOdesk, nombre: string, e: Entrada, proyec
       const antes = await repo.estado()
       const sensibles = antes.archivos.filter((a) => !a.conflicto && a.indice !== '.' && esArchivoSensible(a.ruta)).map((a) => a.ruta)
       if (sensibles.length) throw new Error(`Hay archivos que parecen secretos entre los preparados (${sensibles.join(', ')}). Quítalos del commit (Versiones → Cambios) antes de confirmar.`)
-      const r = await repo.commit(String(e.mensaje ?? ''))
+      // Sin `permitirSecretos`: la IA nunca confirma credenciales. Solo la persona puede hacerlo, desde Versiones y tras ver el aviso.
+      const r = await repo.commit(String(e.mensaje ?? '')).catch((err: Error) => {
+        if (err.message.startsWith(ERROR_SECRETOS)) throw new Error(`${err.message}\nNo lo intentes de otra forma: quita la credencial del código (variable de entorno, archivo ignorado por git) o dile al usuario que revise el aviso y confirme él desde Versiones.`)
+        throw err
+      })
       return { hash: r.hash, archivos: antes.archivos.filter((a) => !a.conflicto && a.indice !== '.').length, rama: r.estado.rama }
     }
     case 'git_crear_rama': {

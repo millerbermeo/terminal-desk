@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { carpetaDeArchivo, enConflicto, nombreDeArchivo, NOMBRE_ESTADO, preparados, sinPreparar, type ArchivoCambio, type DiffArchivo } from '@shared/versiones'
 import { git, type ContextoGit } from '../versiones/useGit'
+import { revisarSecretosAntesDeCommit } from '../versiones/secretos'
 import { DiffVista } from './DiffVista'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoCheck, IconoMas } from './Iconos'
@@ -98,8 +99,10 @@ export function VersionesCambios({ c }: { c: ContextoGit }) {
       }
     })
   }
-  const hacerCommit = (): void => {
-    void run('Confirmando…', () => git('commit', { proyectoId, mensaje, enmendar })).then((r) => {
+  const hacerCommit = async (): Promise<void> => {
+    const extra = await revisarSecretosAntesDeCommit(proyectoId)
+    if (!extra) return
+    void run('Confirmando…', () => git('commit', { proyectoId, mensaje, enmendar, ...extra })).then((r) => {
       if (!r) return
       aplicar(r.estado)
       setMensaje('')
@@ -183,7 +186,7 @@ export function VersionesCambios({ c }: { c: ContextoGit }) {
             placeholder={enmendar ? 'Sin mensaje se conserva el del commit anterior' : estado.operacion ? 'Sin mensaje se usa el que propone git (Ctrl+Enter para confirmar)' : 'Mensaje del commit (Ctrl+Enter para confirmar)'}
             onChange={(e) => setMensaje(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && puedeCommit) hacerCommit()
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && puedeCommit) void hacerCommit()
             }}
             aria-label="Mensaje del commit"
           />
@@ -191,7 +194,7 @@ export function VersionesCambios({ c }: { c: ContextoGit }) {
             <label className="vc-casilla" title="Cambia el último commit en vez de crear uno nuevo (no lo hagas si ya lo enviaste)">
               <input type="checkbox" checked={enmendar} disabled={estado.sinCommits} onChange={(e) => setEnmendar(e.target.checked)} /> Enmendar último
             </label>
-            <button className="primario" disabled={!puedeCommit} onClick={hacerCommit}>
+            <button className="primario" disabled={!puedeCommit} onClick={() => void hacerCommit()}>
               {ocupado === 'Confirmando…' ? 'Confirmando…' : enmendar ? 'Enmendar commit' : `Confirmar${listos.length ? ` (${listos.length})` : ''}`}
             </button>
           </div>

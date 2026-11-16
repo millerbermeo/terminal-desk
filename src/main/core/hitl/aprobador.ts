@@ -1,7 +1,8 @@
 import { sinValoresCredencial } from '@shared/credenciales-herramientas'
 import type { EventoAgente } from '@shared/core/agente'
 import type { LlamadaHerramienta } from '@shared/core/herramientas'
-import type { Aprobador } from '../agents/harness'
+import type { Aprobador, ConfirmadorSecretos } from '../agents/harness'
+import { describirHallazgos } from '../guardrails/secretos'
 import { esDestructiva } from '../guardrails/destructivo'
 import type { ModoAutonomia, NuevaRegla, ReglaPermiso } from '@shared/core/permisos'
 import { decidir, reglaDe } from '../permisos/reglas'
@@ -82,6 +83,37 @@ export function crearAprobadorHumano(d: DepsAprobador): Aprobador {
         const nueva = reglaDe(llamada)
         if (nueva) await d.guardarRegla(nueva).catch(() => undefined) // si no se puede guardar, la acción de ahora sigue aprobada
       }
+      return decision.aprobado
+    } catch {
+      return false
+    }
+  }
+}
+
+/** Texto del aviso de credenciales: dónde están (valor redactado) y qué pasa con cada opción. */
+export function avisoSecretos(origen: string, hallazgos: readonly { archivo?: string; linea?: number; mensaje: string }[], alRechazar: string): string {
+  return `${origen} parece contener credenciales:\n${describirHallazgos(hallazgos)}\n\nSi lo envías, el contenido completo sale de este equipo hacia el proveedor del modelo.\n«No enviar»: ${alRechazar}`
+}
+
+/**
+ * Credenciales en un resultado que va al modelo: pregunta a la persona. En modo autónomo nadie mira la pantalla, así que no se
+ * pregunta y se tapan (lo seguro); el evento `guardrail` lo deja a la vista en el chat. Nunca se recuerda la decisión.
+ */
+export function crearConfirmadorSecretos(d: Pick<DepsAprobador, 'puerta' | 'ejecucionId' | 'alEvento' | 'senal' | 'autonomia'>): ConfirmadorSecretos {
+  return async (llamada, hallazgos, agente) => {
+    if (d.autonomia === 'autonomo') return false
+    try {
+      const decision = await d.puerta.solicitar(
+        {
+          clase: 'accion',
+          contenido: avisoSecretos(`El resultado de «${llamada.nombre}»`, hallazgos, 'se envía con las credenciales tapadas y el agente sigue.'),
+          detalle: `${agente} va a enviar al modelo el resultado de «${llamada.nombre}», que parece contener credenciales`,
+          herramienta: llamada.nombre,
+          secretos: true
+        },
+        (solicitudId, s) => d.alEvento({ ejecucionId: d.ejecucionId, agente, profundidad: 0, tipo: 'solicitud_humana', solicitudId, ...s }),
+        d.senal
+      )
       return decision.aprobado
     } catch {
       return false

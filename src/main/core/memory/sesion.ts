@@ -12,6 +12,7 @@ export interface Sesion {
   creada: string // ISO
   mensajes: Mensaje[] // lo que se envía al modelo (puede estar comprimido)
   uso: Uso // acumulado de toda la sesión
+  costo?: number // USD a precio de lista acumulado (lo informa el CLI; en modo API no hay dato)
   transcripcion: TurnoGuardado[] // lo que ve el usuario
   actualizada: string // ISO
 }
@@ -58,6 +59,8 @@ const sinUso = (): Uso => ({ tokensEntrada: 0, tokensSalida: 0 })
 
 export class MemoriaCortoPlazo {
   private readonly almacen: AlmacenJson<Sesion>
+  /** Consumo de turnos cuya conversación aún no está guardada (el primer turno: la interfaz la guarda al terminar). */
+  private readonly usoPendiente = new Map<string, { uso: Uso; costo: number }>()
 
   constructor(dir: string, alGuardar?: (id: string, nuevo: Sesion | undefined, previo: Sesion | undefined) => void) {
     this.almacen = new AlmacenJson<Sesion>(dir, 0o600, alGuardar) // contiene código y salidas del proyecto
@@ -98,11 +101,25 @@ export class MemoriaCortoPlazo {
     })
   }
 
-  /** Suma el consumo de una ejecución al acumulado de la conversación (si ya existe; la crea `guardarTranscripcion` al terminar el turno). */
-  async anotarUso(id: string, uso: Uso): Promise<void> {
-    if (!(await this.almacen.leer(id))) return // aún no existe: devolver `undefined` desde `actualizar` la borraría (y lo avisaría a la nube)
+  /**
+   * Suma el consumo de una ejecución (tokens y, si se conoce, su coste en USD) al acumulado de la conversación. Si aún no está
+   * guardada (primer turno), se recuerda y se suma cuando `guardarTranscripcion` la cree.
+   */
+  async anotarUso(id: string, uso: Uso, costo = 0): Promise<void> {
+    if (!(await this.almacen.leer(id))) {
+      // Devolver `undefined` desde `actualizar` la borraría (y lo avisaría a la nube): se guarda aparte hasta que exista.
+      const p = this.usoPendiente.get(id) ?? { uso: sinUso(), costo: 0 }
+      this.usoPendiente.set(id, { uso: { tokensEntrada: p.uso.tokensEntrada + uso.tokensEntrada, tokensSalida: p.uso.tokensSalida + uso.tokensSalida }, costo: p.costo + costo })
+      return
+    }
     await this.almacen.actualizar(id, (previa) =>
-      previa ? { ...previa, uso: { tokensEntrada: previa.uso.tokensEntrada + uso.tokensEntrada, tokensSalida: previa.uso.tokensSalida + uso.tokensSalida } } : previa
+      previa
+        ? {
+            ...previa,
+            uso: { tokensEntrada: previa.uso.tokensEntrada + uso.tokensEntrada, tokensSalida: previa.uso.tokensSalida + uso.tokensSalida },
+            ...(costo > 0 || previa.costo ? { costo: (previa.costo ?? 0) + costo } : {})
+          }
+        : previa
     )
   }
 
@@ -116,6 +133,12 @@ export class MemoriaCortoPlazo {
     if (actual.titulo !== tituloDe(actual.transcripcion) && actual.titulo !== 'Conversación') return true // lo cambió el usuario: se respeta
     await this.almacen.actualizar(id, (previa) => (previa ? { ...previa, titulo } : previa))
     return true
+  }
+
+  /** Pone un título fijo (no lo sustituye el que genera el modelo). Sin efecto si la conversación no existe. */
+  async fijarTitulo(id: string, titulo: string): Promise<void> {
+    if (!(await this.almacen.leer(id))) return
+    await this.almacen.actualizar(id, (previa) => (previa ? { ...previa, titulo: titulo.slice(0, 120) } : previa))
   }
 
   /** Lo que se ve en pantalla (solo turnos terminados). Crea la sesión si aún no existe y poda las más antiguas del proyecto. */
@@ -132,10 +155,16 @@ export class MemoriaCortoPlazo {
         creada: previa?.creada ?? new Date().toISOString(),
         mensajes: previa?.mensajes ?? [],
         uso: previa?.uso ?? sinUso(),
+        ...(previa?.costo ? { costo: previa.costo } : {}),
         transcripcion: limpios,
         actualizada: new Date().toISOString()
       }
     })
+    const pendiente = this.usoPendiente.get(id)
+    if (pendiente) {
+      this.usoPendiente.delete(id)
+      await this.anotarUso(id, pendiente.uso, pendiente.costo)
+    }
     if (nueva) await this.podar(proyectoId)
   }
 
@@ -158,7 +187,8 @@ export class MemoriaCortoPlazo {
         ...(s.proyectoId ? { proyectoId: s.proyectoId } : {}),
         actualizada: s.actualizada,
         turnos: s.transcripcion.length,
-        tokens: s.uso.tokensEntrada + s.uso.tokensSalida
+        tokens: s.uso.tokensEntrada + s.uso.tokensSalida,
+        ...(s.costo ? { costo: s.costo } : {})
       }))
   }
 

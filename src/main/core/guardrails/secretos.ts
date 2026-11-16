@@ -54,3 +54,52 @@ export function redactarSecretos(texto: string): string {
   }
   return salida
 }
+
+/** Hallazgo dentro de un diff de git: archivo, línea en la versión nueva y descripción redactada. */
+export interface HallazgoArchivo {
+  archivo: string
+  linea?: number
+  mensaje: string
+}
+
+const CABECERA_HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/
+
+/**
+ * Credenciales en las líneas AÑADIDAS de un diff unificado (`git diff --cached -U0`). Lo que se quita o ya estaba no cuenta:
+ * solo importa lo que el commit introduce. Los archivos binarios no traen líneas y se ignoran solos.
+ */
+export function secretosEnDiff(diff: string): HallazgoArchivo[] {
+  const salida: HallazgoArchivo[] = []
+  let archivo = ''
+  let linea = 0
+  for (const l of diff.split('\n')) {
+    if (l.startsWith('+++ ')) {
+      archivo = l === '+++ /dev/null' ? '' : l.slice(4).replace(/^b\//, '')
+      continue
+    }
+    if (l.startsWith('--- ') || l.startsWith('diff --git ')) continue
+    const hunk = CABECERA_HUNK.exec(l)
+    if (hunk) {
+      linea = Number(hunk[1])
+      continue
+    }
+    if (!archivo) continue
+    if (l.startsWith('+')) {
+      const h = detectarSecretos(l.slice(1))[0]
+      if (h) salida.push({ archivo, linea, mensaje: h.mensaje })
+      linea++
+    } else if (l.startsWith(' ')) linea++
+  }
+  return salida
+}
+
+/** Patrones en forma serializable, para el gancho de las terminales (un script aparte que no puede importar este módulo). */
+export const PATRONES_SERIALIZADOS = PATRONES.map((p) => ({ nombre: p.nombre, fuente: p.patron.source, flags: p.patron.flags }))
+export const FALSO_POSITIVO_SERIALIZADO = { fuente: FALSO_POSITIVO.source, flags: FALSO_POSITIVO.flags }
+
+/** Resumen corto de hallazgos para mostrar a una persona («línea 3: posible token de GitHub (ghp_…(40 caracteres))»). */
+export function describirHallazgos(hs: readonly { archivo?: string; linea?: number; mensaje: string }[], max = 5): string {
+  const lineas = hs.slice(0, max).map((h) => `• ${h.archivo ? `${h.archivo}${h.linea ? `:${h.linea}` : ''}` : h.linea ? `línea ${h.linea}` : ''}${h.archivo || h.linea ? ' — ' : ''}${h.mensaje}`)
+  if (hs.length > max) lineas.push(`• … y ${hs.length - max} más`)
+  return lineas.join('\n')
+}

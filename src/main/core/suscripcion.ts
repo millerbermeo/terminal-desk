@@ -626,9 +626,14 @@ export type EntradaTurno = Pick<
   esperarEco?: boolean
 }
 
+/** Lo que se guarda del resultado de cada herramienta de un subagente (solo se muestra en «Ver trabajo»). */
+const MAX_RESULTADO_SUBAGENTE = 2000
+
 /** Lee los mensajes stream-json de UN turno (petición → resultado) y los traduce a eventos del Asistente. */
 export class LectorTurno {
   private readonly llamadas = new Map<string, { id: string; nombre: string; entrada: Record<string, unknown> }>()
+  /** Llamadas a `Agent` (id → subagente lanzado): los mensajes con ese `parent_tool_use_id` son de ese subagente. */
+  private readonly subagentes = new Map<string, { nombre: string; profundidad: number }>()
   private sesionCli: string | undefined
   private pasos = 0
   private ultimoTexto = ''
@@ -717,7 +722,7 @@ export class LectorTurno {
         return
       }
       case 'assistant': {
-        if (!propio) return
+        if (!propio) return this.deSubagente(m)
         const bloques = m.message?.content ?? []
         if (m.message?.usage) this.ultimoUso = m.message.usage
         if (typeof m.message?.model === 'string') this.modelo = m.message.model
@@ -737,12 +742,14 @@ export class LectorTurno {
           const llamada = { id: b.id, nombre: b.name ?? 'herramienta', entrada: sinValoresCredencial(b.name ?? '', b.input ?? {}) }
           this.llamadas.set(b.id, llamada)
           this.herramientas++
+          this.anotarSubagente(llamada, 1)
           o.alEvento({ tipo: 'herramienta_inicio', llamada })
         }
         return
       }
       case 'user': {
-        if (!propio || !Array.isArray(m.message?.content)) return // (el eco de los mensajes del usuario trae el texto como cadena)
+        if (!propio) return this.deSubagente(m)
+        if (!Array.isArray(m.message?.content)) return // (el eco de los mensajes del usuario trae el texto como cadena)
         for (const b of m.message.content) {
           if (b.type !== 'tool_result' || !b.tool_use_id) continue
           const llamada = this.llamadas.get(b.tool_use_id)
@@ -766,6 +773,41 @@ export class LectorTurno {
         this.final = { esError: m.is_error === true || (typeof m.subtype === 'string' && m.subtype.startsWith('error')), texto: typeof m.result === 'string' ? m.result : '', ...(m.usage ? { uso: m.usage } : {}), ...(typeof m.result === 'string' && m.is_error ? { error: m.result } : {}) }
         this.alResultado()
         return
+      }
+    }
+  }
+
+  /** Una llamada a `Agent` lanza un subagente: sus mensajes llegarán con `parent_tool_use_id` = id de la llamada. */
+  private anotarSubagente(llamada: { id: string; nombre: string; entrada: Record<string, unknown> }, profundidad: number): void {
+    if (llamada.nombre !== 'Agent' && llamada.nombre !== 'Task') return
+    const tipo = typeof llamada.entrada.subagent_type === 'string' && llamada.entrada.subagent_type ? llamada.entrada.subagent_type : 'subagente'
+    this.subagentes.set(llamada.id, { nombre: tipo, profundidad })
+  }
+
+  /**
+   * Trabajo de un subagente del CLI (vista «Ver trabajo»): sus herramientas y textos como eventos con `agente`, `profundidad` y
+   * `padre`. No cuentan como pasos del turno (el tope de pasos es de la conversación principal) ni escriben en el texto en vivo.
+   * Los resultados se recortan: solo sirven para mostrarlos, el subagente ya los usó.
+   */
+  private deSubagente(m: MensajeCli): void {
+    const padre = m.parent_tool_use_id
+    if (!padre || !Array.isArray(m.message?.content)) return
+    const sub = this.subagentes.get(padre) ?? { nombre: 'subagente', profundidad: 1 }
+    const quien = { agente: sub.nombre, profundidad: sub.profundidad, padre }
+    for (const b of m.message.content as BloqueCli[]) {
+      if (m.type === 'assistant' && b.type === 'text' && b.text?.trim()) this.o.alEvento({ ...quien, tipo: 'texto', texto: b.text })
+      else if (m.type === 'assistant' && b.type === 'tool_use' && b.id) {
+        const llamada = { id: b.id, nombre: b.name ?? 'herramienta', entrada: sinValoresCredencial(b.name ?? '', b.input ?? {}) }
+        this.llamadas.set(b.id, llamada)
+        this.herramientas++ // también cuenta para no repetir un turno que ya cambió archivos (`cuenta_cambiada`)
+        this.anotarSubagente(llamada, sub.profundidad + 1)
+        this.o.alEvento({ ...quien, tipo: 'herramienta_inicio', llamada })
+      } else if (m.type === 'user' && b.type === 'tool_result' && b.tool_use_id) {
+        const llamada = this.llamadas.get(b.tool_use_id)
+        if (!llamada) continue
+        const texto = llamada.nombre.endsWith('credenciales_obtener') && !b.is_error ? '[valores de la credencial entregados al asistente]' : textoDe(b.content)
+        const corto = texto.length > MAX_RESULTADO_SUBAGENTE ? `${texto.slice(0, MAX_RESULTADO_SUBAGENTE)}\n[… recortado]` : texto
+        this.o.alEvento({ ...quien, tipo: 'herramienta_fin', llamada, resultado: { texto: corto, ...(b.is_error ? { error: true } : {}) } })
       }
     }
   }

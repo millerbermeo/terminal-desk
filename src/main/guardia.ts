@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DIR } from './proyectos'
+import { FALSO_POSITIVO_SERIALIZADO, PATRONES_SERIALIZADOS } from './core/guardrails/secretos'
 
 /**
  * Plugin de Claude Code «guardia de consumo»: un gancho `PreToolUse` sobre `Read` que acota lo que más infla el contexto sin que
@@ -127,20 +128,88 @@ process.stdin.on('end', () => {
 })
 `
 
-const COMANDO = 'command -v node >/dev/null 2>&1 || exit 0; HOOK_ROOT=$(printf %s "${CLAUDE_PLUGIN_ROOT}" | sed \'s|^/\\([a-zA-Z]\\)/|\\1:/|\'); node "$HOOK_ROOT/hooks/imagenes.cjs"'
+/**
+ * Script del gancho de credenciales (CommonJS, sin dependencias): antes de que `Read` mande un archivo de texto al modelo, lo revisa
+ * con los mismos patrones que `core/guardrails/secretos.ts`. Si parece tener credenciales contesta «ask»: en una terminal ✦ el CLI
+ * pregunta a la persona; en el Asistente la petición llega a `permiso-cli.ts`, que muestra el aviso de la app. Ante cualquier fallo
+ * no interfiere. Las imágenes las lleva el otro gancho.
+ */
+export const SCRIPT_SECRETOS = `'use strict'
+const fs = require('fs')
+const path = require('path')
+const PATRONES = ${JSON.stringify(PATRONES_SERIALIZADOS)}.map((p) => ({ nombre: p.nombre, re: new RegExp(p.fuente, p.flags) }))
+const FALSO = new RegExp(${JSON.stringify(FALSO_POSITIVO_SERIALIZADO.fuente)}, ${JSON.stringify(FALSO_POSITIVO_SERIALIZADO.flags)})
+const MAX = 2 * 1024 * 1024
+const ES_IMAGEN = /\\.(png|jpe?g|webp|gif|bmp|pdf)$/i
+
+function responder(obj) {
+  if (obj) process.stdout.write(JSON.stringify(obj))
+  process.exit(0)
+}
+
+const redactar = (t) => (t.length <= 8 ? '****' : t.slice(0, 4) + '…(' + t.length + ' caracteres)')
+
+function principal(ev) {
+  if (ev.tool_name !== 'Read') return responder()
+  const entrada = ev.tool_input || {}
+  if (typeof entrada.file_path !== 'string' || ES_IMAGEN.test(entrada.file_path)) return responder()
+  const ruta = path.resolve(ev.cwd || process.cwd(), entrada.file_path)
+  let datos
+  try {
+    if (fs.statSync(ruta).size > MAX) return responder()
+    datos = fs.readFileSync(ruta)
+  } catch (e) {
+    return responder() // no existe o no se puede leer: que Read dé su propio error
+  }
+  if (datos.subarray(0, 8000).includes(0)) return responder() // binario
+  const hallazgos = []
+  datos.toString('utf8').split('\\n').forEach((linea, i) => {
+    if (linea.length > 5000 || hallazgos.length >= 5) return
+    for (const p of PATRONES) {
+      const m = p.re.exec(linea)
+      if (!m || FALSO.test(m[0])) continue
+      hallazgos.push('línea ' + (i + 1) + ': posible ' + p.nombre + ' (' + redactar(m[0]) + ')')
+      break
+    }
+  })
+  if (!hallazgos.length) return responder()
+  responder({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'ask',
+      permissionDecisionReason: 'Odesk: «' + entrada.file_path + '» parece contener credenciales (' + hallazgos.join('; ') + '). Si lo permites, su contenido se envía al modelo.'
+    }
+  })
+}
+
+let crudo = ''
+process.stdin.on('data', (d) => (crudo += d))
+process.stdin.on('end', () => {
+  try {
+    principal(JSON.parse(crudo))
+  } catch (e) {
+    responder()
+  }
+})
+`
+
+const comando = (script: string): string =>
+  `command -v node >/dev/null 2>&1 || exit 0; HOOK_ROOT=$(printf %s "\${CLAUDE_PLUGIN_ROOT}" | sed 's|^/\\([a-zA-Z]\\)/|\\1:/|'); node "$HOOK_ROOT/hooks/${script}"`
+const COMANDO = comando('imagenes.cjs')
 
 /** Archivos del plugin (ruta relativa -> contenido). Exportado para probarlo. */
 export function archivosGuardia(): Record<string, string> {
   return {
     '.claude-plugin/plugin.json':
-      JSON.stringify({ name: 'odesk-guardia', version: '1.0.0', description: 'Acota las imágenes que entran al contexto (menos tokens por llamada)', author: { name: 'Odesk Code' } }, null, 2) + '\n',
+      JSON.stringify({ name: 'odesk-guardia', version: '1.0.0', description: 'Acota las imágenes que entran al contexto y avisa antes de enviar archivos con credenciales', author: { name: 'Odesk Code' } }, null, 2) + '\n',
     'hooks/hooks.json':
       JSON.stringify(
-        { description: 'Guardia de consumo de Odesk Code', hooks: { PreToolUse: [{ matcher: 'Read', hooks: [{ type: 'command', command: COMANDO, timeout: 20 }] }] } },
+        { description: 'Guardia de consumo de Odesk Code', hooks: { PreToolUse: [{ matcher: 'Read', hooks: [{ type: 'command', command: COMANDO, timeout: 20 }, { type: 'command', command: comando('secretos.cjs'), timeout: 10 }] }] } },
         null,
         2
       ) + '\n',
-    'hooks/imagenes.cjs': SCRIPT_IMAGENES
+    'hooks/imagenes.cjs': SCRIPT_IMAGENES,
+    'hooks/secretos.cjs': SCRIPT_SECRETOS
   }
 }
 

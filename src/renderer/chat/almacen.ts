@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { LIMITE_ARCHIVO_CHAT, tipoPorMime, vistaPrevia, type ConversacionChat, type EventoChat, type MensajeChat, type ResultadoBusqueda } from '@shared/chat'
+import { LIMITE_ARCHIVO_CHAT, tipoPorMime, vistaPrevia, type CifradoContacto, type ConversacionChat, type EstadoCifrado, type EventoChat, type MensajeChat, type ResultadoBusqueda } from '@shared/chat'
 import { aplicarEvento, estadoInicial, marcarFallido, mensajeLocal, totalNoLeidos, type EstadoChat } from '@shared/chat-estado'
 import { notificacionesActivas } from '../agente/notificaciones'
 
@@ -10,6 +10,10 @@ export interface VistaChat extends EstadoChat {
   /** Último error de una operación, para mostrarlo en un aviso. */
   error: string
   noLeidos: number
+  /** Claves de cifrado de este equipo (null = aún no se sabe). Sin `listo` la pantalla pide crear o abrir las claves. */
+  cifrado: EstadoCifrado | null
+  /** Sube cada vez que alguna cuenta publica claves nuevas (para volver a pedir el estado de un contacto). */
+  versionClaves: number
 }
 
 const identificador = (): string => crypto.randomUUID()
@@ -32,6 +36,8 @@ class AlmacenChat {
   private abierta: string | null = null
   private visible = false
   private error = ''
+  private cifrado: EstadoCifrado | null = null
+  private versionClaves = 0
   private snapshot: VistaChat = this.armar()
   private readonly oyentes = new Set<() => void>()
   private readonly timersEscribiendo = new Map<string, number>()
@@ -43,7 +49,7 @@ class AlmacenChat {
   readonly alEvento = new Set<(e: EventoChat) => void>()
 
   private armar(): VistaChat {
-    return { ...this.estado, abierta: this.abierta, error: this.error, noLeidos: totalNoLeidos(this.estado) }
+    return { ...this.estado, abierta: this.abierta, error: this.error, noLeidos: totalNoLeidos(this.estado), cifrado: this.cifrado, versionClaves: this.versionClaves }
   }
 
   private emitir(): void {
@@ -86,6 +92,7 @@ class AlmacenChat {
     this.estado = estadoInicial()
     this.abierta = null
     this.error = ''
+    this.cifrado = null
     this.emitir()
     const dejar = window.api.chat.onEvento((e) => this.alEventoServidor(e))
     this.baja = dejar
@@ -98,6 +105,14 @@ class AlmacenChat {
   }
 
   private alEventoServidor(e: EventoChat): void {
+    // Claves abiertas, creadas o cambiadas en otro equipo: lo descifrado hasta ahora puede cambiar, se vuelve a pedir todo.
+    if (e.t === 'cifrado.cambio') return void this.recargarCifrado()
+    if (e.t === 'claves.cambio') {
+      this.versionClaves++
+      this.emitir()
+      if (e.usuarioId === this.estado.yo?.id) void this.recargarCifrado()
+      return
+    }
     const antes = this.estado
     this.estado = aplicarEvento(this.estado, e, this.estado.yo?.id)
     if (e.t === 'mensaje.nuevo') this.alMensajeNuevo(e.mensaje)
@@ -129,9 +144,26 @@ class AlmacenChat {
 
   // ---------------------------------------------------------------- carga
 
+  /** Tras abrir/crear claves: estado de cifrado al día, hilos descartados (estaban sin descifrar) y todo pedido de nuevo. */
+  private async recargarCifrado(): Promise<void> {
+    this.estado = { ...this.estado, hilos: {} }
+    await this.recargarTodo()
+    const id = this.abierta
+    if (id) {
+      this.abierta = null
+      await this.abrir(id)
+    }
+  }
+
   private async recargarTodo(): Promise<void> {
     try {
-      const [yo, c, v] = await Promise.all([window.api.chat.operar('perfil', {}), window.api.chat.operar('contactos', {}), window.api.chat.operar('conversaciones', {})])
+      const [yo, c, v, cifrado] = await Promise.all([
+        window.api.chat.operar('perfil', {}),
+        window.api.chat.operar('contactos', {}),
+        window.api.chat.operar('conversaciones', {}),
+        window.api.chat.operar('cifrado', {})
+      ])
+      this.cifrado = cifrado
       this.fijar((s) => ({ ...s, yo, contactos: c.contactos, bloqueados: c.bloqueados, conversaciones: v.conversaciones, cargado: true, recargar: { contactos: false, conversaciones: false } }))
     } catch (err) {
       // Sin sesión o sin servidor: se muestra vacío y se reintenta al conectar.
@@ -391,6 +423,32 @@ class AlmacenChat {
     if (!this.estado.conversaciones.some((c) => c.id === r.id)) await this.recargarTodo()
     await this.abrir(r.id)
     return r.id
+  }
+
+  // ---------------------------------------------------------------- cifrado de extremo a extremo
+
+  /** Crea, abre o restablece las claves con la frase. Lanza el error (la pantalla de la frase lo muestra junto al campo). */
+  async claves(accion: 'cifradoCrear' | 'cifradoDesbloquear' | 'cifradoRestablecer', frase: string): Promise<void> {
+    this.cifrado = await window.api.chat.operar(accion, { frase })
+    this.emitir()
+  }
+
+  cambiarFrase(frase: string): Promise<void> {
+    return window.api.chat.operar('cifradoCambiarFrase', { frase })
+  }
+
+  cifradoContacto(usuarioId: string): Promise<CifradoContacto> {
+    return window.api.chat.operar('cifradoContacto', { usuarioId })
+  }
+
+  async aceptarClave(usuarioId: string): Promise<CifradoContacto | undefined> {
+    const r = await this.hacer(() => window.api.chat.operar('cifradoAceptarClave', { usuarioId }))
+    if (r) void this.recargarCifrado()
+    return r
+  }
+
+  verificarContacto(usuarioId: string, verificada: boolean): Promise<CifradoContacto | undefined> {
+    return this.hacer(() => window.api.chat.operar('cifradoVerificar', { usuarioId, verificada }))
   }
 
   async buscar(q: string): Promise<ResultadoBusqueda[]> {

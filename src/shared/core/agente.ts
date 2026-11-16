@@ -30,8 +30,12 @@ export interface ResultadoAgente {
   error?: string
 }
 
-/** Eventos de una ejecución. `agente` y `profundidad` identifican al subagente que los emite (0 = raíz). */
-export type EventoAgente = { ejecucionId: string; agente: string; profundidad: number } & (
+/**
+ * Eventos de una ejecución. `agente` y `profundidad` identifican al subagente que los emite (0 = raíz). `padre` es el id de la
+ * llamada (`delegar` en modo API, `Agent` en suscripción) que lanzó a ese subagente: distingue dos hijos iguales en paralelo y
+ * permite armar el árbol de trabajo. El agente raíz no lo lleva.
+ */
+export type EventoAgente = { ejecucionId: string; agente: string; profundidad: number; padre?: string } & (
   | { tipo: 'inicio'; prompt: string; /** Id del mensaje del usuario en el CLI: permite deshacer los cambios de archivos hasta ahí. */ mensajeId?: string }
   | { tipo: 'paso'; numero: number }
   | { tipo: 'texto'; texto: string }
@@ -42,7 +46,7 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
   | { tipo: 'fin'; resultado: ResultadoAgente }
   | { tipo: 'ruta'; complejidad: Complejidad; modelo: string; razon: string; sugerirFlujo: boolean }
   | { tipo: 'flujo_nodo'; nodo: NodoFlujo; intento: number }
-  | { tipo: 'solicitud_humana'; solicitudId: string; clase: ClaseSolicitud; contenido: string; detalle?: string; destructivo?: boolean; herramienta?: string; puedeSiempre?: boolean; preguntas?: PreguntaUsuario[]; sudo?: boolean }
+  | { tipo: 'solicitud_humana'; solicitudId: string; clase: ClaseSolicitud; contenido: string; detalle?: string; destructivo?: boolean; herramienta?: string; puedeSiempre?: boolean; preguntas?: PreguntaUsuario[]; sudo?: boolean; secretos?: boolean }
   | { tipo: 'guardrail'; herramienta: string; motivo: string }
   | { tipo: 'worktree'; accion: AccionWorktree; rama: string; ruta: string; detalle?: string }
   | { tipo: 'flujo_fin'; estado: EstadoFlujo; resumen: string }

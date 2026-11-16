@@ -14,7 +14,7 @@ const MENSAJE_REVERSION: Record<string, string> = {
   'sin-referencia': 'El cambio solo borró texto: no hay un punto seguro donde devolverlo. Usa «Deshacer cambios» del mensaje.'
 }
 
-function Cambio({ c, proyectoId }: { c: CambioArchivo; proyectoId?: string }) {
+export function Cambio({ c, proyectoId }: { c: CambioArchivo; proyectoId?: string }) {
   const diff = useMemo(() => compararTextos(c.antes, c.despues, 2), [c.antes, c.despues])
   const [estado, setEstado] = useState<'pendiente' | 'devuelto'>('pendiente')
   const [aviso, setAviso] = useState('')

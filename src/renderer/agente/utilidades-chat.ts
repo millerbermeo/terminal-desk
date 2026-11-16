@@ -1,5 +1,6 @@
 import type { EventoAgente } from '@shared/core/agente'
 import type { TurnoGuardado } from '@shared/core/sesion'
+import { compararTextos } from '@shared/diff'
 
 /** Lo mínimo de un turno que usan estas utilidades (sirve tanto para `Turno` como para `TurnoGuardado`). */
 export type TurnoBasico = Pick<TurnoGuardado, 'prompt' | 'eventos' | 'estado' | 'destino'> & { lateral?: boolean; parcial?: string }
@@ -166,6 +167,53 @@ export function revertirCambio(actual: string, antes: string, despues: string): 
   return { ok: true, contenido: actual.slice(0, primero) + antes + actual.slice(primero + despues.length) }
 }
 
+// ───────────────────────────── Revisión de los cambios de un turno ─────────────────────────────
+
+export interface ArchivoDelTurno {
+  ruta: string
+  /** En el orden en que se aplicaron. */
+  cambios: CambioArchivo[]
+  agregadas: number
+  quitadas: number
+  /** Algún `Write` lo reescribió entero: no se puede devolver trozo a trozo (solo con «Deshacer cambios» del mensaje). */
+  reescribe: boolean
+}
+
+/** Archivos que cambió un turno con las herramientas de edición (solo las llamadas que terminaron bien), agrupados por ruta. */
+export function cambiosDelTurno(eventos: readonly EventoAgente[]): ArchivoDelTurno[] {
+  const fallidas = new Set(eventos.flatMap((e) => (e.tipo === 'herramienta_fin' && e.resultado.error ? [e.llamada.id] : [])))
+  const terminadas = new Set(eventos.flatMap((e) => (e.tipo === 'herramienta_fin' ? [e.llamada.id] : [])))
+  const porRuta = new Map<string, ArchivoDelTurno>()
+  for (const e of eventos) {
+    if (e.tipo !== 'herramienta_inicio' || fallidas.has(e.llamada.id) || !terminadas.has(e.llamada.id)) continue
+    for (const c of cambiosDeEdicion(e.llamada.nombre, e.llamada.entrada)) {
+      const a = porRuta.get(c.ruta) ?? { ruta: c.ruta, cambios: [], agregadas: 0, quitadas: 0, reescribe: false }
+      const d = compararTextos(c.antes, c.despues, 0)
+      a.cambios.push(c)
+      a.agregadas += d.agregadas + d.modificadas
+      a.quitadas += d.quitadas + d.modificadas
+      a.reescribe ||= c.reescribe
+      porRuta.set(c.ruta, a)
+    }
+  }
+  return [...porRuta.values()]
+}
+
+/**
+ * Devuelve un archivo a como estaba antes del turno deshaciendo sus cambios del último al primero. Si alguno ya no se puede (se editó
+ * después, aparece dos veces…), no toca nada: todo o nada.
+ */
+export function revertirArchivo(actual: string, cambios: readonly CambioArchivo[]): ResultadoReversion {
+  if (cambios.some((c) => c.reescribe)) return { ok: false, motivo: 'sin-referencia' }
+  let contenido = actual
+  for (let i = cambios.length - 1; i >= 0; i--) {
+    const r = revertirCambio(contenido, cambios[i]!.antes, cambios[i]!.despues)
+    if (!r.ok) return r
+    contenido = r.contenido
+  }
+  return { ok: true, contenido }
+}
+
 /** Ruta relativa a la carpeta del proyecto, o `undefined` si el archivo está fuera de ella. */
 export function rutaRelativa(absoluta: string, raiz: string): string | undefined {
   const limpia = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '')
@@ -281,3 +329,20 @@ export function filtrarSesiones<T extends SesionListable>(lista: readonly T[], o
 
 /** Todas las etiquetas en uso, ordenadas. */
 export const etiquetasEnUso = (o: Organizacion): string[] => [...new Set(Object.values(o.etiquetas).flat())].sort((a, b) => a.localeCompare(b))
+
+// ───────────────────────────── Consumo por conversación ─────────────────────────────
+
+/** 950 → «950», 12_340 → «12,3 k», 1_250_000 → «1,25 M». */
+export function formatoTokens(n: number): string {
+  if (n < 1000) return String(Math.round(n))
+  if (n < 1_000_000) return `${(n / 1000).toLocaleString('es', { maximumFractionDigits: n < 10_000 ? 1 : 0 })} k`
+  return `${(n / 1_000_000).toLocaleString('es', { maximumFractionDigits: 2 })} M`
+}
+
+/** 0.004 → «< 0,01 US$», 1.237 → «1,24 US$». */
+export const formatoUsd = (usd: number): string => (usd > 0 && usd < 0.01 ? '< 0,01 US$' : `${usd.toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} US$`)
+
+/** Más caras primero: por coste conocido y, sin coste (modo API), por tokens. */
+export function ordenarPorConsumo<T extends { costo?: number; tokens: number }>(lista: readonly T[]): T[] {
+  return [...lista].sort((a, b) => (b.costo ?? 0) - (a.costo ?? 0) || b.tokens - a.tokens)
+}

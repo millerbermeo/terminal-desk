@@ -32,7 +32,13 @@ import { buscarEnTurnos, cursorEnBorde, estimarEnvio, exportarMarkdown, navegarP
 import { alExterno, tomarExternos } from '../agente/externos'
 import { Cargando } from './Cargando'
 import { EstadoVivo, GrupoHerramientas } from './ActividadAgente'
+import { IconoTrabajo, PanelTrabajo } from './PanelTrabajo'
 import { agruparEventos } from '../agente/actividad'
+import { Markdown } from './Markdown'
+import { RevisionCambios } from './RevisionCambios'
+import { Programadas } from './Programadas'
+import { ContextoFijadoBarra } from './ContextoFijado'
+import { cambiosDelTurno } from '../agente/utilidades-chat'
 import { Desplegable, IconoAjustes, IconoCola, IconoDescargar, IconoEnviar, IconoLupa, IconoNuevaConv, IconoPuntos, IconoRayito, ItemMenu, OpcionMenu, Pista, SeccionMenu } from './CompositorMenus'
 
 const NOMBRE_ESFUERZO: Record<Esfuerzo | 'auto', string> = { auto: 'Auto', low: 'Bajo', medium: 'Medio', high: 'Alto', xhigh: 'Muy alto', max: 'Máximo' }
@@ -145,7 +151,9 @@ function Linea({ e, todos, raiz }: { e: EventoAgente; todos: EventoAgente[]; rai
         <div className="ag-burbuja" style={sangria}>
           {/* El nombre solo si habla otro agente: el del turno no se repite en cada mensaje. */}
           {(e.profundidad > 0 || e.agente !== raiz) && <div className="ag-quien">{e.agente}</div>}
-          <div className="ag-texto">{e.texto}</div>
+          <div className="ag-texto ag-md">
+            <Markdown texto={e.texto} />
+          </div>
         </div>
       )
     case 'herramienta_inicio': {
@@ -262,15 +270,77 @@ const EventosTurno = memo(function EventosTurno({ eventos, raiz, vivo }: { event
   )
 })
 
-/** Memoizado: un turno terminado no se repinta cuando otro recibe texto (los manejadores son estables y reciben el turno). */
-const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer, onEditar, lecturaDisponible, leyendo, onLeer }: { t: Turno; onCancelar: (t: Turno) => void; onDeshacer: (t: Turno) => void; onEditar: (t: Turno) => void; /** Hay voces del sistema para leer en voz alta. */ lecturaDisponible: boolean; leyendo: boolean; onLeer: (t: Turno) => void }) {
-  const editoArchivos = t.estado !== 'en_curso' && !t.lateral && Boolean(t.mensajeId) && t.eventos.some((e) => e.tipo === 'herramienta_inicio' && HERRAMIENTAS_QUE_EDITAN.has(e.llamada.nombre))
+export interface OpcionModelo {
+  id: string
+  nombre: string
+}
+
+/** «↻ Regenerar» con un desplegable para pedirla a otro modelo. */
+function MenuRegenerar({ modelos, onRegenerar }: { modelos: OpcionModelo[]; onRegenerar: (modelo?: string) => void }) {
+  const [abierto, setAbierto] = useState(false)
+  const caja = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (!abierto) return
+    const fuera = (e: MouseEvent): void => {
+      if (!caja.current?.contains(e.target as Node)) setAbierto(false)
+    }
+    const tecla = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setAbierto(false)
+    }
+    document.addEventListener('mousedown', fuera)
+    document.addEventListener('keydown', tecla)
+    return () => {
+      document.removeEventListener('mousedown', fuera)
+      document.removeEventListener('keydown', tecla)
+    }
+  }, [abierto])
   return (
-    <article className="ag-turno">
+    <span className="ag-regenerar" ref={caja}>
+      <button onClick={() => onRegenerar()} title="Descarta esta respuesta (y sus cambios de archivos) y pide otra con la configuración actual">
+        ↻ Regenerar
+      </button>
+      {modelos.length > 0 && (
+        <button className="ag-regenerar-mas" aria-haspopup="menu" aria-expanded={abierto} onClick={() => setAbierto((v) => !v)} title="Regenerar con otro modelo">
+          ▾
+        </button>
+      )}
+      {abierto && (
+        <span className="ag-regenerar-menu" role="menu">
+          <span className="ag-regenerar-titulo">Regenerar con…</span>
+          {modelos.map((m) => (
+            <button
+              key={m.id}
+              role="menuitem"
+              onClick={() => {
+                setAbierto(false)
+                onRegenerar(m.id)
+              }}
+            >
+              {m.nombre}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  )
+}
+
+/** Memoizado: un turno terminado no se repinta cuando otro recibe texto (los manejadores son estables y reciben el turno). */
+const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer, onEditar, lecturaDisponible, leyendo, onLeer, esUltimo, modelos, onRamificar, onRegenerar, onVerTrabajo }: { t: Turno; /** Abre el panel «Ver trabajo» de este turno. */ onVerTrabajo: (t: Turno) => void; onCancelar: (t: Turno) => void; onDeshacer: (t: Turno) => void; onEditar: (t: Turno) => void; /** Hay voces del sistema para leer en voz alta. */ lecturaDisponible: boolean; leyendo: boolean; onLeer: (t: Turno) => void; /** Es la última respuesta vigente (la única que se puede regenerar). */ esUltimo: boolean; modelos: OpcionModelo[]; onRamificar: (t: Turno) => void; onRegenerar: (t: Turno, modelo?: string) => void }) {
+  const terminado = t.estado !== 'en_curso'
+  const editoArchivos = terminado && !t.lateral && !t.heredado && Boolean(t.mensajeId) && t.eventos.some((e) => e.tipo === 'herramienta_inicio' && HERRAMIENTAS_QUE_EDITAN.has(e.llamada.nombre))
+  const hayRevision = useMemo(() => terminado && !t.lateral && cambiosDelTurno(t.eventos).length > 0, [terminado, t.lateral, t.eventos])
+  const conversable = t.modo === 'chat' && !t.lateral && !t.descartado
+  // Solo merece la vista si el turno hizo algo más que contestar (herramientas o subagentes).
+  const hayTrabajo = useMemo(() => t.eventos.some((e) => e.tipo === 'herramienta_inicio'), [t.eventos])
+  return (
+    <article className={`ag-turno${t.descartado ? ' descartado' : ''}${t.heredado ? ' heredado' : ''}`}>
       <div className="ag-usuario">
         <div className="ag-quien">
           Tú · {t.destino} {t.lateral && <span className="chip" title="Respondida aparte: la tarea principal sigue su curso">pregunta lateral</span>} {t.modo !== 'chat' && t.modo !== 'comando' && <span className="chip">{t.modo === 'flujo' ? 'flujo de desarrollo' : 'grupo (A2A)'}</span>}
           {t.autonomia && <span className="chip chip-aviso" title="Se ejecutó con menos confirmaciones">{t.autonomia === 'autonomo' ? 'autónomo' : 'acepta ediciones'}</span>}
+          {t.descartado && <span className="chip" title="Sustituida por una respuesta regenerada">descartada</span>}
+          {t.heredado && <span className="chip" title="Copiado de la conversación original al ramificar">de la original</span>}
         </div>
         <div className="ag-texto">{t.prompt}</div>
         {t.adjuntos && <AdjuntosAgente adjuntos={t.adjuntos} />}
@@ -284,11 +354,17 @@ const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer, onEdita
           </div>
         </div>
       )}
-      {t.estado === 'en_curso' && <EstadoVivo eventos={t.eventos} escribiendo={Boolean(t.parcial)} inicio={t.inicio} onDetener={() => onCancelar(t)} puedeDetener={Boolean(t.ejecucionId)} />}
+      {t.estado === 'en_curso' && <EstadoVivo eventos={t.eventos} escribiendo={Boolean(t.parcial)} inicio={t.inicio} onDetener={() => onCancelar(t)} puedeDetener={Boolean(t.ejecucionId)} {...(t.modo !== 'comando' && !t.lateral ? { onVerTrabajo: () => onVerTrabajo(t) } : {})} />}
       {t.error && <div className={`ag-final ${t.estado === 'limite_pasos' || t.estado === 'cancelado' ? 'aviso' : 'mal'}`}>{t.error}</div>}
+      {hayRevision && !t.descartado && <RevisionCambios eventos={t.eventos} {...(editoArchivos ? { onDeshacerTodo: () => onDeshacer(t) } : {})} />}
       {t.estado !== 'en_curso' && (
       <div className="ag-pie">
         <span className={`chip estado-${t.estado}`}>{ESTADO[t.estado]}</span>
+        {hayTrabajo && (
+          <button onClick={() => onVerTrabajo(t)} title="Árbol de agentes, línea de tiempo y actividad de esta respuesta">
+            <IconoTrabajo /> Ver trabajo
+          </button>
+        )}
         {t.modo !== 'comando' && !t.lateral && t.prompt.trim() && (
           <button onClick={() => onEditar(t)} title="Pone este mensaje en el campo para que lo cambies y lo envíes otra vez (sale como mensaje nuevo en esta conversación)">
             ✎ Editar y reenviar
@@ -299,16 +375,34 @@ const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer, onEdita
             {leyendo ? '■ Parar' : '🔊 Leer'}
           </button>
         )}
-        {editoArchivos && (
+        {editoArchivos && !hayRevision && (
           <button onClick={() => onDeshacer(t)} title="Devuelve los archivos a como estaban antes de este mensaje (y deshace lo de los siguientes)">
             ↩ Deshacer cambios
           </button>
         )}
+        {conversable && (
+          <button onClick={() => onRamificar(t)} title="Abre otra conversación con los mensajes hasta aquí, para probar otro camino sin perder este">
+            ⑂ Ramificar
+          </button>
+        )}
+        {conversable && esUltimo && !t.heredado && <MenuRegenerar modelos={modelos} onRegenerar={(m) => onRegenerar(t, m)} />}
       </div>
       )}
     </article>
   )
 })
+
+const IconoChincheta = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7" />
+  </svg>
+)
+const IconoProgramada = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M3 10h18M8 3v4M16 3v4M12 13v3l2 1" />
+  </svg>
+)
 
 const IconoTraspaso = () => (
   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -445,13 +539,66 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
       agente.avisar('Deshacer cambios', (err as Error).message, t.destino)
     }
   }
+  /**
+   * Ramificar: otra conversación con los mensajes hasta este turno. Si después el Asistente cambió archivos, ofrece devolverlos a como
+   * estaban en este punto (con el punto de control del CLI) para que la rama empiece desde el mismo estado del código.
+   */
+  const ramificar = async (t: Turno): Promise<void> => {
+    if (agente.enCurso) return agente.avisar('Ramificar', 'Espera a que termine la respuesta en curso (o cancélala) antes de ramificar.', t.destino)
+    const i = agente.turnos.findIndex((x) => x.clave === t.clave)
+    const posteriores = agente.turnos.slice(i + 1).filter((x) => !x.lateral && !x.heredado && x.mensajeId && x.estado !== 'en_curso')
+    const cambiaronArchivos = posteriores.some((x) => cambiosDelTurno(x.eventos).length > 0)
+    if (!(await confirmar({ titulo: 'Ramificar desde aquí', tono: 'info', etiqueta: 'Ramificar', texto: `Se abre otra conversación con los ${agente.turnos.slice(0, i + 1).filter((x) => !x.lateral && !x.descartado).length} primeros mensajes. Esta queda intacta en el historial.\n\nEl Asistente recibe un resumen de lo anterior con tu primer mensaje en la rama.` }))) return
+    if (cambiaronArchivos && sesionActual && posteriores[0]?.mensajeId) {
+      const devolver = await confirmar({
+        titulo: '¿Devolver también los archivos?',
+        tono: 'aviso',
+        etiqueta: 'Devolver archivos',
+        cancelar: 'Dejarlos como están',
+        texto: 'Después de este punto el Asistente cambió archivos. Puedes devolverlos a como estaban aquí, para que la rama parta del mismo código.\n\nNo cubre lo que se hizo con comandos de terminal. Los archivos creados después se borran.'
+      })
+      if (devolver) {
+        const r = await window.api.core.rebobinar(sesionActual, posteriores[0].mensajeId, false).catch((e: Error) => ({ puede: false, archivos: [], error: e.message }))
+        if (!r.puede) return agente.avisar('Ramificar', `No se pudieron devolver los archivos (${r.error ?? 'sin punto de control'}). No se creó la rama.`, t.destino)
+      }
+    }
+    try {
+      await agente.ramificar(t.clave)
+    } catch (err) {
+      agente.avisar('Ramificar', (err as Error).message, t.destino)
+    }
+  }
+
+  /** Regenerar la última respuesta: deshace sus cambios de archivos (si los hubo), la marca como descartada y pide otra. */
+  const regenerar = async (t: Turno, modeloOtro?: string): Promise<void> => {
+    if (agente.enCurso) return
+    let deshechos = false
+    if (cambiosDelTurno(t.eventos).length > 0) {
+      const previo = t.mensajeId && sesionActual ? await window.api.core.rebobinar(sesionActual, t.mensajeId, true).catch(() => undefined) : undefined
+      if (previo?.puede && previo.archivos.length) {
+        const nombres = previo.archivos.slice(0, 10).map((a) => `• ${a.split(/[\\/]/).slice(-3).join('/')}`).join('\n')
+        if (!(await confirmar({ titulo: 'Regenerar la respuesta', tono: 'aviso', etiqueta: 'Regenerar', texto: `Antes se deshacen los cambios de archivos de esta respuesta:\n\n${nombres}${previo.archivos.length > 10 ? `\n… y ${previo.archivos.length - 10} más` : ''}` }))) return
+        const r = await window.api.core.rebobinar(sesionActual!, t.mensajeId!, false).catch((e: Error) => ({ puede: false, archivos: [], error: e.message }))
+        if (!r.puede) return agente.avisar('Regenerar', r.error ?? 'No se pudieron deshacer los cambios: no se regeneró.', t.destino)
+        deshechos = true
+      } else if (!(await confirmar({ titulo: 'Regenerar sin deshacer archivos', tono: 'aviso', etiqueta: 'Regenerar igualmente', texto: 'Esta respuesta cambió archivos pero no tiene un punto de control para deshacerlos. Si regeneras, la nueva respuesta partirá del código tal como está ahora.' }))) return
+    }
+    agente.descartar(t.clave)
+    const oculto = `<regenerar>El usuario descartó tu respuesta anterior a este mismo mensaje${deshechos ? ' y deshizo los cambios de archivos que hiciste en ella (vuelve a leerlos: lo que recuerdes de ellos está desactualizado)' : ''}. Responde de nuevo desde cero, con un enfoque mejor o distinto; no repitas lo de antes salvo que fuera correcto.</regenerar>`
+    lanzar(t.prompt, false, t.adjuntos ?? [], { oculto, ...(modeloOtro ? { modelo: modeloOtro } : {}) })
+  }
+
   // Manejadores estables para `TurnoVista` (memoizado): siempre llaman a la versión más reciente.
-  const accionesTurno = useRef({ cancelar: (t: Turno): void => void agente.cancelar(t), deshacer })
+  const accionesTurno = useRef({ cancelar: (t: Turno): void => void agente.cancelar(t), deshacer, ramificar, regenerar })
   useEffect(() => {
-    accionesTurno.current = { cancelar: (t) => void agente.cancelar(t), deshacer }
+    accionesTurno.current = { cancelar: (t) => void agente.cancelar(t), deshacer, ramificar, regenerar }
   })
   const cancelarTurno = useCallback((t: Turno): void => accionesTurno.current.cancelar(t), [])
   const deshacerTurno = useCallback((t: Turno): void => void accionesTurno.current.deshacer(t), [])
+  const ramificarTurno = useCallback((t: Turno): void => void accionesTurno.current.ramificar(t), [])
+  const regenerarTurno = useCallback((t: Turno, modelo?: string): void => void accionesTurno.current.regenerar(t, modelo), [])
+  const [verProgramadas, setVerProgramadas] = useState(false)
+  const [editarFijado, setEditarFijado] = useState(false)
   const fin = useRef<HTMLDivElement>(null)
 
   const grupoSeleccionado = !proyectoFijo && destino.startsWith('g:')
@@ -651,20 +798,21 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     void window.api.core.adjuntoEliminar(a.id)
   }
 
-  const lanzar = (prompt: string, forzarFlujo = false, adjuntos: Adjunto[] = pendientes): void => {
+  const lanzar = (prompt: string, forzarFlujo = false, adjuntos: Adjunto[] = pendientes, extra: { oculto?: string; modelo?: string } = {}): void => {
     if (adjuntos === pendientes) {
       setPendientes([])
       setErrorAdjunto('')
     }
     void agente.enviar({
       ...(adjuntos.length ? { adjuntos } : {}),
+      ...(extra.oculto ? { oculto: extra.oculto } : {}),
       destino: etiqueta,
       solicitud: {
         prompt,
         ...(proyecto ? { proyectoId: proyecto.id } : {}),
         ...(grupoSeleccionado ? { grupoId: destino.slice(2) } : {}),
         ...(autonomia !== 'preguntar' ? { autonomia } : {}),
-        ...(modeloSel !== 'auto' ? { modelo: modeloSel } : {}),
+        ...(extra.modelo ? { modelo: extra.modelo } : modeloSel !== 'auto' ? { modelo: modeloSel } : {}),
         ...(esfuerzo !== 'auto' ? { esfuerzo } : {}),
         ...(modo === 'flujo' || forzarFlujo ? { modo: 'flujo' as const, aislado } : {})
       }
@@ -686,6 +834,10 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         if (!proyecto) return aviso('El plan necesita un proyecto: abre el asistente desde la celda de un proyecto o elígelo en el selector.')
         if (!resto) return aviso('Uso: /plan <funcionalidad>')
         return lanzar(expandirPlantilla(PLANTILLAS_INCLUIDAS.plan!, resto))
+      case 'explicar':
+        // Sirve con proyecto, con grupo (arquitectura entre proyectos) o sin destino (código pegado o adjunto).
+        if (!resto && !pendientes.length) return aviso('Uso: /explicar <archivo, carpeta, función o código>')
+        return lanzar(expandirPlantilla(PLANTILLAS_INCLUIDAS.explicar!, resto || 'los archivos adjuntos'))
       case 'tareas':
         if (!proyecto) return aviso('Elige un proyecto para revisar sus tareas.')
         return lanzar(PLANTILLAS_INCLUIDAS.tareas!)
@@ -884,6 +1036,12 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
   }
 
+  // «Ver trabajo»: el panel sigue al turno por su clave (se actualiza solo con cada evento que llega).
+  const [trabajoDe, setTrabajoDe] = useState<string | null>(null)
+  const abrirTrabajo = useCallback((t: Turno): void => setTrabajoDe(t.clave), [])
+  const cerrarTrabajo = useCallback((): void => setTrabajoDe(null), [])
+  const turnoTrabajo = trabajoDe ? agente.turnos.find((t) => t.clave === trabajoDe) : undefined
+
   const editarYReenviar = useCallback((t: Turno): void => {
     setTexto(t.prompt)
     setCursor(t.prompt.length)
@@ -898,6 +1056,11 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     if (l.leyendo === t.clave) l.detener()
     else l.leer(t.clave, textoRespuesta(t))
   }, [])
+
+  // Solo la última respuesta vigente (sin nada en marcha) se puede regenerar.
+  const ultimoVigente = agente.enCurso ? undefined : [...agente.turnos].reverse().find((t) => !t.lateral && !t.descartado)?.clave
+  const opcionesModelo = useMemo<OpcionModelo[]>(() => modelos.map((m) => ({ id: m.id, nombre: m.nombre.replace(/^Claude\s+/i, '') })), [modelos])
+  const proyectosProgramables = useMemo(() => (proyectoFijo ? [proyectoFijo] : (datos?.proyectos ?? []).map((p) => ({ id: p.id, nombre: p.nombre }))), [proyectoFijo, datos?.proyectos])
 
   const ventanaCtx = detalleCtx?.maximo || agente.contexto?.ventana || ventanaDe(modelos, modeloSel !== 'auto' ? modeloSel : agente.contexto?.modelo)
   const estimacion = useMemo(() => (texto.trim() ? estimarEnvio(texto, agente.contexto ? { tokens: agente.contexto.tokens, ...(ventanaCtx ? { ventana: ventanaCtx } : {}) } : undefined) : undefined), [texto, agente.contexto, ventanaCtx])
@@ -954,6 +1117,17 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           onAbrir={(id) => void agente.abrirSesion(id)}
           onBorrar={(id) => void agente.borrarSesion(id)}
           onCerrar={() => setVerHistorial(false)}
+        />
+      )}
+      {verProgramadas && (
+        <Programadas
+          proyectos={proyectosProgramables}
+          {...(proyecto ? { proyectoInicial: proyecto.id } : {})}
+          modelos={modelos}
+          onAbrirSesion={(id) => {
+            if (!agente.enCurso) void agente.abrirSesion(id)
+          }}
+          onCerrar={() => setVerProgramadas(false)}
         />
       )}
       {gestion && <GestionProyecto {...(proyecto ? { proyectoId: proyecto.id, nombre: proyecto.nombre } : {})} inicial={gestion} onCerrar={() => setGestion(null)} />}
@@ -1050,10 +1224,29 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         <ProyectoDelChat.Provider value={proyecto?.id}>
           {agente.turnos.map((t, i) => (
             <div key={t.clave} data-turno={t.clave} className={coincidencias.includes(i) ? (i === coincidencias[indiceCoincidencia] ? 'ag-coincide actual' : 'ag-coincide') : undefined}>
-              <TurnoVista t={t} onCancelar={cancelarTurno} onDeshacer={deshacerTurno} onEditar={editarYReenviar} lecturaDisponible={lectura.disponible} leyendo={lectura.leyendo === t.clave} onLeer={leerTurno} />
+              <TurnoVista t={t} onCancelar={cancelarTurno} onDeshacer={deshacerTurno} onEditar={editarYReenviar} lecturaDisponible={lectura.disponible} leyendo={lectura.leyendo === t.clave} onLeer={leerTurno} esUltimo={t.clave === ultimoVigente} modelos={opcionesModelo} onRamificar={ramificarTurno} onRegenerar={regenerarTurno} onVerTrabajo={abrirTrabajo} />
             </div>
           ))}
+          {turnoTrabajo && <PanelTrabajo key={turnoTrabajo.clave} turno={turnoTrabajo} onCerrar={cerrarTrabajo} />}
         </ProyectoDelChat.Provider>
+        {agente.herencia?.rama && (
+          <div className="ag-herencia rama">
+            <div className="ag-herencia-cab">
+              <span className="ag-herencia-icono" aria-hidden="true">⑂</span>
+              <div>
+                <strong>Rama nueva</strong>
+                <span>de «{agente.herencia.titulo}» · lo anterior se resume y se envía con tu primer mensaje; la original sigue en el historial</span>
+              </div>
+              <button className="ag-icono" onClick={agente.quitarHerencia} aria-label="Quitar el resumen" title="No enviar el resumen (el modelo empezará sin el contexto anterior)">
+                <IconoCerrar />
+              </button>
+            </div>
+            <details>
+              <summary>Ver y editar el resumen</summary>
+              <textarea className="ag-herencia-texto" rows={10} value={agente.herencia.resumen} onChange={(e) => agente.editarHerencia(e.target.value)} />
+            </details>
+          </div>
+        )}
         <div ref={fin} />
         {verBajar && (
           <button type="button" className="ag-ir-abajo" onClick={irAbajo} aria-label="Ir al final" title="Ir al final">
@@ -1189,6 +1382,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               )}
             </ul>
           )}
+          <ContextoFijadoBarra fijado={agente.fijado} abierto={editarFijado} onCambiar={agente.fijar} onAbrir={() => setEditarFijado(true)} onCerrar={() => setEditarFijado(false)} />
           <textarea
             ref={areaTexto}
             rows={2}
@@ -1387,19 +1581,21 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
                   {proyecto && <ItemMenu indice={0} icono={<IconoTareas />} texto="Tareas del proyecto" detalle="Menciónalas o pide que el Asistente implemente una" atajo="#" activo={verTareas} onClick={() => { cerrar(); setVerTareas((v) => !v) }} />}
                   <ItemMenu indice={1} icono={<IconoLupa />} texto="Buscar en la conversación" atajo="Ctrl F" disabled={agente.turnos.length === 0} onClick={() => { cerrar(); abrirBusqueda() }} />
                   <ItemMenu indice={2} icono={<IconoReloj />} texto="Historial" detalle="Conversaciones guardadas" atajo="Ctrl ⇧ H" onClick={() => { cerrar(); setVerHistorial((v) => !v) }} />
-                  <ItemMenu indice={3} icono={<IconoDescargar />} texto="Exportar a Markdown" atajo="Ctrl ⇧ E" disabled={!agente.turnos.some((t) => t.estado !== 'en_curso')} onClick={() => { cerrar(); exportarConversacion() }} />
+                  <ItemMenu indice={3} icono={<IconoChincheta />} texto="Contexto fijado" detalle="Archivos y notas que tiene siempre presentes" activo={editarFijado} onClick={() => { cerrar(); setEditarFijado(true) }} />
+                  <ItemMenu indice={4} icono={<IconoProgramada />} texto="Tareas programadas" detalle="Que el Asistente haga algo solo, cada cierto tiempo" disabled={proyectosProgramables.length === 0} onClick={() => { cerrar(); setVerProgramadas(true) }} />
+                  <ItemMenu indice={5} icono={<IconoDescargar />} texto="Exportar a Markdown" atajo="Ctrl ⇧ E" disabled={!agente.turnos.some((t) => t.estado !== 'en_curso')} onClick={() => { cerrar(); exportarConversacion() }} />
                   <div className="cmp-sep" role="separator" />
                   <ItemMenu
-                    indice={4}
+                    indice={6}
                     icono={<IconoTraspaso />}
                     texto={agente.traspasando ? 'Compactando el contexto…' : 'Nueva con contexto'}
                     detalle="Resume lo importante y empieza otra que lo hereda"
                     disabled={agente.enCurso || agente.traspasando || !agente.sesionId || agente.turnos.length === 0}
                     onClick={() => { cerrar(); void nuevaConContexto() }}
                   />
-                  <ItemMenu indice={5} icono={<IconoNuevaConv />} texto="Nueva conversación" detalle="La actual queda en el historial" disabled={agente.enCurso || agente.turnos.length === 0} onClick={() => { cerrar(); void pedirNuevaConversacion() }} />
+                  <ItemMenu indice={7} icono={<IconoNuevaConv />} texto="Nueva conversación" detalle="La actual queda en el historial" disabled={agente.enCurso || agente.turnos.length === 0} onClick={() => { cerrar(); void pedirNuevaConversacion() }} />
                   <div className="cmp-sep" role="separator" />
-                  <ItemMenu indice={6} interruptor activo={notificar} icono={notificar ? <IconoCampana /> : <IconoCampanaTachada />} texto="Notificaciones" detalle="Te aviso cuando termine si no miras el chat" onClick={() => fijarNotificaciones(!notificar)} />
+                  <ItemMenu indice={8} interruptor activo={notificar} icono={notificar ? <IconoCampana /> : <IconoCampanaTachada />} texto="Notificaciones" detalle="Te aviso cuando termine si no miras el chat" onClick={() => fijarNotificaciones(!notificar)} />
                 </>
               )}
             </Desplegable>

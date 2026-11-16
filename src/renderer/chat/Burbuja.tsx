@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { partirEnlaces, textoLlamada, type MensajeChat } from '@shared/chat'
 import { ArchivoChat, AudioChat, ImagenChat, VideoChat } from './Adjuntos'
-import { IAlerta, IBasura, ICopiar, IEditar, IEnlace, IMas, IReaccion, IReloj, IResponder, ITelefono, ITicks, IVideo } from './Iconos'
+import { IAlerta, IBasura, ICandado, ICopiar, IEditar, IEnlace, IMas, IReaccion, IReloj, IResponder, ITelefono, ITicks, IVideo } from './Iconos'
 
 const REACCIONES = ['👍', '❤️', '😂', '😮', '😢', '🙏']
 const EDITABLE_MS = 15 * 60_000
@@ -176,6 +176,10 @@ function Burbuja({ m, yoId, leidoPorOtro, entregadoAlOtro, nombreOtro, agrupado,
 
   const contenido = m.eliminado ? (
     <p className="ch-eliminado">🚫 {propio ? 'Eliminaste este mensaje' : 'Este mensaje fue eliminado'}</p>
+  ) : m.cifrado === 'error' || m.cifrado === 'bloqueado' ? (
+    <p className="ch-eliminado ch-sin-descifrar">
+      <ICandado tam={13} /> {m.texto}
+    </p>
   ) : (
     <>
       {m.respondeA && (
@@ -226,6 +230,8 @@ function Burbuja({ m, yoId, leidoPorOtro, entregadoAlOtro, nombreOtro, agrupado,
           {contenido}
           <span className="ch-meta">
             {m.editado && !m.eliminado && <em>editado</em>}
+            {m.cifrado === 'no' && !m.eliminado && <em title="Mensaje anterior al cifrado de extremo a extremo: el servidor lo guarda legible">sin cifrar</em>}
+            {m.cifrado === 'clave-nueva' && <em className="ch-clave-nueva" title="Cifrado con una clave del contacto que aún no aceptaste en este equipo">clave sin confirmar</em>}
             <time dateTime={m.creado}>{hora}</time>
             {propio && !m.eliminado && <Ticks m={m} leido={leidoPorOtro} entregado={entregadoAlOtro} />}
           </span>

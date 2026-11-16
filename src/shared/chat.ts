@@ -52,7 +52,7 @@ export interface MensajeChat {
   tipo: TipoMensaje
   texto: string
   adjunto: AdjuntoChat | null
-  respondeA: { id: string; emisorId: string; tipo: TipoMensaje; texto: string; eliminado: boolean } | null
+  respondeA: { id: string; emisorId: string; tipo: TipoMensaje; texto: string; eliminado: boolean; clienteId?: string } | null
   reacciones: { emoji: string; usuarios: string[] }[]
   /** Llamada: `{video, estado, duracionS}`. */
   meta: Record<string, unknown>
@@ -60,6 +60,12 @@ export interface MensajeChat {
   editado: string | null
   eliminado: boolean
   clienteId: string
+  /**
+   * Cifrado de extremo a extremo (lo pone main al abrir el sobre): `si` descifrado y de una clave aceptada; `clave-nueva` descifrado
+   * pero con una clave del contacto que aún no se aceptó; `no` mensaje antiguo sin cifrar; `error` no se pudo abrir; `bloqueado` falta
+   * abrir las claves de este equipo con la frase.
+   */
+  cifrado?: 'si' | 'no' | 'error' | 'bloqueado' | 'clave-nueva'
   /** Solo en la interfaz: mensaje que aún no confirmó el servidor (`enviando`) o que no se pudo enviar (`fallido`). */
   local?: 'enviando' | 'fallido'
   /** Solo en la interfaz: si falló, el motivo para mostrarlo. */
@@ -69,7 +75,7 @@ export interface MensajeChat {
 export interface ConversacionChat {
   id: string
   otro: UsuarioChat
-  ultimo: { id: string; emisorId: string; tipo: TipoMensaje; texto: string; seq: number; creado: string } | null
+  ultimo: { id: string; emisorId: string; tipo: TipoMensaje; texto: string; seq: number; creado: string; clienteId?: string } | null
   noLeidos: number
   silenciada: boolean
   archivada: boolean
@@ -105,6 +111,31 @@ export interface ServidorIce {
 
 export type EstadoConexionChat = 'desconectado' | 'conectando' | 'conectado'
 
+/**
+ * Claves de cifrado de este equipo: `sin-claves` la cuenta aún no creó las suyas · `bloqueado` existen (en el servidor, cifradas con
+ * la frase) pero este equipo no las tiene abiertas · `listo` se puede leer y escribir.
+ */
+export interface EstadoCifrado {
+  estado: 'sin-claves' | 'bloqueado' | 'listo'
+  /** Huella corta de la clave propia (para reconocerla). */
+  claveId?: string
+  /** El equipo guarda la clave en el llavero del sistema; sin él hay que escribir la frase en cada arranque. */
+  llaveroSeguro: boolean
+  /** La clave de la cuenta cambió desde otro equipo (la que tenía este ya no vale). */
+  cambioEnOtroEquipo?: boolean
+}
+
+/**
+ * Clave de un contacto vista desde este equipo: `sin-claves` aún no activó el cifrado (no se le puede escribir ni llamar) · `nueva`
+ * su clave cambió desde la última vez (hay que aceptarla antes de seguir) · `confiable` fijada la primera vez · `verificada` además se
+ * comparó el número de seguridad.
+ */
+export interface CifradoContacto {
+  estado: 'sin-claves' | 'nueva' | 'confiable' | 'verificada'
+  /** 60 cifras para comparar con el contacto (en persona o por otro medio). */
+  numero?: string
+}
+
 /** Lo que el servidor empuja por el WebSocket (más `conexion`, que genera main). */
 export type EventoChat =
   | { t: 'conexion'; estado: EstadoConexionChat }
@@ -121,6 +152,10 @@ export type EventoChat =
   | { t: 'llamada.aceptada'; llamadaId: string }
   | { t: 'llamada.senal'; llamadaId: string; datos: unknown }
   | { t: 'llamada.fin'; llamadaId: string; motivo: string }
+  /** Las claves de este equipo cambiaron de estado (creadas, abiertas, sustituidas): hay que volver a pedir todo. */
+  | { t: 'cifrado.cambio' }
+  /** Un contacto (o la propia cuenta desde otro equipo) publicó una clave nueva. */
+  | { t: 'claves.cambio'; usuarioId: string }
 
 /** Lo que la interfaz puede mandar por el WebSocket (main descarta cualquier otra cosa). */
 export type OrdenTiempoReal =
@@ -176,7 +211,20 @@ export interface OperacionesChat {
   descargar: { entrada: { adjuntoId: string }; salida: ArchivoDescargado }
   /** Abre «Guardar como…» y escribe el archivo. `false` si el usuario canceló. */
   guardarComo: { entrada: { adjuntoId: string; nombre: string }; salida: boolean }
-  ice: { entrada: Record<string, never>; salida: { servidores: ServidorIce[] } }
+  /** `soloRelay`: usar solo el TURN (ningún equipo ve la IP del otro). */
+  ice: { entrada: Record<string, never>; salida: { servidores: ServidorIce[]; soloRelay?: boolean } }
+  cifrado: { entrada: Record<string, never>; salida: EstadoCifrado }
+  /** Crea las claves de la cuenta y guarda el respaldo cifrado con la frase (que nunca sale del equipo). */
+  cifradoCrear: { entrada: { frase: string }; salida: EstadoCifrado }
+  /** Abre en este equipo las claves de la cuenta con la frase. */
+  cifradoDesbloquear: { entrada: { frase: string }; salida: EstadoCifrado }
+  /** Olvidé la frase: claves nuevas. Lo cifrado con las anteriores deja de poder leerse y los contactos verán el aviso de clave nueva. */
+  cifradoRestablecer: { entrada: { frase: string }; salida: EstadoCifrado }
+  cifradoCambiarFrase: { entrada: { frase: string }; salida: void }
+  cifradoContacto: { entrada: { usuarioId: string }; salida: CifradoContacto }
+  /** Acepta la clave nueva de un contacto (tras comprobar, a ser posible, el número de seguridad). */
+  cifradoAceptarClave: { entrada: { usuarioId: string }; salida: CifradoContacto }
+  cifradoVerificar: { entrada: { usuarioId: string; verificada: boolean }; salida: CifradoContacto }
   /** Manda una orden por el WebSocket (escribiendo, llamadas). `false` si no hay conexión. */
   tiempoReal: { entrada: { orden: OrdenTiempoReal }; salida: boolean }
   /** Pantallas y ventanas que se pueden compartir en una llamada (con miniatura). `refrescar`: se pueden pedir otra vez sin molestar (en Wayland cada listado abre el diálogo del sistema). */

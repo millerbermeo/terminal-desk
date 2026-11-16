@@ -9,6 +9,7 @@ import { ejecutarBucle } from './bucle'
 import type { ProveedorLLM } from './llm/proveedor'
 import type { Trazador } from '../tracing/trazador'
 import { herramientaDelegar, HERRAMIENTA_DELEGAR } from './subagentes'
+import { describirHallazgos, detectarSecretos, redactarSecretos, type Hallazgo } from '../guardrails/secretos'
 
 /** Decide si una llamada que no es de solo lectura puede ejecutarse. La Fase 4 enchufa aquí la confirmación humana. */
 export type Aprobador = (llamada: LlamadaHerramienta, riesgo: Riesgo, agente: string) => Promise<boolean>
@@ -19,12 +20,23 @@ export type Aprobador = (llamada: LlamadaHerramienta, riesgo: Riesgo, agente: st
  */
 export type Validador = (llamada: LlamadaHerramienta, riesgo: Riesgo, agente: string, ctx: ContextoHerramienta) => Promise<string | null>
 
+/**
+ * Un resultado de herramienta (lo que se iba a enviar al modelo) trae posibles credenciales: la persona decide si se envía tal cual
+ * (`true`) o con las credenciales tapadas (`false`). Sin confirmador, siempre se tapan.
+ */
+export type ConfirmadorSecretos = (llamada: LlamadaHerramienta, hallazgos: readonly Hallazgo[], agente: string) => Promise<boolean>
+
+/** Herramientas cuya función es entregar una credencial de prueba al modelo (la persona la guardó para eso): no se revisan. */
+const ENTREGAN_CREDENCIALES = /(^|__)credenciales_(obtener|listar)$/
+
 export interface OpcionesHarness {
   llm: ProveedorLLM
   registro: RegistroHerramientas
   /** Sin aprobador, solo se ejecutan herramientas de lectura. */
   aprobar?: Aprobador
   validar?: Validador
+  /** Credenciales en lo que una herramienta devuelve: preguntar antes de enviarlas al modelo. Sin él, se tapan. */
+  confirmarSecretos?: ConfirmadorSecretos
   /** Si se indica, cada agente y cada herramienta quedan registrados como spans de la traza de la ejecución. */
   trazador?: Trazador
   /** Tokens máximos de toda la ejecución (agentes, subagentes y fases del flujo juntos); sin él, sin límite. */
@@ -46,6 +58,8 @@ export interface PeticionEjecucion {
   extras?: readonly Herramienta[]
   /** Sustituye al aprobador del Harness solo para esta ejecución. */
   aprobar?: Aprobador
+  /** Sustituye al confirmador de credenciales del Harness solo para esta ejecución. */
+  confirmarSecretos?: ConfirmadorSecretos
   /** Texto añadido al prompt de sistema del agente raíz (p. ej. memoria del proyecto). */
   sistemaExtra?: string
   /** Si se indica, la conversación se comprime automáticamente cuando se acerca al límite de la ventana. */
@@ -79,8 +93,8 @@ export class Harness {
     return this.correr(agente, p.prompt, p, p.ejecucionId ?? randomUUID(), 0, p.historial ?? [])
   }
 
-  private correr(agente: Agente, prompt: string, p: PeticionEjecucion, ejecucionId: string, profundidad: number, historial: Mensaje[]): Promise<ResultadoAgente> {
-    const interno = (): Promise<ResultadoAgente> => this.correrInterno(agente, prompt, p, ejecucionId, profundidad, historial)
+  private correr(agente: Agente, prompt: string, p: PeticionEjecucion, ejecucionId: string, profundidad: number, historial: Mensaje[], padre?: string): Promise<ResultadoAgente> {
+    const interno = (): Promise<ResultadoAgente> => this.correrInterno(agente, prompt, p, ejecucionId, profundidad, historial, padre)
     const modelo = (profundidad === 0 ? p.modelo : undefined) ?? agente.def.modelo
     return this.o.trazador
       ? this.o.trazador.conAgente(ejecucionId, { nombre: agente.nombre, profundidad, prompt, ...(modelo ? { modelo } : {}) }, interno)
@@ -93,20 +107,21 @@ export class Harness {
     p: PeticionEjecucion,
     ejecucionId: string,
     profundidad: number,
-    historial: Mensaje[]
+    historial: Mensaje[],
+    padre?: string
   ): Promise<ResultadoAgente> {
     const { registro } = this.o
     const emitir = (e: Omit<EventoAgente, 'ejecucionId' | 'agente' | 'profundidad'> & Record<string, unknown>): void =>
-      p.alEvento?.({ ejecucionId, agente: agente.nombre, profundidad, ...e } as EventoAgente)
+      p.alEvento?.({ ejecucionId, agente: agente.nombre, profundidad, ...(padre ? { padre } : {}), ...e } as EventoAgente)
     emitir({ tipo: 'inicio', prompt })
 
     const puedeDelegar = agente.subagentes.size > 0 && profundidad < (this.o.maxProfundidad ?? 3)
     // Lo que consumen los subagentes cuenta en el total de quien delega (antes la conversación solo sumaba lo del agente raíz).
     const usoHijos = { tokensEntrada: 0, tokensSalida: 0 }
     const delegar = puedeDelegar
-      ? herramientaDelegar(agente, async (hijo, tarea) => {
+      ? herramientaDelegar(agente, async (hijo, tarea, llamadaId) => {
           if (p.senal?.aborted) return { texto: 'Cancelado antes de delegar.', error: true }
-          const r = await this.correr(hijo, tarea, p, ejecucionId, profundidad + 1, [])
+          const r = await this.correr(hijo, tarea, p, ejecucionId, profundidad + 1, [], llamadaId)
           usoHijos.tokensEntrada += r.uso.tokensEntrada
           usoHijos.tokensSalida += r.uso.tokensSalida
           return { texto: r.estado === 'completado' ? r.texto : `El subagente terminó con estado «${r.estado}»${r.error ? `: ${r.error}` : ''}. ${r.texto}`.trim(), error: r.estado !== 'completado' }
@@ -122,7 +137,7 @@ export class Harness {
 
     const ejecutarLlamada = async (llamada: LlamadaHerramienta): Promise<ResultadoHerramienta> => {
       if (!permitidas.has(llamada.nombre)) return { texto: `Herramienta no disponible para este agente: ${llamada.nombre}`, error: true }
-      if (delegar && llamada.nombre === HERRAMIENTA_DELEGAR) return delegar.ejecutar(llamada.entrada, { cwd: p.cwd })
+      if (delegar && llamada.nombre === HERRAMIENTA_DELEGAR) return delegar.delegar(llamada.entrada, llamada.id)
       const h = extras.get(llamada.nombre) ?? registro.obtener(llamada.nombre)
       const riesgo = h?.clasificar?.(llamada.entrada) ?? h?.riesgo ?? 'ejecucion'
       const ctx = { cwd: p.cwd, ...(p.proyectoId ? { proyectoId: p.proyectoId } : {}), ...(p.senal ? { senal: p.senal } : {}) }
@@ -144,9 +159,26 @@ export class Harness {
 
     // Nunca lanza: una excepción aquí (guardrail, aprobador, herramienta) tumbaba el turno entero, dejaba un tool_use sin resultado
     // y la conversación sin guardar. El modelo recibe el error como resultado y decide.
+    // Lo que devuelve una herramienta va directo al modelo (sale de la máquina): si trae credenciales, decide la persona.
+    // `delegar` no se revisa aquí: el subagente ya pasó cada uno de sus resultados por este mismo filtro.
+    const sinSecretos = async (llamada: LlamadaHerramienta, r: ResultadoHerramienta): Promise<ResultadoHerramienta> => {
+      if (llamada.nombre === HERRAMIENTA_DELEGAR || ENTREGAN_CREDENCIALES.test(llamada.nombre)) return r
+      const hallazgos = detectarSecretos(r.texto)
+      if (!hallazgos.length) return r
+      const confirmar = p.confirmarSecretos ?? this.o.confirmarSecretos
+      const enviar = confirmar && !p.senal?.aborted ? await confirmar(llamada, hallazgos, agente.nombre).catch(() => false) : false
+      emitir({ tipo: 'guardrail', herramienta: llamada.nombre, motivo: enviar ? `credenciales enviadas al modelo con permiso del usuario (${hallazgos.length})` : `credenciales tapadas antes de enviarlas al modelo (${hallazgos.length})` })
+      if (enviar) return r
+      return {
+        ...r,
+        texto: `${redactarSecretos(r.texto)}\n\n[Odesk: se taparon ${hallazgos.length === 1 ? 'una posible credencial' : `${hallazgos.length} posibles credenciales`} (${describirHallazgos(hallazgos, 3).replace(/\n/g, ' ')}). No intentes leer el valor real por otra vía; si lo necesitas, pídele al usuario que lo configure.]`
+      }
+    }
+
     const llamar = async (llamada: LlamadaHerramienta): Promise<ResultadoHerramienta> => {
       try {
-        return await (this.o.trazador ? this.o.trazador.conHerramienta(llamada, () => ejecutarLlamada(llamada)) : ejecutarLlamada(llamada))
+        const r = await (this.o.trazador ? this.o.trazador.conHerramienta(llamada, () => ejecutarLlamada(llamada)) : ejecutarLlamada(llamada))
+        return await sinSecretos(llamada, r)
       } catch (err) {
         return { texto: `Error al ejecutar ${llamada.nombre}: ${(err as Error).message}`, error: true }
       }

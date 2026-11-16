@@ -9,9 +9,14 @@ export const HERRAMIENTA_DELEGAR = 'delegar'
  */
 export function herramientaDelegar(
   padre: Agente,
-  ejecutarHijo: (hijo: Agente, tarea: string) => Promise<{ texto: string; error?: boolean }>
-): Herramienta {
+  ejecutarHijo: (hijo: Agente, tarea: string, llamadaId?: string) => Promise<{ texto: string; error?: boolean }>
+): Herramienta & { delegar(entrada: Record<string, unknown>, llamadaId: string): Promise<{ texto: string; error?: boolean }> } {
   const nombres = [...padre.subagentes.keys()]
+  const delegar = async (entrada: Record<string, unknown>, llamadaId?: string): Promise<{ texto: string; error?: boolean }> => {
+    const hijo = padre.subagentes.get(String(entrada.agente))
+    if (!hijo) return { texto: `Subagente desconocido: ${String(entrada.agente)}`, error: true }
+    return ejecutarHijo(hijo, String(entrada.tarea), llamadaId)
+  }
   return {
     nombre: HERRAMIENTA_DELEGAR,
     descripcion:
@@ -23,10 +28,8 @@ export function herramientaDelegar(
       required: ['agente', 'tarea']
     },
     riesgo: 'lectura', // delegar no actúa por sí mismo: las herramientas del hijo pasan por su propia política
-    async ejecutar(entrada) {
-      const hijo = padre.subagentes.get(String(entrada.agente))
-      if (!hijo) return { texto: `Subagente desconocido: ${String(entrada.agente)}`, error: true }
-      return ejecutarHijo(hijo, String(entrada.tarea))
-    }
+    ejecutar: (entrada) => delegar(entrada),
+    /** Igual que `ejecutar`, con el id de la llamada: los eventos del hijo lo llevan como `padre`. */
+    delegar: (entrada, llamadaId) => delegar(entrada, llamadaId)
   }
 }

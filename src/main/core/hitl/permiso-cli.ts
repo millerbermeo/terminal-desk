@@ -1,3 +1,5 @@
+import { readFile, stat } from 'node:fs/promises'
+import { isAbsolute } from 'node:path'
 import { sinValoresCredencial } from '@shared/credenciales-herramientas'
 import type { EventoAgente, PreguntaUsuario } from '@shared/core/agente'
 import type { LlamadaHerramienta } from '@shared/core/herramientas'
@@ -6,6 +8,8 @@ import type { ModoAutonomia } from '@shared/core/permisos'
 import { motivoBloqueoAutonomo } from '../guardrails/autonomo'
 import { esDestructiva } from '../guardrails/destructivo'
 import { esBashSoloLectura } from '../guardrails/solo-lectura'
+import { detectarSecretos, type Hallazgo } from '../guardrails/secretos'
+import { avisoSecretos } from './aprobador'
 import type { PuertaHumana, SolicitudHumana } from '../orchestrator/puerta'
 import { decidir, reglaDe } from '../permisos/reglas'
 import type { PeticionPermiso, RespuestaPermiso } from '../suscripcion'
@@ -82,6 +86,53 @@ function razonDestructiva(llamada: LlamadaHerramienta, linea: string | null, sim
   )
 }
 
+const MAX_LECTURA_SECRETOS = 2 * 1024 * 1024
+
+/** Credenciales de un archivo que el CLI quiere leer (las mismas reglas que el gancho). Ilegible, enorme o binario: ninguna. */
+async function secretosDeArchivo(ruta: string): Promise<Hallazgo[]> {
+  try {
+    if (!ruta || !isAbsolute(ruta) || (await stat(ruta)).size > MAX_LECTURA_SECRETOS) return []
+    const datos = await readFile(ruta)
+    if (datos.subarray(0, 8000).includes(0)) return []
+    return detectarSecretos(datos.toString('utf8'))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Lectura de un archivo con posibles credenciales: su contenido iría al modelo. La persona decide; en «autónomo» nadie mira, así
+ * que se deniega. Si al revisarlo aquí ya no tiene credenciales (lo cambiaron entre medias), se deja leer.
+ */
+async function leerConSecretos(p: PeticionPermiso, d: DepsPermisoCli, alSolicitar: (id: string, s: SolicitudHumana) => void): Promise<RespuestaPermiso> {
+  const ruta = texto(p.entrada.file_path)
+  const hallazgos = await secretosDeArchivo(ruta)
+  if (!hallazgos.length) return { permitir: true }
+  const evento = (motivo: string): void => d.alEvento({ ejecucionId: d.ejecucionId, agente: 'asistente', profundidad: 0, tipo: 'guardrail', herramienta: 'Read', motivo } as EventoAgente)
+  const negado = `No se envió «${ruta}» al modelo: contiene posibles credenciales y el usuario no autorizó compartirlas. No intentes leerlo por otra vía (cat, grep, sed…); si necesitas algo de ese archivo que no sea un secreto, pídeselo al usuario.`
+  if (d.autonomia === 'autonomo') {
+    evento(`lectura de «${ruta}» denegada: contiene posibles credenciales (en modo autónomo no se envían)`)
+    return { permitir: false, mensaje: negado }
+  }
+  const dec = await d.puerta.solicitar(
+    {
+      clase: 'accion',
+      contenido: avisoSecretos(`«${ruta}»`, hallazgos, 'el asistente no recibe el archivo y sigue sin él.'),
+      detalle: 'El asistente quiere leer un archivo que parece contener credenciales',
+      herramienta: 'Read',
+      secretos: true
+    },
+    alSolicitar,
+    d.senal
+  )
+  if (!dec.aprobado) {
+    evento(`lectura de «${ruta}» denegada por el usuario: contiene posibles credenciales`)
+    return { permitir: false, mensaje: dec.comentario ? `${negado} Comentario del usuario: ${dec.comentario}` : negado }
+  }
+  evento(`«${ruta}» enviado al modelo con permiso del usuario pese a contener posibles credenciales`)
+  return { permitir: true }
+}
+
 /**
  * Responde a lo que el CLI de suscripción no puede decidir solo (`--permission-prompt-tool stdio`): las preguntas con opciones
  * (`AskUserQuestion`) y los permisos para escribir, ejecutar o usar herramientas. Mismas garantías que en modo API: los guardrails y
@@ -101,6 +152,9 @@ export function crearPermisoCli(d: DepsPermisoCli): (p: PeticionPermiso) => Prom
         if (!dec.aprobado) return { permitir: false, mensaje: dec.comentario ? `El usuario no quiso responder: ${dec.comentario}` : 'El usuario no quiso responder las preguntas.' }
         return { permitir: true, entrada: { ...p.entrada, answers: dec.respuestas ?? {} } }
       }
+
+      // `Read` solo llega aquí si el gancho de la guardia vio posibles credenciales («ask»): lo demás el CLI lo lee sin preguntar.
+      if (p.herramienta === 'Read') return await leerConSecretos(p, d, alSolicitar)
 
       const { llamada, descripcion, simple } = traducir(p)
       const bloqueo = await d.validar(llamada)

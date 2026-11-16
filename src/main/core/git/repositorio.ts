@@ -18,6 +18,7 @@ import {
   type Remoto,
   type ResultadoCambioConflicto,
   type ResultadoRemoto,
+  type SecretoDetectado,
   type Stash
 } from '@shared/versiones'
 import {
@@ -35,6 +36,12 @@ import {
   explicarError
 } from './analisis'
 import { git, type OpcionesGit, type ResultadoGit } from './git'
+import { describirHallazgos, secretosEnDiff } from '../guardrails/secretos'
+
+/** Tope de diff que se revisa en busca de credenciales antes de un commit (lo demás no se lee: ~8 MB). */
+const MAX_DIFF_SECRETOS = 8 * 1024 * 1024
+/** Inicio del error de un commit frenado por credenciales (la interfaz lo reconoce para ofrecer «Confirmar igual»). */
+export const ERROR_SECRETOS = 'Hay posibles credenciales en los cambios preparados; no se hizo el commit.'
 
 const MSG_SIN_GIT = 'Git no está instalado o no está en el PATH. Instálalo (https://git-scm.com) y reinicia la aplicación.'
 const MAX_DIFF = 400_000
@@ -342,7 +349,15 @@ export class Repositorio {
     })
   }
 
-  commit(mensaje: string, enmendar = false): Promise<{ hash: string; estado: EstadoGit }> {
+  /** Posibles credenciales en las líneas que añade lo preparado. Un diff enorme se revisa hasta `MAX_DIFF_SECRETOS`. */
+  async secretosPreparados(): Promise<SecretoDetectado[]> {
+    await this.exigirRepo()
+    // Sin commits aún, `--cached` compara con el árbol vacío: todo lo preparado cuenta como añadido.
+    const diff = await this.ok(['diff', '--cached', '-U0', '--no-color', '--no-ext-diff', '--no-renames'])
+    return secretosEnDiff(diff.length > MAX_DIFF_SECRETOS ? diff.slice(0, MAX_DIFF_SECRETOS) : diff)
+  }
+
+  commit(mensaje: string, enmendar = false, permitirSecretos = false): Promise<{ hash: string; estado: EstadoGit }> {
     return this.escribir(async () => {
       await this.exigirRepo()
       const texto = typeof mensaje === 'string' ? mensaje.trim() : ''
@@ -352,6 +367,11 @@ export class Repositorio {
       if (!enmendar && !texto && !estado.operacion) throw new Error('Escribe un mensaje para el commit.')
       if (enConflicto(estado).length) throw new Error('Hay archivos en conflicto: resuélvelos y prepáralos antes de confirmar.')
       if (!enmendar && preparados(estado).length === 0 && !estado.operacion) throw new Error('No hay cambios preparados. Prepara los archivos que quieras incluir.')
+      // Última barrera: aunque la interfaz ya avisó, un commit con credenciales solo sale si la persona lo pidió explícitamente.
+      if (!permitirSecretos) {
+        const secretos = await this.secretosPreparados()
+        if (secretos.length) throw new Error(`${ERROR_SECRETOS}\n${describirHallazgos(secretos)}`)
+      }
       const args = ['commit', ...(enmendar ? ['--amend'] : []), ...(texto ? ['-F', '-'] : ['--no-edit'])]
       await this.ok(args, { ...(texto ? { entrada: texto + '\n' } : {}), env: { GIT_EDITOR: 'true' } })
       const hash = (await this.ok(['rev-parse', '--short', 'HEAD'])).trim()

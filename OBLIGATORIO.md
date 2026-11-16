@@ -109,6 +109,9 @@ Biblioteca de recursos (compartidos o individuales de un proyecto) con activaci�
 - **Permisos del sistema**: la primera llamada o nota de voz pide acceso al micrófono (y a la cámara en videollamada). En macOS ver `NSMicrophoneUsageDescription` / `NSCameraUsageDescription` en `electron-builder.yml`.
 - El correo de invitación a quien aún no tiene cuenta sale por el mismo SMTP que los códigos de verificación.
 
+- **Cifrado de extremo a extremo** (migración `0014_chat_cifrado`: tabla `chat_keys` y columna `chat_attachments.encrypted`). **Ejecútala y actualiza a la vez el API y todas las apps**: el API nuevo **rechaza mensajes y archivos sin cifrar** (`CHAT_EXIGIR_CIFRADO`, `=0` solo para pruebas) y una app antigua ya no puede enviar ni descifrar. Cada usuario crea al abrir el chat una **frase de seguridad** (mín. 12 caracteres) que **nunca llega al servidor**: si la olvida, nadie puede recuperar sus claves (puede crear otras y pierde lo cifrado con las anteriores en los equipos que no las tengan). Los mensajes antiguos siguen en claro en la base (`body` sin prefijo `e2e1.`) y se ven marcados «sin cifrar»; si quieres que desaparezcan, bórralos tú (no hay migración que lo haga).
+- **Privacidad de las IP en llamadas**: con TURN configurado, `CHAT_ICE_SOLO_RELAY=1` obliga a que todo pase por el TURN y ningún equipo ve la IP pública del otro (más latencia y tráfico en el TURN). El audio y el video van cifrados de extremo a extremo igualmente.
+- **Linux sin llavero** (sin gnome-keyring/kwallet): la clave privada no se guarda en disco y la app pide la frase en cada arranque.
 
 ## 13. Dispositivos conectados (Cuenta)
 

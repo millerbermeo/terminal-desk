@@ -14,6 +14,7 @@ export interface Solicitud {
   preguntas?: PreguntaUsuario[] // clase `pregunta`: opciones que el modelo le plantea al usuario
   destino?: string // proyecto o celda que la originó (si se conoce)
   sudo?: boolean // pide la contraseña de administrador
+  secretos?: boolean // el contenido trae posibles credenciales que irían al modelo
 }
 
 /**
@@ -38,7 +39,7 @@ export function escucharSolicitudes(): () => void {
       ...solicitudes,
       {
         solicitudId: e.solicitudId, ejecucionId: e.ejecucionId, agente: e.agente, clase: e.clase, contenido: e.contenido,
-        ...(e.detalle ? { detalle: e.detalle } : {}), ...(e.destructivo ? { destructivo: true } : {}), ...(e.herramienta ? { herramienta: e.herramienta } : {}), ...(e.puedeSiempre ? { puedeSiempre: true } : {}), ...(e.preguntas ? { preguntas: e.preguntas } : {}), ...(e.sudo ? { sudo: true } : {}),
+        ...(e.detalle ? { detalle: e.detalle } : {}), ...(e.destructivo ? { destructivo: true } : {}), ...(e.herramienta ? { herramienta: e.herramienta } : {}), ...(e.puedeSiempre ? { puedeSiempre: true } : {}), ...(e.preguntas ? { preguntas: e.preguntas } : {}), ...(e.sudo ? { sudo: true } : {}), ...(e.secretos ? { secretos: true } : {}),
         ...(destino ? { destino } : {})
       }
     ])

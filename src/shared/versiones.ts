@@ -137,6 +137,13 @@ interface P {
   proyectoId: string
 }
 
+/** Posible credencial encontrada en un archivo (el extracto va redactado: nunca el valor completo). */
+export interface SecretoDetectado {
+  archivo: string
+  linea?: number
+  mensaje: string
+}
+
 export interface OperacionesGit {
   estado: { entrada: P; salida: EstadoGit }
   iniciar: { entrada: P & { rama?: string }; salida: EstadoGit }
@@ -146,7 +153,13 @@ export interface OperacionesGit {
   despreparar: { entrada: P & { rutas?: string[] }; salida: EstadoGit }
   /** Deshace los cambios de esas rutas (los archivos sin seguimiento se borran): no se puede recuperar. */
   descartar: { entrada: P & { rutas: string[] }; salida: EstadoGit }
-  commit: { entrada: P & { mensaje: string; enmendar?: boolean }; salida: { hash: string; estado: EstadoGit } }
+  /**
+   * Con posibles credenciales en lo preparado, falla salvo que `permitirSecretos` sea `true` (la persona ya vio el aviso de
+   * `secretosPreparados` y decidió confirmar igual). La IA no puede pasarlo.
+   */
+  commit: { entrada: P & { mensaje: string; enmendar?: boolean; permitirSecretos?: boolean }; salida: { hash: string; estado: EstadoGit } }
+  /** Posibles credenciales en las líneas que añade lo preparado (lo que entraría en el commit). Nunca devuelve el valor entero. */
+  secretosPreparados: { entrada: P; salida: SecretoDetectado[] }
   historial: { entrada: P & { limite?: number; saltar?: number; rama?: string; todas?: boolean; ruta?: string; texto?: string }; salida: { commits: Commit[]; hayMas: boolean } }
   detalleCommit: { entrada: P & { hash: string }; salida: DetalleCommit }
   ramas: { entrada: P; salida: Rama[] }

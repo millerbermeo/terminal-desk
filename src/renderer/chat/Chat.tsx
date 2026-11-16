@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ConversacionChat, ResultadoBusqueda } from '@shared/chat'
 import { almacenChat, useChat } from './almacen'
 import { Avatar } from './Avatar'
+import { ConfigurarCifrado } from './Cifrado'
 import { Contactos } from './Contactos'
 import { Hilo } from './Hilo'
 import { IArchivar, IArchivo, IBurbujas, IBuscar, ICamara, ICampanaNo, ICerrar, IMic, IPersonaMas, ITelefono, ITicks, IVideo, IVolver } from './Iconos'
@@ -113,6 +114,23 @@ export function Chat({ visible }: { visible: boolean }) {
   const otroDe = (id: string) => vista.conversaciones.find((c) => c.id === id)?.otro
   const nArchivadas = vista.conversaciones.filter((c) => c.archivada).length
   const hayBusqueda = q.trim().length >= 2
+
+  // Sin claves abiertas en este equipo no se muestra nada del chat: primero crear o abrir el cifrado.
+  if (vista.cifrado && vista.cifrado.estado !== 'listo') {
+    return (
+      <main className="chat" style={{ display: visible ? 'flex' : 'none' }}>
+        <ConfigurarCifrado estado={vista.cifrado} />
+        {vista.error && (
+          <div className="ch-error" role="alert">
+            <span>{vista.error}</span>
+            <button className="icono" onClick={almacenChat.descartarError} aria-label="Cerrar aviso">
+              <ICerrar tam={14} />
+            </button>
+          </div>
+        )}
+      </main>
+    )
+  }
 
   return (
     <main className="chat" style={{ display: visible ? 'flex' : 'none' }}>

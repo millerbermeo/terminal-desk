@@ -23,6 +23,7 @@ export const COMANDOS_INCLUIDOS = [
   { nombre: 'permisos', descripcion: 'Reglas de permisos de este proyecto', uso: '/permisos' },
   { nombre: 'comandos', descripcion: 'Gestiona tus comandos con /', uso: '/comandos' },
   { nombre: 'plan', descripcion: 'Descompone una funcionalidad en tareas con criterios y dependencias (no implementa nada)', uso: '/plan <funcionalidad>' },
+  { nombre: 'explicar', descripcion: 'Explica código con diagramas de flujo o de arquitectura (Mermaid)', uso: '/explicar <archivo, carpeta, función o código>' },
   { nombre: 'tareas', descripcion: 'Revisa las tareas del proyecto: bloqueos, mal definidas y siguiente paso', uso: '/tareas' },
   { nombre: 'commit', descripcion: 'Revisa los cambios y propone el commit (espera tu visto bueno)', uso: '/commit [indicaciones]' },
   { nombre: 'pr', descripcion: 'Redacta y abre un pull request de la rama actual en GitHub', uso: '/pr [indicaciones]' },
@@ -97,6 +98,13 @@ export const PLANTILLAS_INCLUIDAS: Record<string, string> = {
     'Abre un pull request con la rama actual: 1) mira git_estado (rama, commits por enviar) y git_historial para ver qué commits trae la rama; ' +
     '2) si hay cambios sin confirmar, avísame; 3) redacta el título y la descripción (qué cambia, por qué y cómo probarlo); 4) muéstramelos y espera mi visto bueno; ' +
     '5) con él, usa github_crear_pr (envía la rama si hace falta). No fusiones nada.',
+  explicar:
+    'Explícame este código SIN cambiar nada (solo lectura). Primero léelo: si es una ruta, carpeta o nombre de función, búscalo en el proyecto ' +
+    '(o en los proyectos del grupo); si es código pegado, usa ese. Responde en este orden: 1) qué hace y para qué, en 2-3 frases; ' +
+    '2) uno o dos diagramas Mermaid en bloques ```mermaid: `flowchart TD` para el flujo de una función o un proceso, `graph LR` con `subgraph` ' +
+    'para la arquitectura de varios módulos o servicios, y `sequenceDiagram` para llamadas entre componentes; usa los nombres reales de ' +
+    'funciones y archivos, máximo ~15 nodos por diagrama, ids de nodo sin espacios y etiquetas entre comillas si llevan símbolos; ' +
+    '3) los pasos clave con referencias archivo:línea; 4) riesgos, casos límite o cosas poco obvias, si los hay. Qué explicar: $ARGUMENTOS',
   tareas:
     'Revisa las tareas de este proyecto: usa resumen_tareas y listar_tareas. Dime qué está bloqueado y por qué, qué tareas están mal definidas ' +
     '(sin criterios de aceptación) o parecen duplicadas, y qué falta. Recomiéndame las prioridades y el siguiente paso. No cambies nada sin que te lo pida.'

@@ -182,3 +182,12 @@
   .ag-grupo, .ag-vivo { border-color: var(--borde-fuerte); }
   .ag-paso-detalle, .ag-grupo-cat, .ag-vivo-meta { color: var(--texto-suave); }
 }
+
+/* Diagramas Mermaid del Asistente (`components/DiagramaMermaid.tsx`). */
+.md-mermaid { position: relative; }
+.md-mermaid-cab { display: flex; justify-content: flex-end; padding: 4px 8px 0; }
+.md-mermaid-cab button { font-size: 12px; background: none; border: 1px solid var(--borde); border-radius: 6px; padding: 2px 8px; color: inherit; cursor: pointer; }
+.md-mermaid-cab button:hover { background: var(--bg-hover); border-color: var(--borde-hover); }
+.md-mermaid-svg { padding: 12px; overflow-x: auto; display: flex; justify-content: center; }
+.md-mermaid-svg svg { max-width: 100%; height: auto; }
+.md-mermaid-error { padding: 4px 12px 8px; font-size: 12px; color: var(--aviso); }

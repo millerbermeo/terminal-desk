@@ -211,7 +211,7 @@ export function GrupoHerramientas({ pasos, vivo }: { pasos: PasoHerramienta[]; v
  * Barra viva de un turno en curso: qué hace ahora (con brillo que recorre el texto), pasos y tiempo, y «Detener».
  * Tiene su propio reloj: el turno no se repinta cada segundo.
  */
-export function EstadoVivo({ eventos, escribiendo, inicio, onDetener, puedeDetener }: { eventos: EventoAgente[]; escribiendo: boolean; inicio?: number; onDetener: () => void; puedeDetener: boolean }) {
+export function EstadoVivo({ eventos, escribiendo, inicio, onDetener, puedeDetener, onVerTrabajo }: { eventos: EventoAgente[]; escribiendo: boolean; inicio?: number; onDetener: () => void; puedeDetener: boolean; /** Abre «Ver trabajo» (agentes y subagentes en vivo). */ onVerTrabajo?: () => void }) {
   const [ahora, setAhora] = useState(() => Date.now())
   useEffect(() => {
     const id = window.setInterval(() => setAhora(Date.now()), 1000)
@@ -232,6 +232,12 @@ export function EstadoVivo({ eventos, escribiendo, inicio, onDetener, puedeDeten
         {pasos > 0 && inicio !== undefined && ' · '}
         {inicio !== undefined && <span className="ag-vivo-reloj">{duracion(ahora - inicio)}</span>}
       </span>
+      {onVerTrabajo && (
+        <button type="button" className="ag-vivo-trabajo" onClick={onVerTrabajo} title="Ver en vivo cómo trabajan el asistente y sus subagentes">
+          <span className="trb-latido" aria-hidden="true" />
+          Ver trabajo
+        </button>
+      )}
       <button type="button" className="ag-vivo-detener" onClick={onDetener} disabled={!puedeDetener} title="Detener la tarea (lo ya hecho se conserva)">
         <span aria-hidden="true" className="ag-vivo-cuadro" />
         Detener

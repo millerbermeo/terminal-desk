@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import type { ContactoChat } from '@shared/chat'
+import { AjustesCifrado } from './Cifrado'
 import { almacenChat, type VistaChat } from './almacen'
 import { Avatar } from './Avatar'
 import { confirmar } from '../confirmar'
@@ -159,6 +160,7 @@ export function Contactos({ vista, alAbrirChat }: { vista: VistaChat; alAbrirCha
             Mostrar cuándo estoy en línea y mi última conexión
           </label>
           <p className="ch-nada">Tu correo ({vista.yo.email}) lo ven las personas a las que invitas o que te invitan.</p>
+          <AjustesCifrado estado={vista.cifrado} />
         </section>
       )}
     </div>

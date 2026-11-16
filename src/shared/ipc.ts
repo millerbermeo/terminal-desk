@@ -21,6 +21,7 @@ import type { NombreOperacionGitHub, OperacionesGitHub } from './github'
 import type { NombreOperacionHistorial, OperacionesHistorial } from './historial'
 import type { AccionNavegador, EstadoNavegador, ServidorLocal } from './navegador'
 import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion'
+import type { OperacionProgramadas, TareaProgramada } from './programadas'
 import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
 import type { AjustesAsistente } from './ajustes'
 import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso } from './modelos'
@@ -140,6 +141,8 @@ export const Canales = {
   coreSesionesListar: 'core:sesiones-listar',
   coreSesionObtener: 'core:sesion-obtener',
   coreTraspasar: 'core:traspasar',
+  coreRamificar: 'core:ramificar',
+  coreProgramadas: 'core:programadas',
   coreSesionTranscripcion: 'core:sesion-transcripcion',
   coreSesionBorrar: 'core:sesion-borrar',
   coreMemoriaListar: 'core:memoria-listar',
@@ -354,6 +357,10 @@ export interface ApiCentro {
     sesionObtener(sesionId: string): Promise<SesionGuardada | undefined>
     /** Resume una conversación para empezar otra con ese contexto (lo importante, compactado). */
     traspasar(sesionId: string): Promise<{ resumen: string; titulo: string; conModelo: boolean }>
+    /** Resumen (sin modelo, al instante) de los turnos que se llevan a una conversación ramificada. */
+    ramificar(turnos: TurnoGuardado[]): Promise<{ resumen: string }>
+    /** Tareas programadas del Asistente (`listar` y `eliminar` devuelven la lista; `guardar` y `ejecutar`, la tarea). */
+    programadas(o: OperacionProgramadas): Promise<TareaProgramada[] | TareaProgramada>
     /** Guarda lo que se ve en pantalla (turnos terminados) de una conversación. */
     sesionTranscripcion(sesionId: string, turnos: TurnoGuardado[], proyectoId?: string): Promise<void>
     /** Elimina una conversación del historial. */

@@ -58,7 +58,8 @@ const MOTIVOS: Record<string, string> = {
   atendida_en_otro: 'Atendida en otro equipo',
   conexion_perdida: 'Se perdió la conexión',
   colgada: 'Llamada terminada',
-  invalida: 'No se pudo iniciar la llamada'
+  invalida: 'No se pudo iniciar la llamada',
+  cifrado: 'Llamada cortada: no se pudo comprobar el cifrado de extremo a extremo'
 }
 
 /** Mensajes del navegador al pedir micrófono o cámara, en cristiano. */
@@ -194,6 +195,8 @@ class ControlLlamada {
   private reloj?: number
   private fin?: number
   private ice: ServidorIce[] = []
+  /** Solo por el TURN (lo decide el servidor): ninguno de los dos ve la IP pública del otro. */
+  private soloRelay = false
   private readonly timbre = new Timbre()
   /** Pistas que llegan del otro, cada una por su canal. */
   private remotas: { audio?: MediaStreamTrack; camara?: MediaStreamTrack; pantalla?: MediaStreamTrack } = {}
@@ -244,13 +247,20 @@ class ControlLlamada {
       return this.terminar(errorDeMedios(err))
     }
     try {
-      this.ice = (await window.api.chat.operar('ice', {})).servidores
+      const ice = await window.api.chat.operar('ice', {})
+      this.ice = ice.servidores
+      this.soloRelay = ice.soloRelay === true
     } catch (err) {
       return this.terminar((err as Error).message)
     }
     const llamadaId = crypto.randomUUID()
     this.fijar({ llamadaId, local: this.local, fase: 'llamando' })
-    this.orden({ t: 'llamada.invitar', llamadaId, usuarioId: con.id, video })
+    // Main se niega a invitar si la clave del contacto no está aceptada (la señalización no se podría cifrar): se avisa y se corta.
+    try {
+      await window.api.chat.operar('tiempoReal', { orden: { t: 'llamada.invitar', llamadaId, usuarioId: con.id, video } })
+    } catch (err) {
+      if (this.vista.llamadaId === llamadaId) this.terminar((err as Error).message)
+    }
   }
 
   async contestar(): Promise<void> {
@@ -263,7 +273,9 @@ class ControlLlamada {
       this.local = m.flujo
       this.fijar({ camaraDisponible: m.camara, sinCamara: video && !m.camara, ...(m.aviso ? { avisoCamara: m.aviso } : {}) })
       if (m.aviso) this.quitarAvisoLuego()
-      this.ice = (await window.api.chat.operar('ice', {})).servidores
+      const ice = await window.api.chat.operar('ice', {})
+      this.ice = ice.servidores
+      this.soloRelay = ice.soloRelay === true
     } catch (err) {
       this.orden({ t: 'llamada.responder', llamadaId, aceptar: false })
       return this.terminar(errorDeMedios(err))
@@ -493,7 +505,7 @@ class ControlLlamada {
   }
 
   private crearConexion(): void {
-    const pc = new RTCPeerConnection({ iceServers: this.ice })
+    const pc = new RTCPeerConnection({ iceServers: this.ice, ...(this.soloRelay ? { iceTransportPolicy: 'relay' as const } : {}) })
     this.pc = pc
     this.remotas = {}
     this.local?.getTracks().forEach((t) => pc.addTrack(t, this.local!))

@@ -37,6 +37,7 @@ import { TerminalGrid, type Modo } from './components/TerminalGrid'
 import { transferidas } from './components/TerminalPanel'
 import { encolarExterno } from './agente/externos'
 import type { AccionIa } from '@shared/control-app'
+import { EVENTO_EJECUTAR_EN_TERMINAL, type DetalleEjecutarEnTerminal } from './components/Markdown'
 import { aPayload, extrasSinPty, ptysDeExtras, reducirPestanas, type OperacionPestana } from './duplicar'
 
 const Documentacion = lazy(() => import('./components/Documentacion').then((m) => ({ default: m.Documentacion })))
@@ -493,6 +494,36 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
     if (a.tipo === 'asistente-enviar') encolarExterno(p.id, a.mensaje)
   }
   useEffect(() => window.api.ia.onAccion((a) => void accionIa.current(a)), [])
+  // «Ejecutar en terminal» de un bloque de código del Asistente (ya confirmado allí): se escribe en la terminal «⚡» del proyecto si sigue
+  // viva y esperando órdenes; si no, se abre una nueva en la carpeta del proyecto. Nunca en la terminal de un CLI (Claude, Codex…).
+  const terminalComandos = useRef(new Map<string, string>()) // proyectoId -> ptyId
+  useEffect(() => {
+    const alPedir = (e: Event): void => {
+      const { proyectoId, comando } = (e as CustomEvent<DetalleEjecutarEnTerminal>).detail
+      void (async () => {
+        const p = datosRef.current.proyectos.find((x) => x.id === proyectoId)
+        if (!p || !comando.trim()) return
+        const { id, nombre } = claveDe(p)
+        const previo = terminalComandos.current.get(proyectoId)
+        const celda = previo ? ventanasRef.current.flatMap((v) => v.terminales.map((t) => ({ v, t }))).find((x) => x.t.ptyId === previo) : undefined
+        if (celda && previo && (await window.api.terminal.enShell(previo).catch(() => false))) {
+          cambiar(celda.v.id, (v) => ({ ...v, activa: celda.t.id }))
+          setVentanaActiva(celda.v.id)
+          setVista('terminales')
+          window.api.terminal.escribir(previo, `${comando}\r`)
+          return
+        }
+        const ptyId = await window.api.terminal.crear({ cwd: p.ruta, proyectoId: p.id, cols: 120, rows: 30 })
+        terminalComandos.current.set(proyectoId, ptyId)
+        const ventana = ventanasRef.current.find((v) => v.id === id)
+        agregar(id, nombre, [{ ...nuevaTerminal(tituloUnico(`⚡ ${p.nombre}`, ventana?.terminales ?? []), p.ruta, undefined, p.id), ptyId }])
+        // El shell lee lo que se escribe aunque aún esté cargando su configuración: se deja un margen para que el prompt salga antes.
+        setTimeout(() => window.api.terminal.escribir(ptyId, `${comando}\r`), 600)
+      })()
+    }
+    window.addEventListener(EVENTO_EJECUTAR_EN_TERMINAL, alPedir)
+    return () => window.removeEventListener(EVENTO_EJECUTAR_EN_TERMINAL, alPedir)
+  }, [agregar, cambiar, claveDe])
   // «Ir a la línea» del historial local: muestra la celda de archivos del proyecto; su `PanelArchivos` abre el archivo en esa línea.
   useEffect(() => {
     const alPedir = (e: Event): void => {

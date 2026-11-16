@@ -12,6 +12,8 @@ export interface SolicitudHumana {
   preguntas?: PreguntaUsuario[]
   /** Pide la contraseña de administrador (el modal la verifica por `core:sudo-verificar`; nunca viaja en la decisión). */
   sudo?: boolean
+  /** Lo que se va a enviar al modelo trae posibles credenciales: «Permitir» lo envía tal cual, «Rechazar» lo envía tapado. */
+  secretos?: boolean
 }
 
 interface Pendiente {

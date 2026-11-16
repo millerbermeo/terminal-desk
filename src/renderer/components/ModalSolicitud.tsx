@@ -176,24 +176,24 @@ function PanelConfirmacion({ solicitud: s, pendientes, onResponder }: Props) {
   return (
     <div className="ag-solicitud-fondo">
       <div
-        className={`ag-solicitud${s.destructivo ? ' destructiva' : ''}`}
+        className={`ag-solicitud${s.destructivo || s.secretos ? ' destructiva' : ''}`}
         role="alertdialog"
-        aria-label={TITULOS[s.clase]}
+        aria-label={s.secretos ? 'Posibles credenciales' : TITULOS[s.clase]}
         onKeyDown={(e) => {
           if (e.key === 'Escape') onResponder(false, comentario || undefined)
         }}
       >
         <div className="ag-solicitud-cab">
           <h3>
-            {s.destructivo ? '⚠ ' : ''}
-            {TITULOS[s.clase]}
+            {s.destructivo || s.secretos ? '⚠ ' : ''}
+            {s.secretos ? 'Posibles credenciales' : TITULOS[s.clase]}
           </h3>
           <span className="ag-chips">
             {s.destino && <span className="chip" title="Proyecto que lo solicita">{s.destino}</span>}
             {pendientes > 1 && <span className="chip">{pendientes} pendientes</span>}
           </span>
         </div>
-        {s.detalle && <p className={`ag-detalle${s.destructivo ? ' peligro' : ''}`}>{s.detalle}</p>}
+        {s.detalle && <p className={`ag-detalle${s.destructivo || s.secretos ? ' peligro' : ''}`}>{s.detalle}</p>}
         {s.clase === 'pregunta' ? (
           (s.preguntas ?? []).map((q) => (
             <fieldset key={q.pregunta} className="ag-pregunta">
@@ -237,7 +237,7 @@ function PanelConfirmacion({ solicitud: s, pendientes, onResponder }: Props) {
           value={comentario}
           onChange={(e) => setComentario(e.target.value)}
         />}
-        {s.clase === 'accion' && !s.destructivo && (
+        {s.clase === 'accion' && !s.destructivo && !s.secretos && (
           <label className="ag-recordar">
             <input type="checkbox" checked={recordar} onChange={(e) => setRecordar(e.target.checked)} />
             No volver a preguntar por «{s.herramienta}» en esta ejecución
@@ -251,15 +251,15 @@ function PanelConfirmacion({ solicitud: s, pendientes, onResponder }: Props) {
         )}
         <div className="cfg-acciones">
           <button
-            className={s.destructivo ? 'peligro-solido' : 'primario'}
-            autoFocus={!s.destructivo && s.clase !== 'pregunta'}
+            className={s.destructivo || s.secretos ? 'peligro-solido' : 'primario'}
+            autoFocus={!s.destructivo && !s.secretos && s.clase !== 'pregunta'}
             disabled={s.clase === 'pregunta' && !completa}
             onClick={() => (s.clase === 'pregunta' ? onResponder(true, undefined, false, false, respuestas) : onResponder(true, comentario || undefined, recordar, siempre))}
           >
-            {s.clase === 'pregunta' ? 'Responder' : s.clase === 'plan' ? 'Aprobar plan' : s.clase === 'confirmacion' ? 'Aceptar resultado' : s.destructivo ? 'Permitir (destructiva)' : 'Permitir'}
+            {s.secretos ? 'Enviar al modelo igual' : s.clase === 'pregunta' ? 'Responder' : s.clase === 'plan' ? 'Aprobar plan' : s.clase === 'confirmacion' ? 'Aceptar resultado' : s.destructivo ? 'Permitir (destructiva)' : 'Permitir'}
           </button>
-          <button autoFocus={s.destructivo} onClick={() => onResponder(false, comentario || undefined)}>
-            Rechazar
+          <button autoFocus={s.destructivo || s.secretos} onClick={() => onResponder(false, comentario || undefined)}>
+            {s.secretos ? 'No enviar' : 'Rechazar'}
           </button>
         </div>
       </div>

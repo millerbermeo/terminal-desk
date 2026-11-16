@@ -9,7 +9,8 @@ import { Compositor } from './Compositor'
 import type { NotaGrabada } from './nota-voz'
 import { Visor, type MedioVisor } from './Visor'
 import { controlLlamada } from './llamadas'
-import { IAbajo, IArchivar, IBloquear, ICampana, ICampanaNo, IDescargar, IEscoba, IMas, IMic, ITelefono, IVideo, IVolver } from './Iconos'
+import { IAbajo, IArchivar, IBloquear, ICampana, ICampanaNo, ICandado, IDescargar, IEscoba, IEscudo, IMas, IMic, ITelefono, IVideo, IVolver } from './Iconos'
+import { AvisoCifrado, PanelSeguridad, useCifradoContacto } from './Cifrado'
 
 interface Props {
   vista: VistaChat
@@ -60,6 +61,10 @@ export function Hilo({ vista, conversacion, alVolver }: Props) {
   const capasArrastre = useRef(0) // dragenter/dragleave llegan por cada hijo: se cuentan para saber cuándo se sale de verdad
   const [menu, setMenu] = useState(false)
   const [confirmar, setConfirmar] = useState<'vaciar' | 'bloquear' | ''>('')
+  const [seguridad, setSeguridad] = useState(false)
+  const [cifrado, setCifrado] = useCifradoContacto(otro.id, vista.versionClaves, vista.cifrado?.claveId)
+  // Sin una clave aceptada del contacto no se puede escribir ni llamar con seguridad (main lo impide igualmente).
+  const seguro = cifrado?.estado === 'confiable' || cifrado?.estado === 'verificada'
   const escribe = vista.escribiendo[conversacion.id] === otro.id
   const grabaAudio = escribe && !!vista.grabando[conversacion.id]
 
@@ -243,10 +248,19 @@ export function Hilo({ vista, conversacion, alVolver }: Props) {
           </span>
         </div>
         <div className="ch-hilo-acciones">
-          <button className="ch-boton-cab" onClick={() => llamar(false)} disabled={!esContacto || vista.conexion !== 'conectado'} aria-label="Llamada de voz" title="Llamada de voz">
+          <button
+            className={`ch-boton-cab ch-boton-cifrado ${cifrado?.estado ?? ''}`}
+            onClick={() => setSeguridad((v) => !v)}
+            aria-label="Cifrado de extremo a extremo"
+            title={cifrado?.estado === 'verificada' ? 'Cifrado de extremo a extremo · verificado' : cifrado?.estado === 'confiable' ? 'Cifrado de extremo a extremo' : 'Revisa el cifrado de este chat'}
+            aria-expanded={seguridad}
+          >
+            {cifrado?.estado === 'verificada' ? <IEscudo /> : <ICandado />}
+          </button>
+          <button className="ch-boton-cab" onClick={() => llamar(false)} disabled={!esContacto || !seguro || vista.conexion !== 'conectado'} aria-label="Llamada de voz" title="Llamada de voz">
             <ITelefono />
           </button>
-          <button className="ch-boton-cab" onClick={() => llamar(true)} disabled={!esContacto || vista.conexion !== 'conectado'} aria-label="Videollamada" title="Videollamada">
+          <button className="ch-boton-cab" onClick={() => llamar(true)} disabled={!esContacto || !seguro || vista.conexion !== 'conectado'} aria-label="Videollamada" title="Videollamada">
             <IVideo />
           </button>
           <div className="ch-hilo-mas">
@@ -277,6 +291,9 @@ export function Hilo({ vista, conversacion, alVolver }: Props) {
           </div>
         </div>
       </header>
+
+      {seguridad && <PanelSeguridad otro={otro} estado={cifrado} cambiar={setCifrado} cerrar={() => setSeguridad(false)} />}
+      {!seguridad && <AvisoCifrado otro={otro} estado={cifrado} alRevisar={() => setSeguridad(true)} />}
 
       {confirmar && (
         <div className={`ch-confirmar ${confirmar}`} role="alertdialog" aria-label="Confirmar">

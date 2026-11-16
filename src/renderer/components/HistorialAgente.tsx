@@ -4,7 +4,7 @@ import { EstadoVacio } from './EstadoVacio'
 import { IconoReloj, IconoCerrar } from './Iconos'
 import { confirmar } from '../confirmar'
 import { Esqueletos } from './Cargando'
-import { MAX_ETIQUETAS, alternarFijada, etiquetasEnUso, filtrarSesiones, guardarOrganizacion, leerOrganizacion, olvidarSesion, ordenarSesiones, ponerEtiquetas, textoBuscable, type Organizacion } from '../agente/utilidades-chat'
+import { MAX_ETIQUETAS, alternarFijada, formatoTokens, formatoUsd, ordenarPorConsumo, etiquetasEnUso, filtrarSesiones, guardarOrganizacion, leerOrganizacion, olvidarSesion, ordenarSesiones, ponerEtiquetas, textoBuscable, type Organizacion } from '../agente/utilidades-chat'
 
 interface Props {
   proyectoId?: string // sin proyecto: conversaciones de todos
@@ -41,6 +41,7 @@ export function HistorialAgente({ proyectoId, activaId, deshabilitado, onAbrir, 
   const contenido = useRef(new Map<string, string>())
   const [version, setVersion] = useState(0)
   const [buscando, setBuscando] = useState(false)
+  const [porConsumo, setPorConsumo] = useState(false)
 
   const cargar = useCallback(() => void window.api.core.sesionesListar(proyectoId).then(setLista).catch(() => setLista([])), [proyectoId])
   useEffect(cargar, [cargar])
@@ -87,8 +88,11 @@ export function HistorialAgente({ proyectoId, activaId, deshabilitado, onAbrir, 
 
   const visibles = useMemo(() => {
     void version // se recalcula cuando llega el contenido de otra conversación
-    return ordenarSesiones(filtrarSesiones(lista ?? [], org, { texto: termino, etiqueta, contenido: contenido.current }), org)
-  }, [lista, org, termino, etiqueta, version])
+    const filtradas = filtrarSesiones(lista ?? [], org, { texto: termino, etiqueta, contenido: contenido.current })
+    return porConsumo ? ordenarPorConsumo(filtradas) : ordenarSesiones(filtradas, org)
+  }, [lista, org, termino, etiqueta, version, porConsumo])
+  const totalTokens = visibles.reduce((t, s) => t + s.tokens, 0)
+  const totalCosto = visibles.reduce((t, s) => t + (s.costo ?? 0), 0)
   const etiquetas = useMemo(() => etiquetasEnUso(org), [org])
   const filtrando = termino !== '' || etiqueta !== ''
 
@@ -111,6 +115,14 @@ export function HistorialAgente({ proyectoId, activaId, deshabilitado, onAbrir, 
             </div>
           )}
           {termino.length >= 2 && buscando && <small className="ag-historial-nota">Buscando también dentro de las conversaciones…</small>}
+          <div className="ag-historial-consumo">
+            <span title="Suma de las conversaciones de la lista. El coste es a precio de lista y solo se conoce con la suscripción (lo informa el CLI).">
+              {visibles.length} {visibles.length === 1 ? 'conversación' : 'conversaciones'} · {formatoTokens(totalTokens)} tokens{totalCosto > 0 ? ` · ${formatoUsd(totalCosto)}` : ''}
+            </span>
+            <button className={`chip${porConsumo ? ' on' : ''}`} aria-pressed={porConsumo} onClick={() => setPorConsumo((v) => !v)} title="Ordenar por coste (o tokens) en vez de por fecha">
+              Más caras primero
+            </button>
+          </div>
         </div>
       )}
       {lista === null && <Esqueletos cuantos={5} />}
@@ -125,7 +137,7 @@ export function HistorialAgente({ proyectoId, activaId, deshabilitado, onAbrir, 
               <button className="ag-historial-abrir" disabled={deshabilitado || s.id === activaId} onClick={() => { onAbrir(s.id); onCerrar() }} title={deshabilitado ? 'Espera a que termine la ejecución en curso' : 'Retomar esta conversación'}>
                 <span className="ag-historial-titulo">{s.titulo}</span>
                 <span className="ag-historial-meta">
-                  {cuando(s.actualizada)} · {s.turnos} {s.turnos === 1 ? 'turno' : 'turnos'} · {s.tokens} tokens{s.id === activaId ? ' · actual' : ''}
+                  {cuando(s.actualizada)} · {s.turnos} {s.turnos === 1 ? 'turno' : 'turnos'} · {formatoTokens(s.tokens)} tokens{s.costo ? ` · ${formatoUsd(s.costo)}` : ''}{s.id === activaId ? ' · actual' : ''}
                 </span>
                 {suyas.length > 0 && (
                   <span className="ag-historial-chips">

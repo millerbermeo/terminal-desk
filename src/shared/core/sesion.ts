@@ -19,6 +19,10 @@ export interface TurnoGuardado {
   lateral?: boolean
   /** Id del mensaje en el CLI: con él se pueden deshacer los cambios de archivos de este turno. */
   mensajeId?: string
+  /** Copiado de otra conversación al ramificarla: se ve como historia, pero sus ids del CLI son de la original (no se deshace desde aquí). */
+  heredado?: boolean
+  /** Respuesta descartada con «Regenerar»: se muestra atenuada y no cuenta como la respuesta vigente. */
+  descartado?: boolean
 }
 
 export interface SesionGuardada {
@@ -39,4 +43,6 @@ export interface ResumenSesion {
   actualizada: string
   turnos: number
   tokens: number
+  /** USD a precio de lista que informó el CLI (solo suscripción; en modo API no se conoce por conversación). */
+  costo?: number
 }
