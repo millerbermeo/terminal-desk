@@ -394,7 +394,13 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     if (modeloGuardado && modeloGuardado !== 'auto' && modelos.length > 0 && !modelos.some((m) => m.id === modeloGuardado)) setModeloSel('')
   }, [modelos, modeloGuardado])
   const nombreModelo = modeloSel === 'auto' ? 'Auto' : (modelos.find((m) => m.id === modeloSel)?.nombre ?? modeloSel).replace(/^Claude\s+/i, '')
-  const cambiarModelo = (id: string): void => {
+  const cambiarModelo = async (id: string): Promise<void> => {
+    // Pasar a un modelo Fable pide confirmación (es el más caro); cambiar entre otros, o salir de Fable, no.
+    if (/fable/i.test(id) && id !== modeloSel) {
+      const nombre = (modelos.find((m) => m.id === id)?.nombre ?? id).replace(/^Claude\s+/i, '')
+      const seguir = await confirmar({ titulo: `Cambiar a ${nombre}`, tono: 'aviso', etiqueta: 'Cambiar', texto: `¿Quieres cambiar el modelo de este Asistente a ${nombre}?\n\nEs un modelo de gama alta: consume bastante más del plan o de la API que Sonnet.` })
+      if (!seguir) return
+    }
     versionAjustes.current++
     setModeloSel(id)
     // Al terminar de guardar se vuelve a subir la versión: una lectura que empezó mientras se guardaba trae el valor viejo y se descarta.
@@ -1321,7 +1327,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               {(cerrar) => (
                 <>
                   <SeccionMenu titulo="Modelo">
-                    <OpcionMenu indice={0} texto="Automático" detalle="El router elige según la complejidad" marcada={modeloSel === 'auto'} onClick={() => { cambiarModelo('auto'); cerrar() }} />
+                    <OpcionMenu indice={0} texto="Automático" detalle="El router elige según la complejidad" marcada={modeloSel === 'auto'} onClick={() => { void cambiarModelo('auto'); cerrar() }} />
                     {modelos.map((m, i) => (
                       <OpcionMenu
                         key={m.id}
@@ -1329,7 +1335,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
                         texto={m.nombre}
                         {...(m.ventana ? { detalle: `Ventana de ${m.ventana >= 1_000_000 ? `${m.ventana / 1_000_000}M` : `${Math.round(m.ventana / 1000)}k`} tokens` } : {})}
                         marcada={modeloSel === m.id}
-                        onClick={() => { cambiarModelo(m.id); cerrar() }}
+                        onClick={() => { void cambiarModelo(m.id); cerrar() }}
                       />
                     ))}
                   </SeccionMenu>
