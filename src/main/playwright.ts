@@ -1,7 +1,6 @@
-import { spawn } from 'node:child_process'
+import { lanzar } from './plataforma'
 import { entornoSuscripcion, cargarPathShell } from './core/suscripcion'
 
-const WINDOWS = process.platform === 'win32'
 const CADA_MS = 24 * 60 * 60_000
 const TIMEOUT_MS = 15 * 60_000
 
@@ -25,10 +24,9 @@ export function instalarNavegadorPlaywright(): Promise<void> {
 
 function npx(args: string[]): Promise<void> {
   return new Promise<void>((res) => {
-    const hijo = spawn(WINDOWS ? 'npx.cmd' : 'npx', args, {
+    const hijo = lanzar('npx', args, {
       env: entornoSuscripcion(),
-      stdio: 'ignore',
-      ...(WINDOWS ? { shell: true } : {})
+      stdio: 'ignore'
     })
     const timer = setTimeout(() => hijo.kill(), TIMEOUT_MS)
     hijo.on('error', () => res()) // sin npx/Node: Playwright tampoco arrancaría; no es un error de la app

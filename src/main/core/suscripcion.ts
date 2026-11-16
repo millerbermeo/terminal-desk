@@ -1,5 +1,6 @@
 import { CREDENCIALES_SIEMPRE_CONFIRMAN, sinValoresCredencial } from '@shared/credenciales-herramientas'
-import { execFile, spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import { buscarEnPath, buscarHabitual, lanzar, WINDOWS } from '../plataforma'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -16,7 +17,6 @@ import { confiarCarpeta } from './confianza'
  * La app no toca tokens ni OAuth: el inicio de sesión lo hace el propio CLI en el navegador (correo, Google o SSO).
  */
 
-const WINDOWS = process.platform === 'win32'
 
 /**
  * Ajustes del CLI que acotan el contexto (lo que más tokens consume: se reenvía entero en cada llamada). Sin ellos los modelos de
@@ -62,16 +62,23 @@ export function cargarPathShell(): Promise<void> {
   return pathShellCargado
 }
 
-/** Localiza `claude`: primero el PATH de la app y, si no está (lanzada desde el menú), el del shell de login. */
+/**
+ * Localiza `claude`: el PATH de la app (más el del shell de login en Linux/macOS, por si la app se abrió desde el menú) y, si no está,
+ * los sitios donde lo dejan el instalador oficial, npm, pnpm, Volta o Homebrew. En Windows usa `PATHEXT` (nunca el guion sin
+ * extensión que npm deja para bash).
+ */
 export async function rutaClaude(): Promise<string | undefined> {
   await cargarPathShell()
   if (rutaCache) return rutaCache
-  const probar = (cmd: string, args: string[]): Promise<string | undefined> =>
-    new Promise((res) =>
-      execFile(cmd, args, { timeout: 8000, env: process.env, ...(WINDOWS ? { shell: true } : {}) }, (err, out) => res(err ? undefined : String(out).split(/\r?\n/).find((l) => l.trim())?.trim()))
+  // Primero el PATH de la app (manda sobre el del shell, como antes con `which`), luego el del shell de login.
+  let ruta = buscarEnPath('claude') ?? (pathShell ? buscarEnPath('claude', { ...process.env, PATH: pathShell }) : undefined) ?? buscarHabitual('claude')
+  if (!ruta && !WINDOWS) {
+    ruta = await new Promise<string | undefined>((res) =>
+      execFile(process.env.SHELL || '/bin/bash', ['-ilc', 'command -v claude'], { timeout: 8000 }, (err, out) =>
+        res(err ? undefined : String(out).split(/\r?\n/).map((l) => l.trim()).find((l) => l.startsWith('/')))
+      )
     )
-  let ruta = await probar(WINDOWS ? 'where' : 'which', ['claude'])
-  if (!ruta && !WINDOWS) ruta = await probar(process.env.SHELL || '/bin/bash', ['-ilc', 'command -v claude'])
+  }
   if (ruta) rutaCache = ruta
   return ruta
 }
@@ -86,7 +93,7 @@ async function correrCli(args: string[], opciones: { timeoutMs?: number; senal?:
   const bin = await rutaClaude()
   if (!bin) throw new Error('No encuentro el CLI «claude». Instálalo (https://claude.com/claude-code) y vuelve a intentarlo.')
   return new Promise((res, rej) => {
-    const hijo = spawn(bin, args, { env: entornoSuscripcion(opciones.carpeta), stdio: [opciones.entrada === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], ...(opciones.cwd ? { cwd: opciones.cwd } : {}), ...(WINDOWS ? { shell: true } : {}) })
+    const hijo = lanzar(bin, args, { env: entornoSuscripcion(opciones.carpeta), stdio: [opciones.entrada === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], ...(opciones.cwd ? { cwd: opciones.cwd } : {}) })
     let salida = ''
     let error = ''
     if (opciones.entrada !== undefined) {
@@ -410,11 +417,10 @@ export async function listarModelosCli(carpeta?: string): Promise<InfoModelo[]> 
   const bin = await rutaClaude()
   if (!bin) return []
   return new Promise((res) => {
-    const hijo = spawn(bin, ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'], {
+    const hijo = lanzar(bin, ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'], {
       cwd: tmpdir(),
       env: entornoSuscripcion(carpeta),
       stdio: ['pipe', 'pipe', 'ignore'],
-      ...(WINDOWS ? { shell: true } : {})
     })
     let hecho = false
     let pendiente = ''
@@ -841,11 +847,10 @@ export async function rebobinarArchivos(o: { claudeId: string; mensajeId: string
   if (o.vivo) return leer(await o.vivo.control<{ canRewind?: boolean; filesChanged?: string[]; error?: string }>(peticion, 30_000))
   const bin = await rutaClaude()
   if (!bin) throw new Error('No encuentro el CLI «claude».')
-  const hijo = spawn(bin, ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--resume', o.claudeId, '--setting-sources', 'project,local', '--strict-mcp-config'], {
+  const hijo = lanzar(bin, ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--resume', o.claudeId, '--setting-sources', 'project,local', '--strict-mcp-config'], {
     cwd: o.cwd,
     env: entornoEjecucion(o.carpetaCuenta),
     stdio: ['pipe', 'pipe', 'ignore'],
-    ...(WINDOWS ? { shell: true } : {})
   })
   hijo.stdin.on('error', () => undefined)
   const canal = new CanalControl((l) => (hijo.stdin.writable ? (hijo.stdin.write(l), true) : false))
@@ -866,7 +871,7 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<SalidaE
   if (!bin) throw new Error('No encuentro el CLI «claude».')
   await confiarCarpeta(o.carpetaCuenta, o.cwd)
   const args = argumentosCli(o, Boolean(o.alPermiso))
-  const hijo = spawn(bin, args, { cwd: o.cwd, env: entornoEjecucion(o.carpetaCuenta), stdio: ['pipe', 'pipe', 'pipe'], ...(WINDOWS ? { shell: true } : {}) })
+  const hijo = lanzar(bin, args, { cwd: o.cwd, env: entornoEjecucion(o.carpetaCuenta), stdio: ['pipe', 'pipe', 'pipe'] })
   const abortar = (): void => void hijo.kill()
   o.senal.addEventListener('abort', abortar, { once: true })
 

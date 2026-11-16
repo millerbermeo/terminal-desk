@@ -6,3 +6,8 @@ allowBuilds:
   protobufjs: false
 minimumReleaseAgeExclude:
   - electron@44.8.0
+# Binarios nativos opcionales (sharp/@img) de las dos arquitecturas: el .dmg de macOS se genera para Intel y Apple Silicon
+# desde el mismo equipo y sin esto le faltaría el sharp de la otra (y el dictado por voz no cargaría).
+supportedArchitectures:
+  os: [current]
+  cpu: [current, x64, arm64]

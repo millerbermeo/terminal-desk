@@ -1,20 +1,35 @@
-import { spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { ipcMain, shell } from 'electron'
 import type { CambioArchivo } from '@shared/archivos'
 import { CanalesArchivos } from '@shared/ipc'
 import { GestorArchivos, Vigilante } from './archivos'
 import type { ServicioHistorial } from './historial/servicio'
+import { buscarEnPath, buscarHabitual, lanzar } from './plataforma'
 import { leerProyectos } from './proyectos'
 
 /** Lanza el primer editor tipo VS Code que exista en el PATH, en ventana nueva, sin esperar a que cierre. */
 async function abrirEnVscode(carpeta: string): Promise<{ ok: boolean; mensaje?: string }> {
-  for (const bin of ['code', 'code-insiders', 'codium']) {
-    const lanzado = await new Promise<boolean>((resolve) => {
-      const hijo = spawn(bin, ['-n', carpeta], { detached: true, stdio: 'ignore', shell: process.platform === 'win32' })
+  const intentar = (bin: string, args: string[]): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      let hijo: ReturnType<typeof lanzar>
+      try {
+        hijo = lanzar(bin, args, { detached: true, stdio: 'ignore' })
+      } catch {
+        return resolve(false)
+      }
       hijo.once('error', () => resolve(false))
       hijo.once('spawn', () => (hijo.unref(), resolve(true)))
     })
-    if (lanzado) return { ok: true }
+  for (const bin of ['code', 'code-insiders', 'codium']) {
+    const ruta = buscarEnPath(bin) ?? buscarHabitual(bin)
+    if (ruta && (await intentar(ruta, ['-n', carpeta]))) return { ok: true }
+  }
+  // macOS: abierta desde el Dock la app no hereda el PATH del shell y `code` no aparece aunque VS Code esté instalado.
+  if (process.platform === 'darwin') {
+    for (const app of ['Visual Studio Code', 'Visual Studio Code - Insiders', 'VSCodium']) {
+      const ok = await new Promise<boolean>((resolve) => execFile('open', ['-n', '-a', app, carpeta], { timeout: 10_000 }, (err) => resolve(!err)))
+      if (ok) return { ok: true }
+    }
   }
   return { ok: false, mensaje: 'No se encontró VS Code: instala el comando «code» (VS Code → Ctrl+Shift+P → «Shell Command: Install \'code\' command in PATH»).' }
 }

@@ -86,7 +86,7 @@ export function VersionesGitHub({ c }: { c: ContextoGit }) {
   const tituloEscrito = useRef(false) // el título del pull request lo tocó el usuario: ya no se sigue al último commit
   useEffect(() => {
     if (!tituloEscrito.current) git('historial', { proyectoId, limite: 1 }).then((r) => !tituloEscrito.current && setNuevoPr((n) => ({ ...n, titulo: r.commits[0]?.asunto ?? '' }))).catch(() => undefined)
-    setPub((p) => (p.nombre ? p : { ...p, nombre: nombreRepoValido(estado.raiz?.split('/').pop() ?? 'proyecto') }))
+    setPub((p) => (p.nombre ? p : { ...p, nombre: nombreRepoValido(estado.raiz?.split(/[\\/]/).filter(Boolean).pop() ?? 'proyecto') }))
   }, [proyectoId, estado.raiz, estado.rama, tick])
 
   const actualizar = (): void => void c.recargar()

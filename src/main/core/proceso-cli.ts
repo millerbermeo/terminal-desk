@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
+import { lanzar } from '../plataforma'
 import { createHash, randomUUID } from 'node:crypto'
 import { confiarCarpeta } from './confianza'
 import {
@@ -24,7 +25,6 @@ import {
  * Se cierra solo tras un rato sin uso, y hay un máximo de procesos vivos (cada uno ocupa cientos de MB).
  */
 
-const WINDOWS = process.platform === 'win32'
 
 const entero = (v: string | undefined, porDefecto: number): number => {
   const n = Number(v)
@@ -108,7 +108,7 @@ export class ProcesoCli implements ControlProceso {
     if (!bin) throw new Error('No encuentro el CLI «claude».')
     // Con el eco de cada mensaje del usuario se sabe cuándo empieza de verdad su turno (`LectorTurno` descarta lo anterior).
     await confiarCarpeta(o.carpetaCuenta, o.cwd)
-    const hijo = spawn(bin, [...argumentosCli(o, true), '--replay-user-messages'], { cwd: o.cwd, env: entornoEjecucion(o.carpetaCuenta), stdio: ['pipe', 'pipe', 'pipe'], ...(WINDOWS ? { shell: true } : {}) })
+    const hijo = lanzar(bin, [...argumentosCli(o, true), '--replay-user-messages'], { cwd: o.cwd, env: entornoEjecucion(o.carpetaCuenta), stdio: ['pipe', 'pipe', 'pipe'] })
     return new ProcesoCli(hijo, firma, inactividadMs, alCerrar)
   }
 

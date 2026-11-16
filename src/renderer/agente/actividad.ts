@@ -26,7 +26,7 @@ const recortar = (s: string, max = 90): string => {
 /** Las rutas largas se leen mejor por el final: `…/tenant/chatbot/chatbot.service.ts`. */
 const ruta = (v: unknown): string => {
   const r = texto(v)
-  const partes = r.split('/').filter(Boolean)
+  const partes = r.split(/[\\/]/).filter(Boolean)
   return partes.length > 3 ? '…/' + partes.slice(-3).join('/') : r
 }
 

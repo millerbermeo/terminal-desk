@@ -20,7 +20,10 @@ pnpm test           # vitest run (tests/ — LLM falso, git real en temporales, 
 pnpm evals          # evals contra el modelo real (evals/; necesita ANTHROPIC_API_KEY, consume tokens; sin clave se omite)
 ODESK_EVAL_CLI=1 pnpm evals -- asistente   # el Asistente de punta a punta con el CLI REAL (suscripción, Haiku): evals/asistente-{real,robustez,limites,calidad}.eval.ts sobre `evals/banco-asistente.ts` (HOME temporal, proyecto de prueba; `calidad` mide al modelo como programador con verificación oculta: honestidad, bug por síntoma, feature con convenciones, alcance mínimo, refactor, fallos ajenos; `EVAL_CLI_MODELO=claude-opus-5-5` para otro modelo)
 pnpm package        # build + electron-builder (node-pty va en asarUnpack)
+pnpm package:linux|mac|win   # instaladores de un sistema (cada uno se genera en su propio sistema; CI: .github/workflows/compilar.yml)
 ```
+
+- **Multiplataforma**: lanza programas externos con `lanzar`/`ejecutarArchivo` de `src/main/plataforma.ts`, nunca con `spawn`/`execFile` + `shell: true`. En Windows los CLIs (`claude`, `npx`, `pnpm`, `code`) son `.cmd`: Node no los ejecuta sin shell y con `shell: true` no cita los argumentos (rutas con espacios, textos con saltos de línea) ni mata al hijo real. `plataforma.ts` los busca con `PATHEXT`, lanza directo lo que envuelve un guion de npm/pnpm y, si no, escapa para `cmd.exe`. Rutas absolutas en el renderer: separa con `/[\\/]/`, no con `'/'`. `scripts/postinstall.mjs` solo compila node-pty en Linux (Windows/macOS usan sus binarios precompilados; `ODESK_RECOMPILAR_PTY=1` fuerza compilar).
 
 - **Cambios en `src/main` o `src/preload` requieren reiniciar `pnpm dev` por completo**; el renderer se recarga solo (Ctrl+R).
 - Si el entorno tiene `ELECTRON_RUN_AS_NODE=1` (p. ej. dentro de VSCode), Electron arranca como Node y falla con `Cannot read properties of undefined (reading 'commandLine')`: lanza con `env -u ELECTRON_RUN_AS_NODE pnpm dev`.

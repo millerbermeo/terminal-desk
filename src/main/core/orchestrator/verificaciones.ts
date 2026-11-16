@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { ejecutarArchivo } from '../../plataforma'
 import { access, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -46,7 +46,7 @@ export async function detectarVerificaciones(cwd: string): Promise<Verificacion[
 
 export const ejecutarVerificacion: EjecutorVerificacion = (cwd, comando, senal) =>
   new Promise((resolver) => {
-    execFile(
+    ejecutarArchivo(
       comando[0]!,
       comando.slice(1),
       { cwd, timeout: 300_000, maxBuffer: 8 * 1024 * 1024, ...(senal ? { signal: senal } : {}) },

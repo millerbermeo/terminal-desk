@@ -13,7 +13,7 @@ const enviar = (kind: string, message: string, stack?: string, context?: Record<
 export function capturarErroresGlobales(): void {
   window.addEventListener('error', (e) => {
     if (e.message === 'ResizeObserver loop completed with undelivered notifications.') return // aviso inofensivo del navegador
-    enviar('window-error', e.message || 'Error sin mensaje', e.error instanceof Error ? e.error.stack : undefined, { archivo: (e.filename ?? '').split('/').pop() ?? '', linea: e.lineno ?? 0 })
+    enviar('window-error', e.message || 'Error sin mensaje', e.error instanceof Error ? e.error.stack : undefined, { archivo: (e.filename ?? '').split(/[\\/]/).pop() ?? '', linea: e.lineno ?? 0 })
   })
   window.addEventListener('unhandledrejection', (e) => {
     const r = e.reason

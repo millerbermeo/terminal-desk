@@ -48,7 +48,7 @@ function Cambio({ c, proyectoId }: { c: CambioArchivo; proyectoId?: string }) {
   return (
     <div className={`ag-diff${estado === 'devuelto' ? ' devuelto' : ''}`}>
       <div className="ag-diff-cab">
-        <code title={c.ruta}>{c.ruta.split('/').slice(-2).join('/')}</code>
+        <code title={c.ruta}>{c.ruta.split(/[\\/]/).slice(-2).join('/')}</code>
         <span className="ag-diff-mas">+{diff.agregadas + diff.modificadas}</span>
         <span className="ag-diff-menos">−{diff.quitadas + diff.modificadas}</span>
         {c.reescribe ? <span className="chip" title="Reescribe el archivo entero">archivo completo</span> : null}

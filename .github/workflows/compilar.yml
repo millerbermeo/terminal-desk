@@ -1,0 +1,86 @@
+# Compila los instaladores de Odesk Code en los tres sistemas (cada uno en su propio equipo: el .dmg de macOS
+# solo se puede generar en un Mac, y los binarios nativos son distintos en cada sistema).
+#
+# - A mano: Actions → «Compilar instaladores» → Run workflow.
+# - Al subir una etiqueta v* (p. ej. `git tag v0.2.0 && git push origin v0.2.0`): además crea un borrador de release con los archivos.
+name: Compilar instaladores
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  compilar:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - so: ubuntu-latest
+            destino: linux
+            archivos: |
+              dist/*.AppImage
+              dist/*.deb
+          - so: macos-latest
+            destino: mac
+            archivos: |
+              dist/*.dmg
+              dist/*.zip
+          - so: windows-latest
+            destino: win
+            archivos: |
+              dist/*.exe
+    runs-on: ${{ matrix.so }}
+    env:
+      # Sin certificado configurado se compila sin firmar (no busca uno en el llavero del equipo de CI).
+      CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK == '' && 'false' || 'true' }}
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Comprobar tipos
+        run: pnpm typecheck
+
+      # Las pruebas se escribieron en Linux: en macOS/Windows se ejecutan para ver fallos, pero no frenan los instaladores.
+      - name: Pruebas
+        run: pnpm test
+        continue-on-error: ${{ matrix.destino != 'linux' }}
+
+      - name: Instaladores (${{ matrix.destino }})
+        run: pnpm package:${{ matrix.destino }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: odesk-code-${{ matrix.destino }}
+          path: ${{ matrix.archivos }}
+          if-no-files-found: error
+
+  publicar:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: compilar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: instaladores
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: instaladores/*

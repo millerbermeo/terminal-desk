@@ -78,17 +78,24 @@ const nuevaVentana = (id: string, nombre: string, terminales: TerminalInfo[] = [
   reiniciarLayout: 0,
   personalizado: false
 })
-/** Carpeta padre común de varias rutas (o undefined si solo comparten «/»). */
+/** Carpeta padre común de varias rutas (o undefined si solo comparten la raíz). Admite rutas de Windows (`C:\…`, sin distinguir mayúsculas). */
 const raizComun = (rutas: string[]): string | undefined => {
-  const partes = rutas.map((r) => r.split('/').filter(Boolean))
+  const windows = rutas.some((r) => /^[a-zA-Z]:[\\/]|^\\\\/.test(r))
+  const sep = windows ? '\\' : '/'
+  const partes = rutas.map((r) => r.split(/[\\/]+/).filter(Boolean))
+  const igual = (a?: string, b?: string): boolean => (windows ? a?.toLowerCase() === b?.toLowerCase() : a === b)
   const base = partes[0] ?? []
   let n = base.length
   for (const q of partes) {
     let i = 0
-    while (i < n && i < q.length && q[i] === base[i]) i++
+    while (i < n && i < q.length && igual(q[i], base[i])) i++
     n = i
   }
-  return n > 0 ? '/' + base.slice(0, n).join('/') : undefined
+  if (n === 0) return undefined
+  const unida = base.slice(0, n).join(sep)
+  if (!windows) return '/' + unida
+  if (rutas[0]?.startsWith('\\\\')) return n > 2 ? '\\\\' + unida : undefined // \\servidor\recurso es la raíz de una ruta UNC
+  return n > 1 ? unida : undefined // «C:» solo es la raíz de la unidad
 }
 
 const nuevaTerminal = (titulo: string, cwd?: string, proveedorId?: string, proyectoId?: string): TerminalInfo => ({

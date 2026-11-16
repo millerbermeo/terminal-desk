@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { ejecutarArchivo } from '../../plataforma'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ResultadoAgente } from '@shared/core/agente'
@@ -54,7 +54,7 @@ async function instantanea(dir: string, limite = 6000): Promise<string> {
 
 function ejecutar(dir: string, comando: string, args: string[], timeout: number): Promise<{ ok: boolean; salida: string }> {
   return new Promise((resolver) => {
-    execFile(comando, args, { cwd: dir, timeout, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) =>
+    ejecutarArchivo(comando, args, { cwd: dir, timeout, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) =>
       resolver({ ok: !err, salida: `${stdout}\n${stderr}`.trim().slice(-1500) })
     )
   })

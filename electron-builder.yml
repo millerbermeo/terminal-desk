@@ -14,12 +14,31 @@ asarUnpack:
   - node_modules/sharp/**
   - node_modules/@img/**
   - out/main/**
+# node-pty (N-API) trae binarios para Windows y macOS y en Linux lo compila el postinstall; onnxruntime y sharp también son N-API.
+# Recompilar aquí obligaría a tener Visual Studio Build Tools/Xcode y rompería el empaquetado para la otra arquitectura de macOS.
+npmRebuild: false
+# Nombres sin espacios: más fáciles de descargar y de usar en scripts (p. ej. Odesk-Code-0.1.0-arm64.dmg).
+artifactName: Odesk-Code-${version}-${arch}.${ext}
 linux:
   icon: icon.png
   target: [AppImage, deb]
   category: Development
+  # Obligatorio para el .deb (sin él electron-builder no lo genera).
+  maintainer: Odesk Code
 mac:
-  target: dmg
+  icon: icon.png
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  # Sin certificado de Apple la app sale sin firmar (en el Mac: clic derecho → Abrir la primera vez). Con certificado
+  # (CSC_LINK / CSC_KEY_PASSWORD) estos permisos son obligatorios: el runtime endurecido bloquea micrófono, cámara y el JIT de V8.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
   # Dictado por voz del Asistente: sin esto macOS niega el micrófono a la app empaquetada.
   extendInfo:
     NSMicrophoneUsageDescription: Odesk Code usa el micrófono solo mientras dictas un mensaje al Asistente, grabas una nota de voz o estás en una llamada del chat.
@@ -27,4 +46,14 @@ mac:
     NSCameraUsageDescription: Odesk Code usa la cámara solo mientras estás en una videollamada del chat.
 win:
   icon: icon.ico
-  target: nsis
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  # Instalador normal (no de un clic): permite elegir la carpeta; por usuario, sin pedir permisos de administrador.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Odesk Code

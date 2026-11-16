@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { ejecutarArchivo } from '../../../plataforma'
 import type { Riesgo } from '@shared/core/herramientas'
 import type { Herramienta } from '../registro'
 
@@ -28,7 +28,7 @@ export interface OpcionesArgv {
 export function ejecutarArgv(cwd: string, comando: string, args: readonly string[], o: OpcionesArgv = {}): Promise<{ ok: boolean; texto: string }> {
   const max = o.maxSalida ?? MAX_SALIDA
   return new Promise((res) => {
-    execFile(
+    ejecutarArchivo(
       comando,
       [...args],
       { cwd, timeout: o.timeoutMs ?? TIEMPO_MAX_MS, maxBuffer: 4 * 1024 * 1024, ...(o.senal ? { signal: o.senal } : {}) },
