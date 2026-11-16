@@ -36,6 +36,7 @@ export function Acceso({ servidor, servidorPendiente, onEntrar, onServidor, onCa
   const [editandoServidor, setEditandoServidor] = useState(!!servidorPendiente)
   const [urlNueva, setUrlNueva] = useState(servidorPendiente ? '' : servidor)
   const [googleListo, setGoogleListo] = useState(false)
+  const [eligiendoGoogle, setEligiendoGoogle] = useState(false)
   useEffect(() => {
     let vigente = true
     setGoogleListo(false)
@@ -275,12 +276,20 @@ export function Acceso({ servidor, servidorPendiente, onEntrar, onServidor, onCa
         )}
         {modo === 'entrar' && googleListo && (
           <>
-            <button type="button" disabled={enviando} onClick={() => void entrarConGoogle('abrir')}>
-              {enviando ? 'Esperando al navegador…' : 'Continuar con Google (abrir navegador)'}
+            <button type="button" disabled={enviando} onClick={() => setEligiendoGoogle((v) => !v)}>
+              {enviando ? 'Esperando al navegador…' : 'Continuar con Google'}
             </button>
-            <button type="button" disabled={enviando} onClick={() => void entrarConGoogle('copiar')}>
-              Continuar con Google (copiar enlace)
-            </button>
+            {eligiendoGoogle && !enviando && (
+              <div role="group" aria-label="Cómo continuar con Google">
+                <span className="ayuda">¿Cómo deseas continuar?</span>
+                <button type="button" onClick={() => { setEligiendoGoogle(false); void entrarConGoogle('abrir') }}>
+                  Abrir en el navegador
+                </button>
+                <button type="button" onClick={() => { setEligiendoGoogle(false); void entrarConGoogle('copiar') }}>
+                  Copiar enlace
+                </button>
+              </div>
+            )}
             {enviando && <span className="ayuda">Si copiaste el enlace, pégalo en un navegador de esta computadora.</span>}
           </>
         )}
