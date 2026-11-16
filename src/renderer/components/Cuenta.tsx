@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { EstadoBoveda, ResultadoBoveda, SesionDispositivo } from '@shared/sesion'
+import type { CuentaGuardada, EstadoBoveda, EstadoSesion, ResultadoBoveda, SesionDispositivo } from '@shared/sesion'
 import { fechaRelativa } from '@shared/versiones'
 import { confirmar } from '../confirmar'
 import { IconoCerrar } from './Iconos'
@@ -9,10 +9,14 @@ interface Props {
   onCerrarSesion: () => void
   onCerrarTodas: () => void
   onCerrar: () => void
+  /** Abre el acceso para iniciar sesión con otra cuenta sin cerrar esta. */
+  onAgregarCuenta: () => void
+  /** Se pasó a otra cuenta sin reiniciar la app (normalmente la app se reinicia sola y esto no llega a usarse). */
+  onCambioCuenta: (estado: EstadoSesion) => void
 }
 
 /** Panel de la cuenta: contraseña, sincronización con la nube, bóveda de claves y cerrar la sesión. */
-export function Cuenta({ email, onCerrarSesion, onCerrarTodas, onCerrar }: Props) {
+export function Cuenta({ email, onCerrarSesion, onCerrarTodas, onCerrar, onAgregarCuenta, onCambioCuenta }: Props) {
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
   const [aviso, setAviso] = useState('')
@@ -47,7 +51,7 @@ export function Cuenta({ email, onCerrarSesion, onCerrarTodas, onCerrar }: Props
 
   return (
     <div className="modal-fondo" onMouseDown={(e) => e.target === e.currentTarget && !enviando && onCerrar()}>
-      <div className="modal modal-chico" role="dialog" aria-modal="true" aria-label="Cuenta">
+      <div className="modal modal-cuenta" role="dialog" aria-modal="true" aria-label="Cuenta">
         <div className="modal-cab">
           <h3>Cuenta</h3>
           <button type="button" className="icono" onClick={onCerrar} aria-label="Cerrar" disabled={enviando}>
@@ -62,9 +66,17 @@ export function Cuenta({ email, onCerrarSesion, onCerrarTodas, onCerrar }: Props
           </p>
         )}
 
-        <CambiarPassword enviando={enviando} correr={correr} />
-        <Sincronizacion enviando={enviando} correr={correr} />
-        <BovedaClaves enviando={enviando} correr={correr} />
+        <CuentasGuardadas enviando={enviando} correr={correr} confirmando={confirmando} onAgregar={onAgregarCuenta} onCambio={onCambioCuenta} />
+
+        <div className="cuenta-columnas">
+          <div className="cuenta-col">
+            <CambiarPassword enviando={enviando} correr={correr} />
+            <Sincronizacion enviando={enviando} correr={correr} />
+          </div>
+          <div className="cuenta-col">
+            <BovedaClaves enviando={enviando} correr={correr} />
+          </div>
+        </div>
         <Dispositivos enviando={enviando} correr={correr} confirmando={confirmando} />
 
         <h4 style={{ margin: 0 }}>Sesión</h4>
@@ -78,6 +90,90 @@ export function Cuenta({ email, onCerrarSesion, onCerrarTodas, onCerrar }: Props
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Cuentas con sesión iniciada en este equipo: se pasa de una a otra con un clic, sin volver a escribir la contraseña. Cada cuenta
+ * conserva sus propios datos locales (proyectos, tareas, conversaciones…): al cambiar, la app se reinicia con los de la elegida.
+ */
+function CuentasGuardadas({
+  enviando,
+  correr,
+  confirmando,
+  onAgregar,
+  onCambio
+}: {
+  enviando: boolean
+  correr: Correr
+  confirmando: React.MutableRefObject<boolean>
+  onAgregar: () => void
+  onCambio: (e: EstadoSesion) => void
+}) {
+  const [lista, setLista] = useState<CuentaGuardada[]>([])
+  const cargar = useCallback(() => void window.api.sesion.cuenta('cuentasGuardadas', {}).then(setLista, () => undefined), [])
+  useEffect(cargar, [cargar])
+
+  const cambiar = async (c: CuentaGuardada): Promise<void> => {
+    const ok = await confirmar({
+      titulo: `Cambiar a ${c.email}`,
+      texto: 'Se cerrarán las terminales abiertas y la app se reiniciará con los datos de esa cuenta. Tu cuenta actual sigue con la sesión iniciada: podrás volver igual de rápido.',
+      etiqueta: 'Cambiar de cuenta',
+      tono: 'info'
+    })
+    if (!ok) return
+    await correr(async () => {
+      const r = await window.api.sesion.cuenta('cambiarCuenta', { email: c.email })
+      if (r.ok) onCambio(r.estado)
+      cargar()
+      return r.ok ? { ok: true, mensaje: `Entrando como ${c.email}…` } : r
+    }, '', 'No se pudo cambiar de cuenta.')
+  }
+  const quitar = async (c: CuentaGuardada): Promise<void> => {
+    confirmando.current = true
+    const ok = await confirmar({
+      titulo: `Quitar ${c.email} de este equipo`,
+      texto: 'Dejará de aparecer aquí y tendrás que escribir su contraseña para volver a entrar.\n\nLa sesión sigue abierta en el servidor hasta que venza; si quieres cerrarla ya, hazlo desde «Dispositivos conectados» con esa cuenta.',
+      etiqueta: 'Quitar',
+      tono: 'aviso'
+    })
+    confirmando.current = false
+    if (!ok) return
+    await correr(async () => {
+      await window.api.sesion.cuenta('quitarCuenta', { email: c.email })
+      cargar()
+    }, `${c.email} quitada de este equipo.`, 'No se pudo quitar la cuenta.')
+  }
+  return (
+    <section className="cuenta-cuentas" aria-label="Cuentas en este equipo">
+      <div className="cuenta-cuentas-cab">
+        <h4 style={{ margin: 0 }}>Cuentas en este equipo</h4>
+        <button type="button" disabled={enviando} onClick={onAgregar}>
+          + Añadir otra cuenta
+        </button>
+      </div>
+      <ul className="cuenta-lista">
+        {lista.map((c) => (
+          <li key={c.email} className={c.activa ? 'activa' : ''}>
+            <span className="avatar" aria-hidden="true">{c.email.charAt(0).toUpperCase()}</span>
+            <span className="cuenta-correo">{c.email}</span>
+            {c.activa ? (
+              <span className="cuenta-etiqueta">En uso</span>
+            ) : (
+              <>
+                <button type="button" className="primario" disabled={enviando} onClick={() => void cambiar(c)}>
+                  Cambiar
+                </button>
+                <button type="button" className="icono" disabled={enviando} onClick={() => void quitar(c)} title="Quitar de este equipo" aria-label={`Quitar ${c.email}`}>
+                  <IconoCerrar />
+                </button>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      {lista.length < 2 && <p className="modal-texto">Añade otra cuenta para pasar de una a otra al instante, cada una con sus propios proyectos y datos.</p>}
+    </section>
   )
 }
 

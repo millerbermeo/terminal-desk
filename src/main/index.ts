@@ -494,6 +494,8 @@ let bucleCuenta: NodeJS.Timeout | undefined
 const CADA_MS = 30_000
 
 let pasadaEnCurso: Promise<{ ok: boolean; mensaje: string }> | undefined
+/** Hay un cambio o un inicio de sesión en marcha: no se sincroniza hasta tener los datos locales de la cuenta que entra. */
+let cambiandoCuenta = false
 
 /**
  * Una pasada: datos de la cuenta (crean proveedores y servidores MCP), sus claves, y los cambios de los proyectos. Nunca lanza. Si ya hay
@@ -501,6 +503,8 @@ let pasadaEnCurso: Promise<{ ok: boolean; mensaje: string }> | undefined
  * espera a esa: dos a la vez subirían la bóveda sobre la misma versión y bajarían dos veces lo mismo.
  */
 function sincronizarCuenta(): Promise<{ ok: boolean; mensaje: string }> {
+  // Mientras se cambia de cuenta el token ya es el nuevo pero los datos locales aún son de la anterior: subirlos mezclaría las dos cuentas.
+  if (cambiandoCuenta) return Promise.resolve({ ok: false, mensaje: 'Cambiando de cuenta…' })
   pasadaEnCurso ??= pasadaCuenta().finally(() => (pasadaEnCurso = undefined))
   return pasadaEnCurso
 }
@@ -555,10 +559,19 @@ function falloSesion(err: unknown): { ok: false; mensaje: string; verificacionPe
  * no usar nada cacheado), importa los proyectos del formato antiguo y baja el contexto de los proyectos de este equipo.
  */
 async function conSesion(entrar: () => Promise<EstadoSesion>): Promise<ResultadoSesion> {
+  // Con otra cuenta ya abierta, primero se para la sincronización (y se espera a la pasada en marcha) para no mezclar datos.
+  const habiaSesion = (await servidor.estado().catch(() => undefined))?.activa === true
+  if (habiaSesion) {
+    cambiandoCuenta = true
+    detenerBucleCuenta()
+    await pasadaEnCurso?.catch(() => undefined)
+  }
   let estado: EstadoSesion
   try {
     estado = await entrar()
   } catch (err) {
+    cambiandoCuenta = false
+    if (habiaSesion && (await servidor.estado().catch(() => undefined))?.activa) iniciarBucleCuenta() // no cambió nada: sigue la de antes
     return falloSesion(err)
   }
   if (estado.usuarioId && (await cambiarPerfil(DIR, estado.usuarioId)) === 'cambiado') {
@@ -572,6 +585,7 @@ async function conSesion(entrar: () => Promise<EstadoSesion>): Promise<Resultado
     }, 200)
     return { ok: true, estado }
   }
+  cambiandoCuenta = false
   await importarProyectosLocales().catch((err) => console.error('No se pudieron importar los proyectos locales:', err))
   void nucleo.hidratarTodos()
   iniciarBucleCuenta()
@@ -588,7 +602,7 @@ async function paso(fn: () => Promise<{ mensaje?: string } | void>, exito: strin
 }
 
 /** Operaciones de cuenta (canal `sesion:cuenta`). */
-function operarCuenta(op: NombreOperacionCuenta, e: Record<string, unknown>): Promise<unknown> {
+async function operarCuenta(op: NombreOperacionCuenta, e: Record<string, unknown>): Promise<unknown> {
   const t = (k: string): string => String(e[k] ?? '')
   switch (op) {
     case 'registrar':
@@ -606,6 +620,16 @@ function operarCuenta(op: NombreOperacionCuenta, e: Record<string, unknown>): Pr
     case 'cerrarTodas':
       detenerBucleCuenta()
       return servidor.cerrarTodas()
+    case 'cuentasGuardadas':
+      return servidor.cuentasGuardadas()
+    case 'cambiarCuenta':
+      return conSesion(() => servidor.cambiarA(t('email')))
+    case 'quitarCuenta': {
+      const activa = (await servidor.cuentasGuardadas()).find((c) => c.email.toLowerCase() === t('email').toLowerCase())?.activa
+      if (activa) detenerBucleCuenta()
+      await servidor.quitarGuardada(t('email'))
+      return { ok: true as const }
+    }
     case 'dispositivos':
       return servidor.dispositivos()
     case 'cerrarDispositivo': {

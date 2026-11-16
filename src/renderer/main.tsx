@@ -38,6 +38,7 @@ const navegador = Number(parametros.get('navegador') ?? 0)
 function Raiz() {
   const [sesion, setSesion] = useState<EstadoSesion | null>(null)
   const [cuenta, setCuenta] = useState(false)
+  const [agregando, setAgregando] = useState(false) // acceso para añadir otra cuenta sin cerrar la actual
   const [fallo, setFallo] = useState(false)
   const refrescar = useCallback(() => {
     setFallo(false)
@@ -80,11 +81,27 @@ function Raiz() {
     )
   }
   if (!sesion.activa) return <Acceso servidor={sesion.servidor} onEntrar={setSesion} onServidor={setSesion} />
+  if (agregando)
+    return (
+      <Acceso
+        servidor={sesion.servidor}
+        onEntrar={(e) => (setAgregando(false), setSesion(e))}
+        onServidor={setSesion}
+        onCancelar={() => setAgregando(false)}
+      />
+    )
   return (
     <>
-      <App email={sesion.email} onCuenta={() => setCuenta(true)} onSesionPerdida={refrescar} />
+      <App key={sesion.email} email={sesion.email} onCuenta={() => setCuenta(true)} onSesionPerdida={refrescar} />
       {cuenta && (
-        <Cuenta email={sesion.email} onCerrarSesion={() => void cerrarSesion(false)} onCerrarTodas={() => void cerrarSesion(true)} onCerrar={() => setCuenta(false)} />
+        <Cuenta
+          email={sesion.email}
+          onCerrarSesion={() => void cerrarSesion(false)}
+          onCerrarTodas={() => void cerrarSesion(true)}
+          onCerrar={() => setCuenta(false)}
+          onAgregarCuenta={() => (setCuenta(false), setAgregando(true))}
+          onCambioCuenta={(e) => (setCuenta(false), setSesion(e))}
+        />
       )}
     </>
   )

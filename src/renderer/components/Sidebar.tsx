@@ -363,7 +363,7 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
             </div>
           </div>
         ))}
-        <button className="cuenta-tarjeta" onClick={onCuenta} title={`Cuenta${email ? ` · ${email}` : ''}: cambiar contraseña o cerrar sesión`}>
+        <button className="cuenta-tarjeta" onClick={onCuenta} title={`Cuenta${email ? ` · ${email}` : ''}: cambiar de cuenta, contraseña o cerrar sesión`}>
           <span className="avatar" aria-hidden="true">{(email ?? '?').charAt(0).toUpperCase()}</span>
           <span className="cuenta-datos txt">
             <strong>Mi cuenta</strong>

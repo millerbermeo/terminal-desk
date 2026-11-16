@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { AlmacenToken, type Cifrador } from '../github/token'
-import { servidorSeguro, type EstadoSesion, type SesionDispositivo } from '@shared/sesion'
+import { servidorSeguro, type CuentaGuardada, type EstadoSesion, type SesionDispositivo } from '@shared/sesion'
 
 /** Error con un mensaje apto para mostrar tal cual en la interfaz. */
 export class ErrorServidor extends Error {
@@ -112,7 +112,7 @@ export class ClienteServidor {
     }
     if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new ErrorServidor('La dirección debe empezar por http:// o https://.')
     const nueva = limpiarUrl(u.origin + u.pathname)
-    if (nueva !== this.direccion) await this.olvidar() // la sesión era del otro servidor: aquí no hay que revocarla
+    if (nueva !== this.direccion) await this.olvidarTodas() // las sesiones eran del otro servidor: aquí no hay que revocarlas
     this.direccion = nueva
     if (this.archivoUrl) {
       await mkdir(dirname(this.archivoUrl), { recursive: true })
@@ -232,6 +232,69 @@ export class ClienteServidor {
     await this.cargar()
     if (this.token) await this.peticion('POST', '/auth/logout', {}).catch(() => undefined)
     return this.olvidar()
+  }
+
+  /** Cuentas con sesión iniciada guardadas en este equipo (solo correo; nunca el token). */
+  async cuentasGuardadas(): Promise<CuentaGuardada[]> {
+    await this.cargar()
+    const l = await (this.almacen?.listar() ?? Promise.resolve([]))
+    const actual = this.token ? this.email?.toLowerCase() : undefined
+    return l.map((c) => ({ email: c.usuario, activa: actual !== undefined && c.usuario.toLowerCase() === actual }))
+  }
+
+  /**
+   * Pasa a otra cuenta ya iniciada, sin cerrar la actual (su token se conserva). Se comprueba el token de la otra con `/auth/me`: si
+   * venció se quita de la lista y todo queda como estaba. Devuelve el estado con el `usuarioId` nuevo (hace falta para cambiar de perfil).
+   */
+  async cambiarA(email: string): Promise<EstadoSesion> {
+    await this.cargar()
+    const almacen = this.almacen
+    const destino = (await (almacen?.listar() ?? Promise.resolve([]))).find((c) => c.usuario.toLowerCase() === email.trim().toLowerCase())
+    if (!almacen || !destino) throw new ErrorServidor('Esa cuenta ya no está guardada en este equipo. Inicia sesión de nuevo.')
+    if (this.token && this.email?.toLowerCase() === destino.usuario.toLowerCase()) return this.estado()
+    const previo = { token: this.token, email: this.email, usuarioId: this.usuarioId, persistente: this.persistente }
+    const restaurar = async (): Promise<void> => {
+      if (previo.email) await almacen.activar(previo.email)
+      this.token = previo.token
+      this.email = previo.email
+      this.usuarioId = previo.usuarioId
+      this.persistente = previo.persistente
+      this.cargado = Promise.resolve()
+    }
+    await almacen.activar(destino.usuario)
+    const g = await almacen.leer()
+    if (!g) {
+      await restaurar()
+      throw new ErrorServidor('No se pudo leer la sesión guardada de esa cuenta.')
+    }
+    this.token = g.token
+    this.email = g.usuario
+    this.usuarioId = undefined
+    this.persistente = g.persistente
+    this.cargado = Promise.resolve()
+    try {
+      this.usuarioId = (await this.peticion<{ id: string }>('GET', '/auth/me')).id
+    } catch (err) {
+      const venció = err instanceof ErrorSesion // `peticion` ya la quitó de la lista
+      await restaurar()
+      if (venció) throw new ErrorServidor(`La sesión de ${destino.usuario} venció. Inicia sesión de nuevo para volver a añadirla.`)
+      throw err
+    }
+    return this.estado()
+  }
+
+  /** Quita una cuenta de este equipo: la activa cierra sesión de verdad; las demás solo se olvidan aquí. */
+  async quitarGuardada(email: string): Promise<EstadoSesion> {
+    await this.cargar()
+    if (this.token && this.email?.toLowerCase() === email.trim().toLowerCase()) return this.cerrar()
+    await this.almacen?.quitar(email.trim())
+    return this.estado()
+  }
+
+  /** Olvida todas las sesiones guardadas (cambio de servidor). */
+  private async olvidarTodas(): Promise<void> {
+    for (const c of await (this.almacen?.listar() ?? Promise.resolve([]))) await this.almacen?.quitar(c.usuario)
+    await this.olvidar()
   }
 
   /** Olvida el token sin avisar al servidor (ya no vale, o el servidor no responde). */

@@ -66,7 +66,20 @@ export interface SesionDispositivo {
   lastSeenAt: string
 }
 
+/** Una cuenta con sesión iniciada guardada en este equipo (el token nunca sale del proceso principal). */
+export interface CuentaGuardada {
+  email: string
+  /** Es la que está en uso ahora. */
+  activa: boolean
+}
+
 export interface OperacionesCuenta {
+  /** Cuentas con sesión iniciada en este equipo, para cambiar de una a otra sin volver a escribir la contraseña. */
+  cuentasGuardadas: { entrada: Record<string, never>; salida: CuentaGuardada[] }
+  /** Pasa a otra cuenta ya iniciada. Si sus datos locales son otros, la app se reinicia sola (igual que al entrar con otra cuenta). */
+  cambiarCuenta: { entrada: { email: string }; salida: ResultadoSesion }
+  /** Quita una cuenta de este equipo (la activa cierra sesión; las demás solo se olvidan aquí). */
+  quitarCuenta: { entrada: { email: string }; salida: { ok: true } }
   registrar: { entrada: { email: string; password: string }; salida: ResultadoPaso }
   /** `password`: la del registro (o la del login que pidió activar): el servidor la exige junto con el código. */
   verificar: { entrada: { email: string; code: string; password: string }; salida: ResultadoSesion }

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { servidorSeguro, type EstadoSesion, type ResultadoSesion } from '@shared/sesion'
+import { servidorSeguro, type CuentaGuardada, type EstadoSesion, type ResultadoSesion } from '@shared/sesion'
 
 interface Props {
   servidor: string
   onEntrar: (estado: EstadoSesion) => void
   /** Se cambió la dirección del servidor: hay que recargar el estado de la sesión. */
   onServidor: (estado: EstadoSesion) => void
+  /** Solo al añadir otra cuenta con una sesión abierta: vuelve a la app sin cambiar nada. */
+  onCancelar?: () => void
 }
 
 /** entrar → (sin activar) codigo · registrar → codigo · olvido → restablecer */
@@ -20,7 +22,7 @@ const TITULOS: Record<Modo, string> = {
 }
 
 /** Pantalla de acceso al servidor: entrar, crear la cuenta y activarla con el código del correo, o recuperar la contraseña. */
-export function Acceso({ servidor, onEntrar, onServidor }: Props) {
+export function Acceso({ servidor, onEntrar, onServidor, onCancelar }: Props) {
   const [modo, setModo] = useState<Modo>('entrar')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -39,6 +41,12 @@ export function Acceso({ servidor, onEntrar, onServidor }: Props) {
     return () => {
       vigente = false
     }
+  }, [servidor])
+
+  // Cuentas que ya tienen sesión iniciada en este equipo: se entra a ellas con un clic, sin contraseña.
+  const [guardadas, setGuardadas] = useState<CuentaGuardada[]>([])
+  useEffect(() => {
+    void window.api.sesion.cuenta('cuentasGuardadas', {}).then((l) => setGuardadas(l.filter((c) => !c.activa)), () => undefined)
   }, [servidor])
 
   const ir = (m: Modo, mensaje = ''): void => {
@@ -68,6 +76,9 @@ export function Acceso({ servidor, onEntrar, onServidor }: Props) {
     else if (r.verificacionPendiente) ir('codigo', r.mensaje)
     else setError(r.mensaje)
   }
+
+  const entrarComo = (c: CuentaGuardada): Promise<void> =>
+    correr(async () => tratarSesion(await window.api.sesion.cuenta('cambiarCuenta', { email: c.email })), 'No se pudo cambiar de cuenta.')
 
   const correoOk = /^\S+@\S+\.\S+$/.test(email.trim())
   const codigoOk = /^\d{6}$/.test(codigo.trim())
@@ -142,6 +153,18 @@ export function Acceso({ servidor, onEntrar, onServidor }: Props) {
         <div className="modal-cab">
           <h3>{TITULOS[modo]}</h3>
         </div>
+        {modo === 'entrar' && guardadas.length > 0 && (
+          <div className="acc-guardadas" role="group" aria-label="Cuentas en este equipo">
+            <span className="ayuda">Cuentas con sesión en este equipo</span>
+            {guardadas.map((c) => (
+              <button key={c.email} type="button" className="acc-cuenta" disabled={enviando} onClick={() => void entrarComo(c)}>
+                <span className="avatar" aria-hidden="true">{c.email.charAt(0).toUpperCase()}</span>
+                <span>{c.email}</span>
+              </button>
+            ))}
+            <span className="ayuda">O entra con otra:</span>
+          </div>
+        )}
         {modo === 'entrar' || modo === 'registrar' ? (
           <p className="modal-texto">
             Tus proyectos y agentes viven en el servidor ({servidor}){' '}
@@ -272,6 +295,11 @@ export function Acceso({ servidor, onEntrar, onServidor }: Props) {
           {modo !== 'entrar' && (
             <button type="button" disabled={enviando} onClick={() => ir('entrar')}>
               Volver
+            </button>
+          )}
+          {modo === 'entrar' && onCancelar && (
+            <button type="button" disabled={enviando} onClick={onCancelar}>
+              Cancelar
             </button>
           )}
         </div>
