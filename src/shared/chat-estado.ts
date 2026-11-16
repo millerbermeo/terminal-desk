@@ -16,6 +16,8 @@ export interface EstadoChat {
   hilos: Record<string, HiloChat>
   /** Quién está escribiendo en cada conversación (la interfaz lo borra a los pocos segundos). */
   escribiendo: Record<string, string>
+  /** Conversaciones en las que lo que hace el otro es grabar una nota de voz (junto con `escribiendo`). */
+  grabando: Record<string, true>
   presencia: Record<string, { enLinea: boolean; ultimaConexion: string | null }>
   /** Lo que el estado detectó que está desactualizado y la interfaz debe volver a pedir al servidor. */
   recargar: { contactos: boolean; conversaciones: boolean }
@@ -29,10 +31,18 @@ export const estadoInicial = (): EstadoChat => ({
   conversaciones: [],
   hilos: {},
   escribiendo: {},
+  grabando: {},
   presencia: {},
   recargar: { contactos: false, conversaciones: false },
   cargado: false
 })
+
+const sinClave = <T,>(r: Record<string, T>, k: string): Record<string, T> => {
+  if (!(k in r)) return r
+  const { [k]: _fuera, ...resto } = r
+  void _fuera
+  return resto
+}
 
 const orden = (m: MensajeChat): number => (m.local ? Number.MAX_SAFE_INTEGER : m.seq)
 
@@ -83,7 +93,8 @@ export function aplicarEvento(e: EstadoChat, ev: EventoChat, yoId: string | unde
         // Un mensaje de una conversación que aún no se conocía: hay que traer la lista (con el contacto y sus datos).
         recargar: conocida ? e.recargar : { ...e.recargar, conversaciones: true },
         // Quien envía deja de «escribir».
-        escribiendo: omitir(e.escribiendo, m.conversacionId, m.emisorId)
+        escribiendo: omitir(e.escribiendo, m.conversacionId, m.emisorId),
+        grabando: e.escribiendo[m.conversacionId] === m.emisorId ? sinClave(e.grabando, m.conversacionId) : e.grabando
       }
     }
     case 'mensaje.cambio': {
@@ -109,7 +120,11 @@ export function aplicarEvento(e: EstadoChat, ev: EventoChat, yoId: string | unde
         })
       }
     case 'escribiendo':
-      return { ...e, escribiendo: ev.escribiendo ? { ...e.escribiendo, [ev.conversacionId]: ev.usuarioId } : omitir(e.escribiendo, ev.conversacionId, ev.usuarioId) }
+      return {
+        ...e,
+        escribiendo: ev.escribiendo ? { ...e.escribiendo, [ev.conversacionId]: ev.usuarioId } : omitir(e.escribiendo, ev.conversacionId, ev.usuarioId),
+        grabando: ev.escribiendo && ev.audio ? { ...e.grabando, [ev.conversacionId]: true } : sinClave(e.grabando, ev.conversacionId)
+      }
     case 'presencia':
       return {
         ...e,

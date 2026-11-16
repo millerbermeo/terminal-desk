@@ -143,7 +143,7 @@ export function Acceso({ servidor, onEntrar, onServidor, onCancelar }: Props) {
   return (
     <div className="modal-fondo">
       <form
-        className="modal modal-chico"
+        className="modal modal-chico acc-form"
         aria-label={TITULOS[modo]}
         onSubmit={(ev) => {
           ev.preventDefault()

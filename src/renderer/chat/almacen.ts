@@ -14,6 +14,12 @@ export interface VistaChat extends EstadoChat {
 
 const identificador = (): string => crypto.randomUUID()
 
+/**
+ * Vistas previas locales de lo que se está subiendo (URL de un Blob por id de adjunto). La burbuja enseña la imagen o el video al
+ * instante, sin esperar al servidor; al confirmarse, el adjunto nuevo hereda la misma URL (no se vuelve a descargar).
+ */
+export const previasLocales = new Map<string, string>()
+
 const MAX_ESPERA_ESCRIBIR_MS = 6000
 const REENVIO_ESCRIBIENDO_MS = 3000
 
@@ -30,6 +36,7 @@ class AlmacenChat {
   private readonly oyentes = new Set<() => void>()
   private readonly timersEscribiendo = new Map<string, number>()
   private ultimoEscribiendo = 0
+  private ultimoAudio = false
   private baja?: () => void
   private recargando = false
   /** Se llama con cada evento del servidor (la capa de llamadas lo usa). */
@@ -224,12 +231,21 @@ class AlmacenChat {
     await window.api.chat.operar('leido', { conversacionId: id, seq }).catch(() => undefined)
   }
 
-  /** «Escribiendo…» al otro: como mucho cada 3 s mientras se teclea. */
-  escribiendo(id: string): void {
+  /** «Escribiendo…» (o «grabando audio…» con `audio`) al otro: como mucho cada 3 s mientras dura. */
+  escribiendo(id: string, audio = false): void {
     const ahora = Date.now()
-    if (ahora - this.ultimoEscribiendo < REENVIO_ESCRIBIENDO_MS) return
+    if (ahora - this.ultimoEscribiendo < REENVIO_ESCRIBIENDO_MS && this.ultimoAudio === audio) return
     this.ultimoEscribiendo = ahora
-    void window.api.chat.operar('tiempoReal', { orden: { t: 'escribiendo', conversacionId: id, escribiendo: true } }).catch(() => undefined)
+    this.ultimoAudio = audio
+    void window.api.chat.operar('tiempoReal', { orden: { t: 'escribiendo', conversacionId: id, escribiendo: true, ...(audio ? { audio: true } : {}) } }).catch(() => undefined)
+  }
+
+  /** Avisa de que se dejó de escribir o de grabar (campo vaciado, nota cancelada) sin esperar a que caduque. */
+  dejarDeEscribir(id: string): void {
+    if (!this.ultimoEscribiendo) return
+    this.ultimoEscribiendo = 0
+    this.ultimoAudio = false
+    void window.api.chat.operar('tiempoReal', { orden: { t: 'escribiendo', conversacionId: id, escribiendo: false } }).catch(() => undefined)
   }
 
   // ---------------------------------------------------------------- envío
@@ -257,6 +273,7 @@ class AlmacenChat {
     const yo = this.estado.yo?.id
     if (!yo || !texto.trim()) return
     const clienteId = identificador()
+    this.ultimoEscribiendo = 0
     this.poner(mensajeLocal({ conversacionId, emisorId: yo, tipo: 'text', texto: texto.trim(), clienteId, respondeA: respondeA ? { id: respondeA.id, emisorId: respondeA.emisorId, tipo: respondeA.tipo, texto: vistaPrevia(respondeA), eliminado: false } : null }))
     await this.mandarTexto(conversacionId, texto.trim(), clienteId, respondeA?.id)
   }
@@ -270,12 +287,14 @@ class AlmacenChat {
   }
 
   /** Envía un archivo, imagen o nota de voz. Comprueba el tamaño antes de subir nada. */
-  async enviarArchivo(conversacionId: string, archivo: { nombre: string; mime: string; datos: Uint8Array; duracionMs?: number; texto?: string }, respondeA?: MensajeChat): Promise<void> {
+  async enviarArchivo(conversacionId: string, archivo: { nombre: string; mime: string; datos: Uint8Array; duracionMs?: number; texto?: string; previa?: string }, respondeA?: MensajeChat): Promise<void> {
     const yo = this.estado.yo?.id
     if (!yo) return
     if (archivo.datos.byteLength > LIMITE_ARCHIVO_CHAT) return this.fallo(new Error(`«${archivo.nombre}» pasa de ${Math.round(LIMITE_ARCHIVO_CHAT / 1024 / 1024)} MB.`))
     const tipo = tipoPorMime(archivo.mime)
     const clienteId = identificador()
+    this.ultimoEscribiendo = 0 // al enviar, el otro deja de ver «escribiendo» (lo quita su estado al recibir el mensaje)
+    if (archivo.previa) previasLocales.set(`local-${clienteId}`, archivo.previa)
     this.poner(
       mensajeLocal({
         conversacionId, emisorId: yo, tipo, texto: archivo.texto ?? '', clienteId,
@@ -283,7 +302,9 @@ class AlmacenChat {
       })
     )
     try {
-      this.confirmar(await window.api.chat.operar('enviarArchivo', { conversacionId, tipo, nombre: archivo.nombre, mime: archivo.mime, datos: archivo.datos, clienteId, ...(archivo.duracionMs !== undefined ? { duracionMs: archivo.duracionMs } : {}), ...(archivo.texto ? { texto: archivo.texto } : {}), ...(respondeA ? { respondeA: respondeA.id } : {}) }))
+      const m = await window.api.chat.operar('enviarArchivo', { conversacionId, tipo, nombre: archivo.nombre, mime: archivo.mime, datos: archivo.datos, clienteId, ...(archivo.duracionMs !== undefined ? { duracionMs: archivo.duracionMs } : {}), ...(archivo.texto ? { texto: archivo.texto } : {}), ...(respondeA ? { respondeA: respondeA.id } : {}) })
+      if (archivo.previa && m.adjunto) previasLocales.set(m.adjunto.id, archivo.previa)
+      this.confirmar(m)
     } catch (err) {
       this.fallido(conversacionId, clienteId, err)
     }

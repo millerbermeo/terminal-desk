@@ -111,7 +111,8 @@ export type EventoChat =
   | { t: 'mensaje.nuevo'; mensaje: MensajeChat }
   | { t: 'mensaje.cambio'; mensaje: MensajeChat }
   | { t: 'recibo'; conversacionId: string; usuarioId: string; leidoSeq?: number; entregadoSeq?: number }
-  | { t: 'escribiendo'; conversacionId: string; usuarioId: string; escribiendo: boolean }
+  /** `audio`: está grabando una nota de voz (si no, escribiendo). */
+  | { t: 'escribiendo'; conversacionId: string; usuarioId: string; escribiendo: boolean; audio?: boolean }
   | { t: 'presencia'; usuarioId: string; enLinea: boolean; ultimaConexion: string | null }
   | { t: 'contacto.cambio' }
   | { t: 'conversacion.cambio'; conversacionId: string }
@@ -123,7 +124,7 @@ export type EventoChat =
 
 /** Lo que la interfaz puede mandar por el WebSocket (main descarta cualquier otra cosa). */
 export type OrdenTiempoReal =
-  | { t: 'escribiendo'; conversacionId: string; escribiendo: boolean }
+  | { t: 'escribiendo'; conversacionId: string; escribiendo: boolean; audio?: boolean }
   | { t: 'llamada.invitar'; llamadaId: string; usuarioId: string; video: boolean }
   | { t: 'llamada.responder'; llamadaId: string; aceptar: boolean }
   | { t: 'llamada.senal'; llamadaId: string; datos: unknown }

@@ -710,3 +710,10 @@ body {
 .cuenta-lista .avatar, .acc-cuenta .avatar { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--acento-suave); color: var(--acento); font-weight: 650; font-size: 13px; }
 .acc-guardadas { display: flex; flex-direction: column; gap: 8px; }
 .acc-cuenta { display: flex; align-items: center; gap: 10px; text-align: left; }
+
+/* Las filas de acciones de los diálogos (acceso, cuenta…) pasan a otra línea en vez de cortarse cuando no caben. */
+.cfg-acciones { flex-wrap: wrap; }
+.cfg-acciones > button { flex: 0 1 auto; white-space: normal; }
+.acc-form .cfg-acciones { justify-content: stretch; }
+.acc-form .cfg-acciones > button.primario { flex: 1 1 100%; }
+.modal-chico.acc-form { width: min(540px, 100%); }

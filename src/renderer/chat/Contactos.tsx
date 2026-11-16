@@ -4,12 +4,13 @@ import { almacenChat, type VistaChat } from './almacen'
 import { Avatar } from './Avatar'
 import { confirmar } from '../confirmar'
 import { controlLlamada } from './llamadas'
+import { IBloquear, ICerrar, IPersonaMas, ITelefono, IVideo } from './Iconos'
 
 function Fila({ c, children, alAbrir }: { c: ContactoChat; children: React.ReactNode; alAbrir?: () => void }) {
   return (
     <li className="ch-contacto">
       <button className="ch-contacto-datos" onClick={alAbrir} disabled={!alAbrir} aria-label={alAbrir ? `Abrir chat con ${c.usuario.nombre}` : c.usuario.nombre}>
-        <Avatar usuario={c.usuario} enLinea={c.usuario.enLinea} />
+        <Avatar usuario={c.usuario} enLinea={c.usuario.enLinea} tam={40} />
         <span className="ch-contacto-nombre">
           <strong>{c.usuario.nombre}</strong>
           <span>{c.usuario.email}</span>
@@ -50,7 +51,15 @@ export function Contactos({ vista, alAbrirChat }: { vista: VistaChat; alAbrirCha
   return (
     <div className="ch-contactos">
       <form className="ch-agregar" onSubmit={(e) => void solicitar(e)}>
-        <label htmlFor="ch-email">Agregar contacto por correo</label>
+        <div className="ch-agregar-cab">
+          <span className="ch-agregar-icono" aria-hidden>
+            <IPersonaMas tam={18} />
+          </span>
+          <div>
+            <label htmlFor="ch-email">Agregar contacto por correo</label>
+            <span>Le llegará una solicitud; si no tiene cuenta, una invitación.</span>
+          </div>
+        </div>
         <div>
           <input id="ch-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nombre@correo.com" autoComplete="off" maxLength={254} required />
           <button className="primario" type="submit" disabled={enviando || !email.trim()}>
@@ -74,8 +83,8 @@ export function Contactos({ vista, alAbrirChat }: { vista: VistaChat; alAbrirCha
                   Aceptar
                 </button>
                 <button onClick={() => void almacenChat.responder(c.id, false)}>Rechazar</button>
-                <button className="peligro" title="Bloquear" onClick={() => void almacenChat.bloquear(c.usuario.id, true)} aria-label={`Bloquear a ${c.usuario.nombre}`}>
-                  ⛔
+                <button className="icono peligro" title="Bloquear" onClick={() => void almacenChat.bloquear(c.usuario.id, true)} aria-label={`Bloquear a ${c.usuario.nombre}`}>
+                  <IBloquear tam={16} />
                 </button>
               </Fila>
             ))}
@@ -105,13 +114,13 @@ export function Contactos({ vista, alAbrirChat }: { vista: VistaChat; alAbrirCha
             {aceptados.map((c) => (
               <Fila key={c.id} c={c} alAbrir={() => void abrir(c.usuario.id)}>
                 <button className="icono" title="Llamada de voz" aria-label={`Llamar a ${c.usuario.nombre}`} disabled={vista.conexion !== 'conectado'} onClick={() => void controlLlamada.llamar(c.usuario, false)}>
-                  📞
+                  <ITelefono tam={16} />
                 </button>
                 <button className="icono" title="Videollamada" aria-label={`Videollamada con ${c.usuario.nombre}`} disabled={vista.conexion !== 'conectado'} onClick={() => void controlLlamada.llamar(c.usuario, true)}>
-                  🎥
+                  <IVideo tam={16} />
                 </button>
                 <button className="icono peligro" title="Eliminar contacto" aria-label={`Eliminar a ${c.usuario.nombre}`} onClick={() => void confirmar({ titulo: `¿Eliminar a ${c.usuario.nombre}?`, texto: 'Dejará de ser tu contacto: se conserva el historial, pero ya no podrán escribirse ni llamarse.', etiqueta: 'Eliminar', tono: 'peligro' }).then((si) => { if (si) void almacenChat.eliminarContacto(c.id) })}>
-                  ✕
+                  <ICerrar tam={14} />
                 </button>
               </Fila>
             ))}

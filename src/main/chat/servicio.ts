@@ -98,7 +98,7 @@ export class ServicioChat {
     // Se reconstruye cada orden con solo los campos permitidos: nada de lo que mande la interfaz pasa tal cual.
     switch (o?.t) {
       case 'escribiendo':
-        return this.deps.conexion.enviar({ t: 'escribiendo', conversacionId: uuid(o.conversacionId, 'La conversación'), escribiendo: o.escribiendo === true })
+        return this.deps.conexion.enviar({ t: 'escribiendo', conversacionId: uuid(o.conversacionId, 'La conversación'), escribiendo: o.escribiendo === true, ...(o.audio === true && o.escribiendo === true ? { audio: true } : {}) })
       case 'llamada.invitar':
         return this.deps.conexion.enviar({ t: 'llamada.invitar', llamadaId: uuid(o.llamadaId, 'La llamada'), usuarioId: uuid(o.usuarioId, 'El usuario'), video: o.video === true })
       case 'llamada.responder':
