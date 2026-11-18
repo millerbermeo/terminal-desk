@@ -78,7 +78,7 @@ import { ejecutarOperacionTareas } from './tareas/operaciones'
 import { archivoMcpTareas, servidoresExternos } from './tareas/mcp-config'
 import { cerrarSesion, consultarCli, ejecutarSuscripcion, ESFUERZOS, estadoCuenta, estadoSesion, iniciarSesion, listarModelosCli, Preferencias, rebobinarArchivos, SesionesCli, type ControlProceso, type ResultadoRebobinado, type SalidaEjecucion } from './suscripcion'
 import { ejecutarEnProceso, ProcesosCli } from './proceso-cli'
-import { AVISO_SUBAGENTES, GUIA_CREDENCIALES, GUIA_RESPUESTAS, GUIA_TRABAJO, guiaNavegador, guiaRecursos } from './avisos'
+import { AVISO_SUBAGENTES, GUIA_COPIABLE, GUIA_CREDENCIALES, GUIA_RESPUESTAS, GUIA_TRABAJO, guiaNavegador, guiaRecursos } from './avisos'
 import { registrarIntegradas } from './tools/integradas'
 import { RegistroHerramientas } from './tools/registro'
 
@@ -172,6 +172,7 @@ export class Nucleo {
   readonly ejecutarHerramienta: EjecutorOdesk
   private navegadorIA?: ControlNavegador
   private movilIA?: ControlNavegador
+  private chromeIA?: ControlNavegador
   private appIA?: ControlAppOdesk
   private confirmarIA?: (pregunta: string, cliente?: string) => Promise<boolean>
   readonly cuentas = new Cuentas(join(DIR, 'cuentas.json'), join(DIR, 'cuentas'))
@@ -232,6 +233,7 @@ export class Nucleo {
       memoria: this.memoria,
       navegador: () => this.navegadorIA,
       movil: () => this.movilIA,
+      chrome: () => this.chromeIA,
       app: () => this.appIA,
       confirmar: (pregunta, cliente) => (this.confirmarIA ? this.confirmarIA(pregunta, cliente) : Promise.resolve(false))
     })
@@ -244,6 +246,11 @@ export class Nucleo {
   }
 
   /** Igual para los dispositivos Android por USB (adb). */
+  /** El Chrome real del usuario (extensión de Odesk): herramientas `chrome_*`. */
+  conectarChrome(control: ControlNavegador): void {
+    this.chromeIA = control
+  }
+
   conectarMovil(control: ControlNavegador): void {
     this.movilIA = control
   }
@@ -439,7 +446,7 @@ export class Nucleo {
     // Texto fijo (sin nombres ni cuántas hay): si cambiara al guardar una credencial, se relanzaría el proceso y se perdería la caché.
     const credsCtx = proyecto ? GUIA_CREDENCIALES : ''
     return {
-      estable: [GUIA_TRABAJO, GUIA_RESPUESTAS, git.guia, credsCtx, AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim(),
+      estable: [GUIA_TRABAJO, GUIA_RESPUESTAS, GUIA_COPIABLE, git.guia, credsCtx, AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim(),
       dinamico: [memoria, tareas, git.estado, conAdjuntos ? AVISO_ADJUNTOS : ''].filter(Boolean).join('\n\n').trim()
     }
   }
@@ -450,7 +457,7 @@ export class Nucleo {
     const tareas = proyecto ? await this.tareas.contextoParaIA(proyecto.id, proyecto.nombre, prompt).catch(() => '') : ''
     const gitCtx = proyecto ? (({ estado, guia }) => [estado, guia].filter(Boolean).join('\n'))(await this.contextoGit(proyecto.ruta)) : ''
     const credsCtx = proyecto ? GUIA_CREDENCIALES : ''
-    return [GUIA_RESPUESTAS, memoria, tareas, gitCtx, credsCtx, conAdjuntos ? AVISO_ADJUNTOS : '', AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim()
+    return [GUIA_RESPUESTAS, GUIA_COPIABLE, memoria, tareas, gitCtx, credsCtx, conAdjuntos ? AVISO_ADJUNTOS : '', AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim()
   }
 
   private planEnCurso: Promise<void> | undefined
@@ -1288,6 +1295,12 @@ export class Nucleo {
 
   cancelar(id: string): void {
     this.activas.get(id)?.abort()
+  }
+
+  /** Tras pasar proyectos de la cuenta a local o al revés: tablero y conversaciones de este equipo siguen al id nuevo. */
+  async reasignarProyectos(proyectos: { viejo: string; nuevo: string }[], grupo?: { viejo: string; nuevo: string }): Promise<void> {
+    await this.tareas.reasignar(Object.fromEntries(proyectos.map((p) => [p.viejo, p.nuevo])), grupo ? { [grupo.viejo]: grupo.nuevo } : {})
+    for (const p of proyectos) await this.sesiones.reasignarProyecto(p.viejo, p.nuevo)
   }
 
   /**

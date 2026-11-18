@@ -75,7 +75,8 @@ export const HERRAMIENTAS_CREDENCIALES: readonly DefHerramientaTareas[] = [
 ]
 
 /** Herramientas que siempre preguntan a la persona, también en «Autónomo» (no entran en la lista de permitidas del CLI). */
-export const CREDENCIALES_SIEMPRE_CONFIRMAN: readonly string[] = ['credenciales_eliminar']
+// `credenciales_obtener` entrega valores: pide la contraseña del equipo (`hitl/permiso-cli.ts#pedirContrasena`).
+export const CREDENCIALES_SIEMPRE_CONFIRMAN: readonly string[] = ['credenciales_eliminar', 'credenciales_obtener']
 
 /** `true` si es la herramienta que recibe valores de credenciales (con o sin el prefijo `mcp__odesk__` del CLI). */
 export const recibeValoresCredencial = (herramienta: string): boolean => herramienta === 'credenciales_guardar' || herramienta.endsWith('__credenciales_guardar')

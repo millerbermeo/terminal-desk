@@ -78,8 +78,18 @@ export function PanelTrabajo({ turno, onCerrar }: { turno: Turno; onCerrar: () =
     const tecla = (e: KeyboardEvent): void => {
       if (e.key === 'Escape' && !e.defaultPrevented) cerrar()
     }
+    // Clic fuera del panel lo cierra (no si cae en otro diálogo abierto encima, p. ej. una confirmación).
+    const fuera = (e: PointerEvent): void => {
+      const t = e.target as Element | null
+      if (!t || panel.current?.contains(t) || t.closest?.('[role="dialog"], [role="alertdialog"], .modal')) return
+      cerrar()
+    }
     window.addEventListener('keydown', tecla)
-    return () => window.removeEventListener('keydown', tecla)
+    document.addEventListener('pointerdown', fuera, true)
+    return () => {
+      window.removeEventListener('keydown', tecla)
+      document.removeEventListener('pointerdown', fuera, true)
+    }
   }, [cerrar])
 
   const moverPestana = (e: EventoTeclado<HTMLDivElement>): void => {

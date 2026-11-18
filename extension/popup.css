@@ -1,0 +1,47 @@
+:root {
+  color-scheme: light dark;
+  --fondo: #ffffff;
+  --texto: #1d1d1f;
+  --tenue: #6e6e73;
+  --borde: #d2d2d7;
+  --acento: #7c3aed;
+  --ok: #15803d;
+  --aviso: #b45309;
+  --error: #b91c1c;
+  --tarjeta: #f5f5f7;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #1c1c1e;
+    --texto: #f5f5f7;
+    --tenue: #a1a1a6;
+    --borde: #3a3a3c;
+    --acento: #a78bfa;
+    --ok: #4ade80;
+    --aviso: #fbbf24;
+    --error: #f87171;
+    --tarjeta: #2c2c2e;
+  }
+}
+* { box-sizing: border-box; }
+body { width: 320px; margin: 0; padding: 14px; font: 13px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif; background: var(--fondo); color: var(--texto); }
+header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+header strong { flex: 1; font-size: 14px; }
+.chip { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--borde); color: var(--tenue); }
+.chip.ok { color: var(--ok); border-color: currentColor; }
+.chip.aviso { color: var(--aviso); border-color: currentColor; }
+section { display: flex; flex-direction: column; gap: 8px; }
+p { margin: 0; }
+form { display: flex; gap: 6px; }
+input { flex: 1; min-width: 0; padding: 7px 10px; font: 600 16px/1 ui-monospace, monospace; letter-spacing: 0.15em; text-align: center; border-radius: 8px; border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto); }
+input:focus { outline: 2px solid var(--acento); outline-offset: -1px; }
+button { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--borde); background: transparent; color: var(--texto); font: inherit; cursor: pointer; }
+button:hover:not(:disabled) { background: var(--tarjeta); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primario { background: var(--acento); border-color: transparent; color: #fff; font-weight: 600; }
+button.primario:hover:not(:disabled) { filter: brightness(1.08); background: var(--acento); }
+button.enlace { border: 0; padding: 0; color: var(--tenue); text-decoration: underline; font-size: 12px; }
+.tarjeta { padding: 8px 10px; border-radius: 8px; background: var(--tarjeta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nota { color: var(--tenue); font-size: 12px; }
+.error { color: var(--error); min-height: 1em; margin-top: 8px; }
+footer { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--borde); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }

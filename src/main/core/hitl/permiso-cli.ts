@@ -9,11 +9,13 @@ import { motivoBloqueoAutonomo } from '../guardrails/autonomo'
 import { esDestructiva } from '../guardrails/destructivo'
 import { esBashSoloLectura } from '../guardrails/solo-lectura'
 import { detectarSecretos, type Hallazgo } from '../guardrails/secretos'
+import { grepSensible, motivoBashSensible, rutaSensible } from '../guardrails/acceso-sensible'
 import { avisoSecretos } from './aprobador'
 import type { PuertaHumana, SolicitudHumana } from '../orchestrator/puerta'
 import { decidir, reglaDe } from '../permisos/reglas'
 import type { PeticionPermiso, RespuestaPermiso } from '../suscripcion'
 import { armarSudo, olvidarSolicitudSudo, registrarSolicitudSudo, reescribirSudo, sinSudo, tomarPasswordSudo, usaSudo } from './sudo'
+import { PREFIJO_MCP } from '@shared/herramientas-odesk'
 
 export interface DepsPermisoCli {
   puerta: PuertaHumana
@@ -101,36 +103,63 @@ async function secretosDeArchivo(ruta: string): Promise<Hallazgo[]> {
 }
 
 /**
- * Lectura de un archivo con posibles credenciales: su contenido iría al modelo. La persona decide; en «autónomo» nadie mira, así
- * que se deniega. Si al revisarlo aquí ya no tiene credenciales (lo cambiaron entre medias), se deja leer.
+ * Acceso a credenciales o variables de entorno (archivo `.env`, claves, secretos de producción, `credenciales_obtener`…): se permite
+ * solo si una persona escribe la contraseña del equipo en el modal (en cualquier modo de autonomía; sin nadie delante, como en las
+ * tareas programadas, la solicitud se deniega sola). La contraseña se verifica en main (`core:sudo-verificar`, mismo registro que
+ * `sudo`) y se descarta en cuanto se comprueba: no se guarda ni se usa para nada más.
+ */
+export async function pedirContrasena(
+  d: DepsPermisoCli,
+  alSolicitar: (id: string, s: SolicitudHumana) => void,
+  o: { herramienta: string; contenido: string; motivo: string }
+): Promise<RespuestaPermiso> {
+  const evento = (m: string): void => d.alEvento({ ejecucionId: d.ejecucionId, agente: 'asistente', profundidad: 0, tipo: 'guardrail', herramienta: o.herramienta, motivo: m } as EventoAgente)
+  const negado = `El usuario no autorizó este acceso a credenciales (${o.motivo}). No lo intentes por otra vía (cat, grep, sed, otro comando…); si necesitas un dato que no sea secreto, pídeselo al usuario.`
+  let sid = ''
+  try {
+    const dec = await d.puerta.solicitar(
+      {
+        clase: 'accion',
+        contenido: o.contenido,
+        detalle: `El asistente quiere acceder a credenciales o variables de entorno: ${o.motivo}. Lo que lea se envía al modelo.`,
+        herramienta: o.herramienta,
+        sudo: true,
+        credenciales: true
+      },
+      (id, sol) => {
+        sid = id
+        registrarSolicitudSudo(id)
+        alSolicitar(id, sol)
+      },
+      d.senal
+    )
+    // Aprobado sin contraseña verificada (otra ventana, una respuesta forjada): no vale.
+    const verificada = sid ? tomarPasswordSudo(sid) !== undefined : false
+    if (!dec.aprobado || !verificada) {
+      evento(`acceso a credenciales denegado: ${o.motivo}`)
+      return { permitir: false, mensaje: dec.comentario ? `${negado} Comentario del usuario: ${dec.comentario}` : negado }
+    }
+    evento(`acceso a credenciales autorizado con la contraseña del equipo: ${o.motivo}`)
+    return { permitir: true }
+  } finally {
+    if (sid) olvidarSolicitudSudo(sid)
+  }
+}
+
+/**
+ * Lectura de un archivo sensible por su nombre (`.env`, claves…) o con posibles credenciales dentro: su contenido iría al modelo.
+ * Pide la contraseña del equipo. Si no es sensible por nombre y al revisarlo aquí ya no tiene credenciales, se deja leer.
  */
 async function leerConSecretos(p: PeticionPermiso, d: DepsPermisoCli, alSolicitar: (id: string, s: SolicitudHumana) => void): Promise<RespuestaPermiso> {
   const ruta = texto(p.entrada.file_path)
+  const porNombre = rutaSensible(ruta)
   const hallazgos = await secretosDeArchivo(ruta)
-  if (!hallazgos.length) return { permitir: true }
-  const evento = (motivo: string): void => d.alEvento({ ejecucionId: d.ejecucionId, agente: 'asistente', profundidad: 0, tipo: 'guardrail', herramienta: 'Read', motivo } as EventoAgente)
-  const negado = `No se envió «${ruta}» al modelo: contiene posibles credenciales y el usuario no autorizó compartirlas. No intentes leerlo por otra vía (cat, grep, sed…); si necesitas algo de ese archivo que no sea un secreto, pídeselo al usuario.`
-  if (d.autonomia === 'autonomo') {
-    evento(`lectura de «${ruta}» denegada: contiene posibles credenciales (en modo autónomo no se envían)`)
-    return { permitir: false, mensaje: negado }
-  }
-  const dec = await d.puerta.solicitar(
-    {
-      clase: 'accion',
-      contenido: avisoSecretos(`«${ruta}»`, hallazgos, 'el asistente no recibe el archivo y sigue sin él.'),
-      detalle: 'El asistente quiere leer un archivo que parece contener credenciales',
-      herramienta: 'Read',
-      secretos: true
-    },
-    alSolicitar,
-    d.senal
-  )
-  if (!dec.aprobado) {
-    evento(`lectura de «${ruta}» denegada por el usuario: contiene posibles credenciales`)
-    return { permitir: false, mensaje: dec.comentario ? `${negado} Comentario del usuario: ${dec.comentario}` : negado }
-  }
-  evento(`«${ruta}» enviado al modelo con permiso del usuario pese a contener posibles credenciales`)
-  return { permitir: true }
+  if (!porNombre && !hallazgos.length) return { permitir: true }
+  return pedirContrasena(d, alSolicitar, {
+    herramienta: 'Read',
+    contenido: hallazgos.length ? avisoSecretos(`«${ruta}»`, hallazgos, 'el asistente no recibe el archivo y sigue sin él.') : `Leer «${ruta}»`,
+    motivo: `leer «${ruta}»${porNombre ? ' (archivo de credenciales)' : ' (contiene posibles credenciales)'}`
+  })
 }
 
 /**
@@ -153,14 +182,36 @@ export function crearPermisoCli(d: DepsPermisoCli): (p: PeticionPermiso) => Prom
         return { permitir: true, entrada: { ...p.entrada, answers: dec.respuestas ?? {} } }
       }
 
-      // `Read` solo llega aquí si el gancho de la guardia vio posibles credenciales («ask»): lo demás el CLI lo lee sin preguntar.
+      // `Read`/`Grep` solo llegan aquí si el gancho de la guardia vio un archivo sensible («ask»): lo demás el CLI lo lee sin preguntar.
       if (p.herramienta === 'Read') return await leerConSecretos(p, d, alSolicitar)
+      if (p.herramienta === 'Grep') {
+        const motivo = grepSensible(p.entrada)
+        return motivo ? await pedirContrasena(d, alSolicitar, { herramienta: 'Grep', contenido: `Grep ${JSON.stringify(p.entrada)}`, motivo }) : { permitir: true }
+      }
+      if (p.herramienta === `${PREFIJO_MCP}credenciales_obtener`) {
+        const nombre = texto(p.entrada.nombre) || 'credencial'
+        return await pedirContrasena(d, alSolicitar, { herramienta: p.herramienta, contenido: `Obtener los valores de la credencial «${nombre}»`, motivo: `obtener los valores de «${nombre}»` })
+      }
 
       const { llamada, descripcion, simple } = traducir(p)
       const bloqueo = await d.validar(llamada)
       if (bloqueo) return { permitir: false, mensaje: `Bloqueado: ${bloqueo}` }
       const regla = simple ? decidir(await d.reglas(), llamada) : null
       if (regla === 'denegar') return { permitir: false, mensaje: 'Una regla de permisos de este proyecto lo deniega.' }
+      // Comando que lee credenciales o variables de entorno: contraseña del equipo, aunque sea de solo lectura o esté en «autónomo».
+      // Con `sudo` va por su propio modal, que ya pide la contraseña.
+      const motivoSensible = p.herramienta === 'Bash' && !usaSudo(texto(p.entrada.command)) ? motivoBashSensible(texto(p.entrada.command)) : null
+      if (motivoSensible) {
+        if (d.autonomia === 'autonomo') {
+          const bloqueoAuto = motivoBloqueoAutonomo(texto(p.entrada.command))
+          if (bloqueoAuto) return { permitir: false, mensaje: `Bloqueado en modo autónomo: ${bloqueoAuto}. No lo intentes de otra forma.` }
+        }
+        const r = await pedirContrasena(d, alSolicitar, { herramienta: 'Bash', contenido: descripcion, motivo: motivoSensible })
+        if (!r.permitir) return r
+        const razonCmd = razonDestructiva(llamada, texto(p.entrada.command), simple)
+        if (!razonCmd) return r
+        // Además destructivo: la contraseña no sustituye a la confirmación de lo destructivo (sigue abajo).
+      }
       // `sudo`: el CLI no tiene terminal donde pedir la contraseña. Se pide en el modal (en cualquier modo de autonomía: hace
       // falta una persona) y el comando se reescribe a `sudo -A` con el ayudante de la app (`./sudo.ts`).
       if (p.herramienta === 'Bash' && process.platform !== 'win32' && usaSudo(texto(p.entrada.command))) {

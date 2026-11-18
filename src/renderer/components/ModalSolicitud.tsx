@@ -91,15 +91,18 @@ function PanelSudo({ solicitud: s, pendientes, onResponder }: Props) {
             </svg>
           )}
         </div>
-        <h3 id="sudo-titulo">{estado === 'ok' ? 'Permiso concedido' : 'Se requieren permisos de administrador'}</h3>
+        <h3 id="sudo-titulo">{estado === 'ok' ? 'Permiso concedido' : s.credenciales ? 'Acceso a credenciales' : 'Se requieren permisos de administrador'}</h3>
         <p id="sudo-desc" className="sudo-sub">
-          {s.destino ? <><strong>{s.destino}</strong> · </> : null}El asistente quiere ejecutar este comando con <code>sudo</code>. Escribe tu contraseña del sistema para autorizarlo.
+          {s.destino ? <><strong>{s.destino}</strong> · </> : null}
+          {s.credenciales
+            ? <>El asistente quiere acceder a variables de entorno o credenciales{s.detalle ? <> ({s.detalle.replace(/^.*?: /, '').replace(/\. Lo que lea.*$/, '')})</> : null}. Lo que lea se envía al modelo. Escribe la contraseña de este equipo para autorizarlo.</>
+            : <>El asistente quiere ejecutar este comando con <code>sudo</code>. Escribe tu contraseña del sistema para autorizarlo.</>}
         </p>
         {pendientes > 1 && <span className="chip sudo-cola">{pendientes} pendientes</span>}
         <pre className="sudo-comando">{s.contenido}</pre>
         {s.destructivo && s.detalle && <p className="sudo-peligro">⚠ {s.detalle.replace(/^.*ACCIÓN DESTRUCTIVA: /, 'Acción destructiva: ')}</p>}
         <label className="sudo-campo">
-          <span>Contraseña de {'«'}sudo{'»'}</span>
+          <span>{s.credenciales ? 'Contraseña del equipo' : <>Contraseña de {'«'}sudo{'»'}</>}</span>
           <div className={`sudo-entrada${error ? ' con-error' : ''}`}>
             <input
               ref={campo}
@@ -134,7 +137,7 @@ function PanelSudo({ solicitud: s, pendientes, onResponder }: Props) {
             {estado === 'verificando' ? <><span className="sudo-giro" aria-hidden="true" /> Verificando…</> : estado === 'ok' ? 'Autorizado' : 'Autorizar'}
           </button>
         </div>
-        <p className="sudo-nota">La contraseña se usa solo para este comando: no se guarda ni se envía a la IA.</p>
+        <p className="sudo-nota">{s.credenciales ? 'La contraseña solo confirma que eres tú: no se guarda ni se envía a la IA. Vale para este acceso, no para los siguientes.' : 'La contraseña se usa solo para este comando: no se guarda ni se envía a la IA.'}</p>
       </form>
     </div>,
     document.body

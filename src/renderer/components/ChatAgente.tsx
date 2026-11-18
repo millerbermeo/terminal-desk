@@ -28,7 +28,7 @@ import { useGrabadora } from '../agente/grabadora'
 import { BarraGrabacion, BotonMicrofono, SelectorIdiomaVoz } from './GrabadorVoz'
 import { ProyectoDelChat } from './DiffEdicion'
 import { useLectura } from '../agente/voz-salida'
-import { buscarEnTurnos, cursorEnBorde, estimarEnvio, exportarMarkdown, navegarPrompts, nombreArchivoExportado, promptsEnviados, textoRespuesta } from '../agente/utilidades-chat'
+import { buscarEnTurnos, cursorEnBorde, editableHasta, estimarEnvio, exportarMarkdown, navegarPrompts, nombreArchivoExportado, promptsEnviados, textoRespuesta } from '../agente/utilidades-chat'
 import { alExterno, tomarExternos } from '../agente/externos'
 import { Cargando } from './Cargando'
 import { EstadoVivo, GrupoHerramientas } from './ActividadAgente'
@@ -327,23 +327,67 @@ function MenuRegenerar({ modelos, onRegenerar }: { modelos: OpcionModelo[]; onRe
 }
 
 /** Memoizado: un turno terminado no se repinta cuando otro recibe texto (los manejadores son estables y reciben el turno). */
-const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer, onEditar, lecturaDisponible, leyendo, onLeer, esUltimo, modelos, onRamificar, onRegenerar, onVerTrabajo }: { t: Turno; /** Abre el panel «Ver trabajo» de este turno. */ onVerTrabajo: (t: Turno) => void; onCancelar: (t: Turno) => void; onDeshacer: (t: Turno) => void; onEditar: (t: Turno) => void; /** Hay voces del sistema para leer en voz alta. */ lecturaDisponible: boolean; leyendo: boolean; onLeer: (t: Turno) => void; /** Es la última respuesta vigente (la única que se puede regenerar). */ esUltimo: boolean; modelos: OpcionModelo[]; onRamificar: (t: Turno) => void; onRegenerar: (t: Turno, modelo?: string) => void }) {
+const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer, onEditar, lecturaDisponible, leyendo, onLeer, esUltimo, modelos, onRamificar, onRegenerar, onVerTrabajo, editableHasta, onEditarEnSitio }: { t: Turno; /** Hasta cuándo se puede editar este mensaje en su sitio (ms epoch); sin valor, no se puede. */ editableHasta?: number | undefined; /** Reemplaza este mensaje: cancela/descarta su respuesta y la pide con el texto nuevo. */ onEditarEnSitio: (t: Turno, prompt: string) => void; /** Abre el panel «Ver trabajo» de este turno. */ onVerTrabajo: (t: Turno) => void; onCancelar: (t: Turno) => void; onDeshacer: (t: Turno) => void; onEditar: (t: Turno) => void; /** Hay voces del sistema para leer en voz alta. */ lecturaDisponible: boolean; leyendo: boolean; onLeer: (t: Turno) => void; /** Es la última respuesta vigente (la única que se puede regenerar). */ esUltimo: boolean; modelos: OpcionModelo[]; onRamificar: (t: Turno) => void; onRegenerar: (t: Turno, modelo?: string) => void }) {
   const terminado = t.estado !== 'en_curso'
   const editoArchivos = terminado && !t.lateral && !t.heredado && Boolean(t.mensajeId) && t.eventos.some((e) => e.tipo === 'herramienta_inicio' && HERRAMIENTAS_QUE_EDITAN.has(e.llamada.nombre))
   const hayRevision = useMemo(() => terminado && !t.lateral && cambiosDelTurno(t.eventos).length > 0, [terminado, t.lateral, t.eventos])
   const conversable = t.modo === 'chat' && !t.lateral && !t.descartado
   // Solo merece la vista si el turno hizo algo más que contestar (herramientas o subagentes).
   const hayTrabajo = useMemo(() => t.eventos.some((e) => e.tipo === 'herramienta_inicio'), [t.eventos])
+  // Editar en su sitio: el botón desaparece solo al pasar el límite.
+  const [vencido, setVencido] = useState(false)
+  useEffect(() => {
+    setVencido(false)
+    if (!editableHasta) return
+    const id = setTimeout(() => setVencido(true), Math.max(0, editableHasta - Date.now()))
+    return () => clearTimeout(id)
+  }, [editableHasta])
+  const editable = Boolean(editableHasta) && !vencido
+  const [editando, setEditando] = useState<string | null>(null)
+  const enviarEdicion = (): void => {
+    const nuevo = (editando ?? '').trim()
+    setEditando(null)
+    if (nuevo && nuevo !== t.prompt.trim()) onEditarEnSitio(t, nuevo)
+  }
   return (
     <article className={`ag-turno${t.descartado ? ' descartado' : ''}${t.heredado ? ' heredado' : ''}`}>
       <div className="ag-usuario">
         <div className="ag-quien">
           Tú · {t.destino} {t.lateral && <span className="chip" title="Respondida aparte: la tarea principal sigue su curso">pregunta lateral</span>} {t.modo !== 'chat' && t.modo !== 'comando' && <span className="chip">{t.modo === 'flujo' ? 'flujo de desarrollo' : 'grupo (A2A)'}</span>}
           {t.autonomia && <span className="chip chip-aviso" title="Se ejecutó con menos confirmaciones">{t.autonomia === 'autonomo' ? 'autónomo' : 'acepta ediciones'}</span>}
-          {t.descartado && <span className="chip" title="Sustituida por una respuesta regenerada">descartada</span>}
+          {t.descartado && <span className="chip" title="Sustituida: se regeneró la respuesta o se editó el mensaje">descartada</span>}
           {t.heredado && <span className="chip" title="Copiado de la conversación original al ramificar">de la original</span>}
         </div>
-        <div className="ag-texto">{t.prompt}</div>
+        {editando !== null ? (
+          <div className="ag-editar">
+            <textarea
+              autoFocus
+              value={editando}
+              rows={Math.min(12, Math.max(2, editando.split('\n').length))}
+              onChange={(e) => setEditando(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setEditando(null)
+                else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault()
+                  enviarEdicion()
+                }
+              }}
+              aria-label="Editar el mensaje"
+            />
+            <div className="ag-editar-acciones">
+              <span>{t.estado === 'en_curso' ? 'Se detiene la respuesta en marcha y se vuelve a pedir.' : 'Se descarta la respuesta (y sus cambios de archivos) y se vuelve a pedir.'}</span>
+              <button type="button" onClick={() => setEditando(null)}>Cancelar</button>
+              <button type="button" className="primario" onClick={enviarEdicion} disabled={!editando.trim() || editando.trim() === t.prompt.trim()}>Enviar</button>
+            </div>
+          </div>
+        ) : (
+          <div className="ag-texto">{t.prompt}</div>
+        )}
+        {editable && editando === null && (
+          <button type="button" className="ag-editar-btn" onClick={() => setEditando(t.prompt)} title="Cambia este mensaje y vuelve a pedir la respuesta (disponible 2 minutos tras enviarlo)">
+            ✎ Editar
+          </button>
+        )}
         {t.adjuntos && <AdjuntosAgente adjuntos={t.adjuntos} />}
       </div>
       <EventosTurno eventos={t.eventos} raiz={t.raiz} vivo={t.estado === 'en_curso'} />
@@ -366,11 +410,12 @@ const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer, onEdita
             <IconoTrabajo /> Ver trabajo
           </button>
         )}
-        {t.modo !== 'comando' && !t.lateral && t.prompt.trim() && (
+        {t.modo !== 'comando' && !t.lateral && !editable && t.prompt.trim() && (
           <button onClick={() => onEditar(t)} title="Pone este mensaje en el campo para que lo cambies y lo envíes otra vez (sale como mensaje nuevo en esta conversación)">
             ✎ Editar y reenviar
           </button>
         )}
+        {textoRespuesta(t) && <BotonCopiarRespuesta t={t} />}
         {lecturaDisponible && textoRespuesta(t) && (
           <button onClick={() => onLeer(t)} aria-pressed={leyendo} title={leyendo ? 'Parar la lectura' : 'Leer la respuesta en voz alta'}>
             {leyendo ? '■ Parar' : '🔊 Leer'}
@@ -392,6 +437,22 @@ const TurnoVista = memo(function TurnoVista({ t, onCancelar, onDeshacer, onEdita
     </article>
   )
 })
+
+/** Copia la respuesta entera en Markdown (como «Copiar» de claude.ai); cada bloque además tiene su propio «Copiar». */
+function BotonCopiarRespuesta({ t }: { t: Turno }) {
+  const [copiado, setCopiado] = useState(false)
+  const copiar = (): void => {
+    void navigator.clipboard.writeText(textoRespuesta(t)).then(() => {
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 1400)
+    })
+  }
+  return (
+    <button onClick={copiar} aria-live="polite" title="Copia toda la respuesta (en Markdown)">
+      {copiado ? '✓ Copiado' : '⧉ Copiar'}
+    </button>
+  )
+}
 
 const IconoChincheta = () => (
   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -570,30 +631,66 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     }
   }
 
-  /** Regenerar la última respuesta: deshace sus cambios de archivos (si los hubo), la marca como descartada y pide otra. */
-  const regenerar = async (t: Turno, modeloOtro?: string): Promise<void> => {
-    if (agente.enCurso) return
+  /**
+   * Antes de sustituir una respuesta (regenerar o editar el mensaje): deshace sus cambios de archivos, confirmando. `null` = el usuario
+   * no quiso seguir o no se pudo deshacer; si no, si se deshizo algo.
+   */
+  const deshacerParaSustituir = async (t: Turno, titulo: string): Promise<boolean | null> => {
     let deshechos = false
     if (cambiosDelTurno(t.eventos).length > 0) {
       const previo = t.mensajeId && sesionActual ? await window.api.core.rebobinar(sesionActual, t.mensajeId, true).catch(() => undefined) : undefined
       if (previo?.puede && previo.archivos.length) {
         const nombres = previo.archivos.slice(0, 10).map((a) => `• ${a.split(/[\\/]/).slice(-3).join('/')}`).join('\n')
-        if (!(await confirmar({ titulo: 'Regenerar la respuesta', tono: 'aviso', etiqueta: 'Regenerar', texto: `Antes se deshacen los cambios de archivos de esta respuesta:\n\n${nombres}${previo.archivos.length > 10 ? `\n… y ${previo.archivos.length - 10} más` : ''}` }))) return
+        if (!(await confirmar({ titulo, tono: 'aviso', etiqueta: 'Continuar', texto: `Antes se deshacen los cambios de archivos de esta respuesta:\n\n${nombres}${previo.archivos.length > 10 ? `\n… y ${previo.archivos.length - 10} más` : ''}` }))) return null
         const r = await window.api.core.rebobinar(sesionActual!, t.mensajeId!, false).catch((e: Error) => ({ puede: false, archivos: [], error: e.message }))
-        if (!r.puede) return agente.avisar('Regenerar', r.error ?? 'No se pudieron deshacer los cambios: no se regeneró.', t.destino)
+        if (!r.puede) {
+          agente.avisar(titulo, r.error ?? 'No se pudieron deshacer los cambios: no se volvió a pedir la respuesta.', t.destino)
+          return null
+        }
         deshechos = true
-      } else if (!(await confirmar({ titulo: 'Regenerar sin deshacer archivos', tono: 'aviso', etiqueta: 'Regenerar igualmente', texto: 'Esta respuesta cambió archivos pero no tiene un punto de control para deshacerlos. Si regeneras, la nueva respuesta partirá del código tal como está ahora.' }))) return
+      } else if (!(await confirmar({ titulo: `${titulo} sin deshacer archivos`, tono: 'aviso', etiqueta: 'Seguir igualmente', texto: 'Esta respuesta cambió archivos pero no tiene un punto de control para deshacerlos. La nueva respuesta partirá del código tal como está ahora.' }))) return null
     }
+    return deshechos
+  }
+
+  /** Regenerar la última respuesta: deshace sus cambios de archivos (si los hubo), la marca como descartada y pide otra. */
+  const regenerar = async (t: Turno, modeloOtro?: string): Promise<void> => {
+    if (agente.enCurso) return
+    const deshechos = await deshacerParaSustituir(t, 'Regenerar la respuesta')
+    if (deshechos === null) return
     agente.descartar(t.clave)
     const oculto = `<regenerar>El usuario descartó tu respuesta anterior a este mismo mensaje${deshechos ? ' y deshizo los cambios de archivos que hiciste en ella (vuelve a leerlos: lo que recuerdes de ellos está desactualizado)' : ''}. Responde de nuevo desde cero, con un enfoque mejor o distinto; no repitas lo de antes salvo que fuera correcto.</regenerar>`
     lanzar(t.prompt, false, t.adjuntos ?? [], { oculto, ...(modeloOtro ? { modelo: modeloOtro } : {}) })
   }
 
+  /**
+   * Editar en su sitio el último mensaje (dentro de `LIMITE_EDICION_MS`): detiene la respuesta si sigue en marcha, deshace sus cambios
+   * de archivos, la descarta y pide otra con el texto nuevo. El modelo recibe aviso oculto de que la anterior no vale.
+   */
+  const turnosRef = useRef(agente.turnos)
+  turnosRef.current = agente.turnos
+  const editarEnSitio = async (t: Turno, prompt: string): Promise<void> => {
+    if (t.estado === 'en_curso') {
+      agente.cancelar(t)
+      // Espera a que el turno termine de verdad (el CLI confirma la cancelación) antes de deshacer o reenviar.
+      const hasta = Date.now() + 15_000
+      while (turnosRef.current.find((x) => x.clave === t.clave)?.estado === 'en_curso' && Date.now() < hasta) await new Promise((r) => setTimeout(r, 100))
+    }
+    const actual = turnosRef.current.find((x) => x.clave === t.clave) ?? t
+    if (actual.estado === 'en_curso') return agente.avisar('Editar mensaje', 'La respuesta no se detuvo a tiempo: no se reenvió. Inténtalo de nuevo.', t.destino)
+    const deshechos = await deshacerParaSustituir(actual, 'Editar el mensaje')
+    if (deshechos === null) return
+    agente.descartar(t.clave)
+    const oculto = `<mensaje_editado>El usuario editó su mensaje anterior y descartó tu respuesta a él${deshechos ? ', incluidos los cambios de archivos que hiciste (vuelve a leerlos: lo que recuerdes de ellos está desactualizado)' : ''}. Ignora ese mensaje y responde solo a este.</mensaje_editado>`
+    lanzar(prompt, false, t.adjuntos ?? [], { oculto })
+  }
+
   // Manejadores estables para `TurnoVista` (memoizado): siempre llaman a la versión más reciente.
-  const accionesTurno = useRef({ cancelar: (t: Turno): void => void agente.cancelar(t), deshacer, ramificar, regenerar })
+  const accionesTurno = useRef({ cancelar: (t: Turno): void => void agente.cancelar(t), deshacer, ramificar, regenerar, editarEnSitio })
   useEffect(() => {
-    accionesTurno.current = { cancelar: (t) => void agente.cancelar(t), deshacer, ramificar, regenerar }
+    accionesTurno.current = { cancelar: (t) => void agente.cancelar(t), deshacer, ramificar, regenerar, editarEnSitio }
   })
+  const editarEnSitioTurno = useCallback((t: Turno, prompt: string): void => void accionesTurno.current.editarEnSitio(t, prompt), [])
   const cancelarTurno = useCallback((t: Turno): void => accionesTurno.current.cancelar(t), [])
   const deshacerTurno = useCallback((t: Turno): void => void accionesTurno.current.deshacer(t), [])
   const ramificarTurno = useCallback((t: Turno): void => void accionesTurno.current.ramificar(t), [])
@@ -1060,6 +1157,8 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
 
   // Solo la última respuesta vigente (sin nada en marcha) se puede regenerar.
   const ultimoVigente = agente.enCurso ? undefined : [...agente.turnos].reverse().find((t) => !t.lateral && !t.descartado)?.clave
+  // Último mensaje propio (en curso o no): el único que se puede editar en su sitio.
+  const ultimoMensaje = [...agente.turnos].reverse().find((t) => !t.lateral && !t.descartado && t.modo !== 'comando')
   const opcionesModelo = useMemo<OpcionModelo[]>(() => modelos.map((m) => ({ id: m.id, nombre: m.nombre.replace(/^Claude\s+/i, '') })), [modelos])
   const proyectosProgramables = useMemo(() => (proyectoFijo ? [proyectoFijo] : (datos?.proyectos ?? []).map((p) => ({ id: p.id, nombre: p.nombre }))), [proyectoFijo, datos?.proyectos])
 
@@ -1225,7 +1324,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
         <ProyectoDelChat.Provider value={proyecto?.id}>
           {agente.turnos.map((t, i) => (
             <div key={t.clave} data-turno={t.clave} className={coincidencias.includes(i) ? (i === coincidencias[indiceCoincidencia] ? 'ag-coincide actual' : 'ag-coincide') : undefined}>
-              <TurnoVista t={t} onCancelar={cancelarTurno} onDeshacer={deshacerTurno} onEditar={editarYReenviar} lecturaDisponible={lectura.disponible} leyendo={lectura.leyendo === t.clave} onLeer={leerTurno} esUltimo={t.clave === ultimoVigente} modelos={opcionesModelo} onRamificar={ramificarTurno} onRegenerar={regenerarTurno} onVerTrabajo={abrirTrabajo} />
+              <TurnoVista t={t} onCancelar={cancelarTurno} onDeshacer={deshacerTurno} onEditar={editarYReenviar} lecturaDisponible={lectura.disponible} leyendo={lectura.leyendo === t.clave} onLeer={leerTurno} esUltimo={t.clave === ultimoVigente} modelos={opcionesModelo} onRamificar={ramificarTurno} onRegenerar={regenerarTurno} onVerTrabajo={abrirTrabajo} editableHasta={t === ultimoMensaje ? editableHasta(t, true, Date.now()) : undefined} onEditarEnSitio={editarEnSitioTurno} />
             </div>
           ))}
           {turnoTrabajo && <PanelTrabajo key={turnoTrabajo.clave} turno={turnoTrabajo} onCerrar={cerrarTrabajo} />}

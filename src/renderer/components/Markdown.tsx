@@ -57,7 +57,10 @@ const IconoEjecutar = () => (
   </svg>
 )
 
-const NOMBRE_LENGUAJE: Record<string, string> = { ts: 'TypeScript', tsx: 'TSX', js: 'JavaScript', jsx: 'JSX', py: 'Python', sh: 'Shell', bash: 'Bash', console: 'Consola', json: 'JSON', yml: 'YAML', yaml: 'YAML', md: 'Markdown', mermaid: 'Diagrama (Mermaid)', css: 'CSS', html: 'HTML', sql: 'SQL', diff: 'Diff' }
+const NOMBRE_LENGUAJE: Record<string, string> = { ts: 'TypeScript', tsx: 'TSX', js: 'JavaScript', jsx: 'JSX', py: 'Python', sh: 'Shell', bash: 'Bash', console: 'Consola', json: 'JSON', yml: 'YAML', yaml: 'YAML', md: 'Markdown', mermaid: 'Diagrama (Mermaid)', css: 'CSS', html: 'HTML', sql: 'SQL', diff: 'Diff', text: 'Texto', txt: 'Texto', plain: 'Texto', plaintext: 'Texto' }
+
+/** Bloques de prosa lista para pegar (mensajes, correos, descripciones de PR): se leen con ajuste de línea, no como código. */
+const PROSA = new Set(['text', 'txt', 'plain', 'plaintext', 'markdown', 'md'])
 
 /** Bloque de código: lenguaje, copiar y, si es de shell y hay proyecto, ejecutarlo en una terminal (siempre con confirmación). */
 function BloqueCodigo({ lenguaje, codigo }: { lenguaje: string; codigo: string }) {
@@ -90,7 +93,7 @@ function BloqueCodigo({ lenguaje, codigo }: { lenguaje: string; codigo: string }
   }
 
   return (
-    <div className="md-bloque">
+    <div className={`md-bloque${PROSA.has(lenguaje) ? ' prosa' : ''}`}>
       <div className="md-bloque-cab">
         <span className="md-bloque-lenguaje">{NOMBRE_LENGUAJE[lenguaje] ?? (lenguaje || 'Código')}</span>
         <span className="md-bloque-acciones">

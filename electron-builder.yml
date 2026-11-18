@@ -7,6 +7,10 @@ files:
   - out/**
   - resources/icon.png
   - package.json
+# Extensión de Chrome (control del navegador real): carpeta suelta para «Cargar descomprimida» (`main/chrome/servicio.ts#carpetaExtension`).
+extraResources:
+  - from: extension
+    to: extension-chrome
 asarUnpack:
   - node_modules/node-pty/**
   # Dictado por voz (Whisper local): binarios nativos de onnxruntime y sharp.

@@ -1,6 +1,7 @@
 import type { AccionIa } from '@shared/control-app'
 import { contextBridge, ipcRenderer } from 'electron'
 import type { EstadoArranque, TerminalArranque } from '@shared/arranque'
+import type { EstadoChrome } from '@shared/chrome'
 import type { EventoChat } from '@shared/chat'
 import type { CambioArchivo } from '@shared/archivos'
 import type { EventoAgente } from '@shared/core/agente'
@@ -122,6 +123,10 @@ const api: ApiCentro = {
   equipos: {
     operar: (op, entrada) => ipcRenderer.invoke(Canales.equiposOperar, op, entrada)
   },
+  chrome: {
+    operar: (op, entrada) => ipcRenderer.invoke(Canales.chromeOperar, op, entrada),
+    onEstado: (cb) => suscribir<EstadoChrome>(Canales.chromeEstado, cb)
+  },
   chat: {
     // Los errores viajan como datos (por IPC un `throw` llega con un prefijo técnico): aquí se vuelven un Error con el mensaje limpio.
     operar: async (op, entrada) => {
@@ -186,7 +191,8 @@ const api: ApiCentro = {
     moverAGrupo: (id, grupoId) => ipcRenderer.invoke(Canales.proyectosMoverGrupo, id, grupoId),
     renombrar: (id, nombre) => ipcRenderer.invoke(Canales.proyectosRenombrar, id, nombre),
     cambiarCarpeta: (id, ruta, confirmar) => ipcRenderer.invoke(Canales.proyectosCambiarCarpeta, id, ruta, confirmar === true),
-    eliminarGrupo: (id) => ipcRenderer.invoke(Canales.grupoEliminar, id)
+    eliminarGrupo: (id) => ipcRenderer.invoke(Canales.grupoEliminar, id),
+    cambiarModo: (grupoId, modo) => ipcRenderer.invoke(Canales.proyectosCambiarModo, grupoId, modo)
   },
   registro: {
     enviar: (e) => ipcRenderer.send(Canales.registroEnviar, e)

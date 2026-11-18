@@ -660,6 +660,21 @@ export class ServicioTareas {
     return cambio
   }
 
+  /** Un proyecto o grupo cambió de id (pasó de la cuenta a local o al revés): sus tareas lo siguen. */
+  async reasignar(proyectos: Record<string, string>, grupos: Record<string, string> = {}): Promise<void> {
+    if (!Object.keys(proyectos).length && !Object.keys(grupos).length) return
+    await this.mutar('usuario', (d) => {
+      for (const t of d.tareas) {
+        const p = t.proyectoId ? proyectos[t.proyectoId] : undefined
+        const g = t.grupoId ? grupos[t.grupoId] : undefined
+        if (!p && !g) continue
+        if (p) t.proyectoId = p
+        if (g) t.grupoId = g
+        t.actualizada = Date.now()
+      }
+    })
+  }
+
   /** Cuando se elimina un proyecto o un grupo, sus tareas quedan sueltas (no se pierden). */
   async desvincular(f: { proyectoId?: string; grupoId?: string }): Promise<void> {
     await this.mutar('usuario', (d, reg) => {

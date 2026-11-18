@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Odesk Code</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="iconos/icono-32.png" alt="" width="20" height="20" />
+      <strong>Odesk Code</strong>
+      <span id="estado" class="chip">…</span>
+    </header>
+
+    <section id="emparejar" hidden>
+      <p>Genera un código en Odesk: <b>Proveedores de IA → Chrome → Emparejar</b>, y escríbelo aquí.</p>
+      <form id="form-codigo">
+        <input id="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123 456" aria-label="Código de emparejamiento" />
+        <button type="submit" class="primario">Conectar</button>
+      </form>
+    </section>
+
+    <section id="desconectado" hidden>
+      <p>No se encuentra Odesk Code. Ábrelo en este equipo; la extensión se conecta sola.</p>
+      <button id="reintentar">Reintentar ahora</button>
+    </section>
+
+    <section id="conectado" hidden>
+      <div id="pestana" class="tarjeta"></div>
+      <button id="compartir" class="primario">Compartir esta pestaña con Odesk</button>
+      <button id="dejar" hidden>Dejar de compartir esta pestaña</button>
+      <p class="nota" id="resumen"></p>
+      <button id="pausar"></button>
+    </section>
+
+    <p id="error" class="error" role="alert"></p>
+
+    <footer>
+      <p class="nota">La IA solo usa las pestañas del grupo morado «Odesk» y los sitios que autorices en Odesk. Pulsar «Cancelar» en la barra de depuración de Chrome la pausa.</p>
+      <button id="olvidar" class="enlace" hidden>Desemparejar esta extensión</button>
+    </footer>
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

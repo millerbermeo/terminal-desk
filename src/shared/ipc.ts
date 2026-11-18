@@ -16,6 +16,7 @@ import type { EstadoArranque, NombreOperacionArranque, OperacionesArranque, Term
 import type { EstadoVoz, ResultadoVoz } from './voz'
 import type { NombreOperacionCredenciales, OperacionesCredenciales } from './credenciales'
 import type { NombreOperacionEquipos, OperacionesEquipos } from './equipos'
+import type { EstadoChrome, NombreOperacionChrome, OperacionesChrome } from './chrome'
 import type { EventoChat, NombreOperacionChat, OperacionesChat } from './chat'
 import type { NombreOperacionGitHub, OperacionesGitHub } from './github'
 import type { NombreOperacionHistorial, OperacionesHistorial } from './historial'
@@ -53,6 +54,7 @@ export const Canales = {
   proyectosMoverGrupo: 'proyectos:mover-grupo',
   proyectosRenombrar: 'proyectos:renombrar',
   grupoEliminar: 'grupo:eliminar',
+  proyectosCambiarModo: 'proyectos:cambiar-modo',
   terminalCrear: 'terminal:crear',
   terminalEscribir: 'terminal:escribir',
   terminalRedimensionar: 'terminal:redimensionar',
@@ -98,6 +100,8 @@ export const Canales = {
   apiOperar: 'api:operar',
   githubOperar: 'github:operar',
   equiposOperar: 'equipos:operar',
+  chromeOperar: 'chrome:operar',
+  chromeEstado: 'chrome:estado',
   chatOperar: 'chat:operar',
   /** main → interfaz: lo que el servidor del chat empuja (mensajes, acuses, presencia, llamadas) y el estado de la conexión. */
   chatEvento: 'chat:evento',
@@ -423,6 +427,11 @@ export interface ApiCentro {
   equipos: {
     operar<K extends NombreOperacionEquipos>(op: K, entrada: OperacionesEquipos[K]['entrada']): Promise<OperacionesEquipos[K]['salida']>
   }
+  /** Chrome real del usuario controlado por la IA (extensión «Odesk Code · Chrome»): emparejar, activar, sitios autorizados. */
+  chrome: {
+    operar<K extends NombreOperacionChrome>(op: K, entrada: OperacionesChrome[K]['entrada']): Promise<OperacionesChrome[K]['salida']>
+    onEstado(cb: (e: EstadoChrome) => void): () => void
+  }
   /** Chat entre cuentas: contactos, mensajes, archivos, notas de voz y llamadas. El servidor lo guarda; el token nunca llega al renderer. */
   chat: {
     operar<K extends NombreOperacionChat>(op: K, entrada: OperacionesChat[K]['entrada']): Promise<OperacionesChat[K]['salida']>
@@ -503,6 +512,11 @@ export interface ApiCentro {
     /** Cambia el nombre de un proyecto (no se admiten nombres repetidos). */
     renombrar(id: string, nombre: string): Promise<DatosProyectos>
     eliminarGrupo(id: string): Promise<DatosProyectos>
+    /**
+     * Pasa un grupo (o los proyectos «sin grupo», `grupoId = null`) a local (se borran de la cuenta y quedan solo en este equipo) o a
+     * remoto (se suben a la cuenta). Tareas y conversaciones de este equipo pasan al id nuevo.
+     */
+    cambiarModo(grupoId: string | null, modo: 'local' | 'remoto'): Promise<{ datos: DatosProyectos; avisos: string[] }>
   }
   /** Anota un suceso técnico (error de la interfaz…) en el registro local y, si hay sesión, en la cuenta. Nunca lanza. */
   registro: {

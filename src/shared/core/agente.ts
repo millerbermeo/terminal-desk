@@ -46,7 +46,7 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
   | { tipo: 'fin'; resultado: ResultadoAgente }
   | { tipo: 'ruta'; complejidad: Complejidad; modelo: string; razon: string; sugerirFlujo: boolean }
   | { tipo: 'flujo_nodo'; nodo: NodoFlujo; intento: number }
-  | { tipo: 'solicitud_humana'; solicitudId: string; clase: ClaseSolicitud; contenido: string; detalle?: string; destructivo?: boolean; herramienta?: string; puedeSiempre?: boolean; preguntas?: PreguntaUsuario[]; sudo?: boolean; secretos?: boolean }
+  | { tipo: 'solicitud_humana'; solicitudId: string; clase: ClaseSolicitud; contenido: string; detalle?: string; destructivo?: boolean; herramienta?: string; puedeSiempre?: boolean; preguntas?: PreguntaUsuario[]; sudo?: boolean; credenciales?: boolean; secretos?: boolean }
   | { tipo: 'guardrail'; herramienta: string; motivo: string }
   | { tipo: 'worktree'; accion: AccionWorktree; rama: string; ruta: string; detalle?: string }
   | { tipo: 'flujo_fin'; estado: EstadoFlujo; resumen: string }

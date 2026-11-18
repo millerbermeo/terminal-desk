@@ -1,6 +1,8 @@
 export interface Grupo {
   id: string
   nombre: string
+  /** Grupo solo de este equipo (id `local-…`): sus proyectos son locales y no está en la cuenta. */
+  local?: boolean
 }
 
 export interface Proyecto {

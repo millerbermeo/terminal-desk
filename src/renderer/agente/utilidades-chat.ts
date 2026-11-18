@@ -346,3 +346,23 @@ export const formatoUsd = (usd: number): string => (usd > 0 && usd < 0.01 ? '< 0
 export function ordenarPorConsumo<T extends { costo?: number; tokens: number }>(lista: readonly T[]): T[] {
   return [...lista].sort((a, b) => (b.costo ?? 0) - (a.costo ?? 0) || b.tokens - a.tokens)
 }
+
+// ───────────────────────────── Editar el mensaje enviado ─────────────────────────────
+
+/**
+ * Tiempo para editar en su sitio el último mensaje enviado (como en claude.ai): editar cancela la respuesta en marcha, deshace sus
+ * cambios de archivos y la vuelve a pedir con el texto nuevo. Pasado este tiempo queda «Editar y reenviar» (mensaje nuevo): una
+ * respuesta vieja ya puede tener encima trabajo del usuario que no conviene descartar.
+ */
+export const LIMITE_EDICION_MS = 2 * 60_000
+
+/** Hasta cuándo (ms epoch) se puede editar en su sitio este turno, o `undefined` si no se puede. Solo el último mensaje vigente del chat. */
+export function editableHasta(
+  t: { modo: string; lateral?: boolean; heredado?: boolean; descartado?: boolean; inicio?: number; prompt: string },
+  esUltimoMensaje: boolean,
+  ahora: number
+): number | undefined {
+  if (!esUltimoMensaje || t.modo !== 'chat' || t.lateral || t.heredado || t.descartado || !t.inicio || !t.prompt.trim()) return undefined
+  const hasta = t.inicio + LIMITE_EDICION_MS
+  return hasta > ahora ? hasta : undefined
+}

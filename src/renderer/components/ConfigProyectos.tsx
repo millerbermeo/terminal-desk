@@ -23,6 +23,8 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
   const [filtro, setFiltro] = useState('')
   const [plegados, setPlegados] = useState<Set<string>>(new Set())
   const [copiado, setCopiado] = useState<string | null>(null)
+  const [cambiandoModo, setCambiandoModo] = useState<string | null>(null)
+  const [avisoGrupo, setAvisoGrupo] = useState<Record<string, { tipo: 'ok' | 'error'; texto: string }>>({})
   const repetidos = useMemo(() => proyectosConNombreRepetido(datos.proyectos), [datos.proyectos])
 
   const guardarNombre = async (): Promise<void> => {
@@ -67,6 +69,41 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
       setCambiando(null)
     }
   }
+  /** Pasa el grupo (o «Sin grupo») a local o a remoto, confirmando antes: a local borra los proyectos de la cuenta. */
+  const cambiarModo = async (grupoId: string | undefined, nombre: string, modo: 'local' | 'remoto', proyectos: number): Promise<void> => {
+    const clave = grupoId ?? 'sin-grupo'
+    const de = grupoId ? `el grupo «${nombre}»` : 'los proyectos sin grupo'
+    const sigue = await confirmar(
+      modo === 'local'
+        ? {
+            titulo: `¿Pasar ${de} a local?`,
+            tono: 'peligro',
+            etiqueta: 'Pasar a local',
+            texto: `${proyectos === 1 ? 'Su proyecto se borra' : `Sus ${proyectos} proyectos se borran`} de tu cuenta en el servidor (con el tablero, las conversaciones y las trazas guardadas allí) y ${grupoId ? 'el grupo queda' : 'quedan'} solo en este equipo. Aquí no se pierde nada ni se toca tu código, pero otros equipos dejarán de verlos.`
+          }
+        : {
+            titulo: `¿Subir ${de} a tu cuenta?`,
+            tono: 'aviso',
+            etiqueta: 'Pasar a remoto',
+            texto: `${grupoId ? 'El grupo y sus proyectos se registran' : 'Los proyectos se registran'} en tu cuenta y se sincronizan con tus otros equipos. Cada carpeta recibe su .odesk/project.json. El tablero y las conversaciones de este equipo se suben.`
+          }
+    )
+    if (!sigue) return
+    setCambiandoModo(clave)
+    setAvisoGrupo((a) => ({ ...a, [clave]: { tipo: 'ok', texto: '' } }))
+    try {
+      const r = await window.api.proyectos.cambiarModo(grupoId ?? null, modo)
+      onDatos(r.datos)
+      const texto = [modo === 'local' ? 'Ahora es local: solo en este equipo.' : 'Ahora es remoto: está en tu cuenta.', ...r.avisos].join('\n')
+      setAvisoGrupo((a) => ({ ...a, [clave]: { tipo: 'ok', texto } }))
+    } catch (err) {
+      setAvisoGrupo((a) => ({ ...a, [clave]: { tipo: 'error', texto: mensajeDe(err) } }))
+      onDatos(await window.api.proyectos.listar().catch(() => datos)) // lo que se movió antes del fallo queda movido
+    } finally {
+      setCambiandoModo(null)
+    }
+  }
+
   const sinGrupo = datos.proyectos.filter((p) => !p.grupo || !datos.grupos.some((g) => g.id === p.grupo))
   const q = filtro.trim().toLowerCase()
   const coincide = (p: (typeof datos.proyectos)[number]): boolean => !q || p.nombre.toLowerCase().includes(q) || p.ruta.toLowerCase().includes(q)
@@ -94,6 +131,22 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
     const clave = grupoId ?? 'sin-grupo'
     const abierto = q ? true : !plegados.has(clave)
     const h = matiz(nombre)
+    const grupo = grupoId ? datos.grupos.find((g) => g.id === grupoId) : undefined
+    const modo: 'local' | 'remoto' | 'mixto' | undefined = grupo?.local
+      ? 'local'
+      : todos.length === 0
+        ? grupoId
+          ? 'remoto'
+          : undefined
+        : todos.every((p) => p.local)
+          ? grupoId
+            ? 'mixto' // grupo de la cuenta con todo local: al pasarlo a local también se va el grupo
+            : 'local'
+          : todos.some((p) => p.local)
+            ? 'mixto'
+            : 'remoto'
+    const ocupado = cambiandoModo === clave
+    const aviso = avisoGrupo[clave]
     return (
       <section className="pj-grupo" key={clave} style={{ ['--pj-h' as string]: h }}>
         <header className="pj-grupo-cab">
@@ -105,12 +158,34 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
             <h3>{nombre}</h3>
             <span className="pj-cuenta">{todos.length}</span>
           </button>
+          {modo && (
+            <div className="pj-modo" role="group" aria-label={`Dónde vive ${grupoId ? `el grupo «${nombre}»` : '«Sin grupo»'}`} title={modo === 'mixto' ? 'Tiene proyectos locales y de la cuenta' : undefined}>
+              {ocupado && <span className="spinner" />}
+              {(['local', 'remoto'] as const).map((m) => (
+                <button
+                  key={m}
+                  className={`pj-modo-op${modo === m ? ' activo' : ''}`}
+                  aria-pressed={modo === m}
+                  disabled={ocupado || modo === m || (m === 'local' && todos.length === 0 && !grupoId)}
+                  title={m === 'local' ? 'Solo en este equipo (se borra de tu cuenta)' : 'En tu cuenta: se sincroniza con tus otros equipos'}
+                  onClick={() => void cambiarModo(grupoId, nombre, m, todos.length)}
+                >
+                  {m === 'local' ? 'Local' : 'Remoto'}
+                </button>
+              ))}
+            </div>
+          )}
           {grupoId && (
             <button className="pj-btn pj-btn-peligro" title="Elimina el grupo; sus proyectos pasan a «Sin grupo»" onClick={() => setGrupoAEliminar(grupoId)}>
               <IconoBasura /> Eliminar grupo
             </button>
           )}
         </header>
+        {aviso?.texto && (
+          <p className={aviso.tipo === 'error' ? 'cfg-error' : 'pj-ok'} role={aviso.tipo === 'error' ? 'alert' : 'status'} style={{ whiteSpace: 'pre-line' }}>
+            {aviso.texto}
+          </p>
+        )}
         {abierto && (
           <div className="pj-rejilla">
             {proyectos.length === 0 && <EstadoVacio variante="compacto" icono={<IconoCarpeta />} titulo="Aún no hay proyectos" texto="Agrégalos con «Agregar proyectos» o arrástralos desde otro grupo." />}
@@ -184,7 +259,7 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
                         onChange={(e) => void window.api.proyectos.moverAGrupo(p.id, e.target.value || null).then(onDatos).catch((err) => setMensajes((m) => ({ ...m, [p.id]: { tipo: 'error', texto: mensajeDe(err) } })))}
                       >
                         <option value="">Sin grupo</option>
-                        {datos.grupos.map((g) => (
+                        {datos.grupos.filter((g) => p.local || !g.local || g.id === grupoId).map((g) => (
                           <option key={g.id} value={g.id}>
                             {g.nombre}
                           </option>

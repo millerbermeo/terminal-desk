@@ -12,6 +12,7 @@ import { HERRAMIENTAS_GITHUB } from '@shared/github-herramientas'
 import { HERRAMIENTAS_ODESK } from '@shared/herramientas-odesk'
 import { HERRAMIENTAS_MOVIL } from '@shared/movil-herramientas'
 import { HERRAMIENTAS_NAVEGADOR } from '@shared/navegador-herramientas'
+import { HERRAMIENTAS_CHROME } from '@shared/chrome-herramientas'
 import { HERRAMIENTAS_TAREAS } from '@shared/tareas-herramientas'
 import type { ServicioGitHub } from '../github/servicio'
 import { ejecutarHerramientaTareas } from './tareas/herramientas'
@@ -46,6 +47,8 @@ export interface ServiciosOdesk {
   navegador?: () => ControlNavegador | undefined
   /** Dispositivos Android por USB (adb), herramientas `movil_*`. */
   movil?: () => ControlNavegador | undefined
+  /** El Chrome real del usuario por la extensión de Odesk, herramientas `chrome_*`. */
+  chrome?: () => ControlNavegador | undefined
   /** La propia aplicación (proyectos, terminales, servicios, Asistente, ajustes, historial): solo con la app abierta. */
   app?: () => ControlAppOdesk | undefined
   /** Pregunta a la persona en Odesk antes de lo que cierra, para, quita o restaura. Sin ella, eso se deniega. */
@@ -59,7 +62,8 @@ export interface ControlAppOdesk {
 
 /** Lo que el núcleo necesita del navegador integrado (o de los móviles): ejecutar una herramienta `navegador_*`/`movil_*` ya validada. */
 export interface ControlNavegador {
-  ejecutar(nombre: string, entrada: Record<string, unknown>): Promise<ResultadoHerramienta>
+  /** `ctx`: quién llama (para las preguntas que se hacen en Odesk). */
+  ejecutar(nombre: string, entrada: Record<string, unknown>, ctx?: ContextoOdesk): Promise<ResultadoHerramienta>
 }
 
 const MAX_SALIDA = 30_000
@@ -256,7 +260,8 @@ async function ejecutarControlado(
   sinControl: string,
   nombre: string,
   entrada: unknown,
-  preparar?: (e: Entrada) => Promise<Entrada>
+  preparar?: (e: Entrada) => Promise<Entrada>,
+  ctx?: ContextoOdesk
 ): Promise<ResultadoHerramienta> {
   const def = defs.find((h) => h.nombre === nombre)!
   const e = conNumeros(entrada ?? {}, def.esquema)
@@ -264,7 +269,7 @@ async function ejecutarControlado(
   if (motivo) return { texto: `Entrada inválida para ${nombre}: ${motivo}`, error: true }
   if (!control) return { texto: sinControl, error: true }
   try {
-    return await control.ejecutar(nombre, preparar ? await preparar(e as Entrada) : (e as Entrada))
+    return await control.ejecutar(nombre, preparar ? await preparar(e as Entrada) : (e as Entrada), ctx)
   } catch (err) {
     return { texto: (err as Error).message, error: true }
   }
@@ -300,6 +305,8 @@ export function crearEjecutorOdesk(s: ServiciosOdesk): EjecutorOdesk {
       return ejecutarControlado(HERRAMIENTAS_NAVEGADOR, s.navegador?.(), 'El navegador integrado solo está disponible con Odesk Code abierto.', nombre, entrada)
     if (HERRAMIENTAS_MOVIL.some((h) => h.nombre === nombre))
       return ejecutarControlado(HERRAMIENTAS_MOVIL, s.movil?.(), 'Los dispositivos móviles solo están disponibles con Odesk Code abierto.', nombre, entrada, conRutaApk(s, ctx))
+    if (HERRAMIENTAS_CHROME.some((h) => h.nombre === nombre))
+      return ejecutarControlado(HERRAMIENTAS_CHROME, s.chrome?.(), 'El control de Chrome solo está disponible con Odesk Code abierto.', nombre, entrada, undefined, ctx)
     if (HERRAMIENTAS_APP.some((h) => h.nombre === nombre)) return ejecutarApp(s, nombre, entrada, ctx)
     if (HERRAMIENTAS_TAREAS.some((h) => h.nombre === nombre)) return ejecutarHerramientaTareas(s.tareas, nombre, entrada, ctx)
     if (HERRAMIENTAS_CREDENCIALES.some((h) => h.nombre === nombre)) return ejecutarCredenciales(s, nombre, entrada, ctx)

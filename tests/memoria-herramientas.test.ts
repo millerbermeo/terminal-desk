@@ -2,7 +2,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { GUIA_RESPUESTAS, GUIA_TRABAJO } from '../src/main/core/avisos'
+import { GUIA_COPIABLE, GUIA_RESPUESTAS, GUIA_TRABAJO } from '../src/main/core/avisos'
 import { crearEjecutorOdesk, herramientasOdesk } from '../src/main/core/herramientas-odesk'
 import { MemoriaLargoPlazo } from '../src/main/core/memory/largo-plazo'
 import { permisosCli } from '../src/main/core/suscripcion'
@@ -75,5 +75,9 @@ describe('memoria de largo plazo para la IA en suscripción (MCP odesk)', () => 
     expect(GUIA_RESPUESTAS).toContain('Precisión intacta')
     expect(GUIA_RESPUESTAS).toContain('No aplica al código')
     expect(GUIA_RESPUESTAS.length).toBeLessThan(1200)
+    // Contenido para pegar en otro sitio: en bloque cercado (la interfaz le pone «Copiar»), prosa con ```text, explicaciones fuera.
+    expect(GUIA_COPIABLE).toContain('```text')
+    expect(GUIA_COPIABLE).toContain('No uses bloques para explicaciones')
+    expect(GUIA_COPIABLE.length).toBeLessThan(1200)
   })
 })

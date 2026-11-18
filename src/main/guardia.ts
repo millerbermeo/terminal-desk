@@ -149,9 +149,29 @@ function responder(obj) {
 
 const redactar = (t) => (t.length <= 8 ? '****' : t.slice(0, 4) + '…(' + t.length + ' caracteres)')
 
+// Mismo criterio que \`esArchivoSensible\` (shared/github.ts) y \`grepSensible\` (guardrails/acceso-sensible.ts).
+function sensible(ruta) {
+  const nombre = String(ruta).replace(/\\\\/g, '/').split('/').pop().toLowerCase()
+  if (/^\\.env(\\..+)?$/.test(nombre)) return !/\\.(example|sample|template|dist)$/.test(nombre)
+  if (/\\.(pem|key|p12|pfx|keystore|jks|ppk|kdbx)$/.test(nombre)) return true
+  if (/^id_(rsa|dsa|ecdsa|ed25519)(\\.pub)?$/.test(nombre)) return !nombre.endsWith('.pub')
+  return ['.npmrc', '.pypirc', '.netrc', '.git-credentials', 'credentials', 'credentials.json', 'secrets.json', 'secrets.yml', 'secrets.yaml', 'terraform.tfstate', 'service-account.json'].includes(nombre)
+}
+
+function preguntar(motivo) {
+  responder({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: 'Odesk: ' + motivo } })
+}
+
 function principal(ev) {
-  if (ev.tool_name !== 'Read') return responder()
   const entrada = ev.tool_input || {}
+  if (ev.tool_name === 'Grep') {
+    const glob = typeof entrada.glob === 'string' ? entrada.glob : ''
+    if (typeof entrada.path === 'string' && sensible(entrada.path)) return preguntar('búsqueda dentro de «' + entrada.path + '», un archivo de credenciales.')
+    if (/(^|[/{,*])\\.env\\b|\\b(credentials|secrets)\\b|\\.(pem|key)\\b|id_rsa/i.test(glob) && !/\\.(example|sample|template)\\b/.test(glob)) return preguntar('búsqueda en archivos de credenciales («' + glob + '»).')
+    return responder()
+  }
+  if (ev.tool_name !== 'Read') return responder()
+  if (typeof entrada.file_path === 'string' && sensible(entrada.file_path)) return preguntar('«' + entrada.file_path + '» es un archivo de credenciales. Si lo permites, su contenido se envía al modelo.')
   if (typeof entrada.file_path !== 'string' || ES_IMAGEN.test(entrada.file_path)) return responder()
   const ruta = path.resolve(ev.cwd || process.cwd(), entrada.file_path)
   let datos
@@ -204,7 +224,7 @@ export function archivosGuardia(): Record<string, string> {
       JSON.stringify({ name: 'odesk-guardia', version: '1.0.0', description: 'Acota las imágenes que entran al contexto y avisa antes de enviar archivos con credenciales', author: { name: 'Odesk Code' } }, null, 2) + '\n',
     'hooks/hooks.json':
       JSON.stringify(
-        { description: 'Guardia de consumo de Odesk Code', hooks: { PreToolUse: [{ matcher: 'Read', hooks: [{ type: 'command', command: COMANDO, timeout: 20 }, { type: 'command', command: comando('secretos.cjs'), timeout: 10 }] }] } },
+        { description: 'Guardia de consumo de Odesk Code', hooks: { PreToolUse: [{ matcher: 'Read', hooks: [{ type: 'command', command: COMANDO, timeout: 20 }, { type: 'command', command: comando('secretos.cjs'), timeout: 10 }] }, { matcher: 'Grep', hooks: [{ type: 'command', command: comando('secretos.cjs'), timeout: 10 }] }] } },
         null,
         2
       ) + '\n',

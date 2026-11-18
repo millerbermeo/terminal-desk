@@ -201,6 +201,19 @@ export class MemoriaCortoPlazo {
     for (const s of sobran) await this.borrar(s.id)
   }
 
+  /** Las conversaciones de un proyecto que cambió de id (de la cuenta a local o al revés) pasan al id nuevo. */
+  async reasignarProyecto(viejo: string, nuevo: string): Promise<number> {
+    let n = 0
+    for (const id of await this.almacen.ids()) {
+      await this.almacen.actualizar(id, (s) => {
+        if (!s || s.proyectoId !== viejo) return s
+        n++
+        return { ...s, proyectoId: nuevo }
+      })
+    }
+    return n
+  }
+
   async borrar(id: string): Promise<void> {
     await this.almacen.actualizar(id, () => undefined)
   }

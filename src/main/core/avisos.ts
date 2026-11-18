@@ -35,6 +35,20 @@ export const GUIA_RESPUESTAS = [
 ].join('\n')
 
 /**
+ * Cuándo dar un texto «para copiar y pegar»: la interfaz pinta cada bloque cercado con su botón Copiar (como claude.ai), así que el
+ * modelo decide qué va en bloque y qué va en prosa. Texto fijo: viaja en el prompt de sistema estable.
+ */
+export const GUIA_COPIABLE = [
+  '## Contenido para copiar y pegar',
+  'La interfaz muestra cada bloque cercado (```) con un botón «Copiar». Decide tú cuándo usarlo:',
+  '- Pon en un bloque todo lo que el usuario vaya a pegar en otro sitio: código, comandos, configuración, .env, SQL, y también texto final como un mensaje, correo, respuesta a un cliente, mensaje de commit, descripción de PR, prompt o post.',
+  '- Lenguaje del bloque: el real (```ts, ```bash, ```json…); para prosa lista para pegar usa ```text (o ```markdown si debe conservar el formato Markdown).',
+  '- Un bloque por cada pieza que se copia por separado; dentro, solo lo que se pega, sin comentarios tuyos ni «aquí tienes». Explicaciones y notas, fuera del bloque.',
+  '- Si el contenido incluye ```, cerca el bloque con ```` (cuatro).',
+  '- No uses bloques para explicaciones, resúmenes ni respuestas que solo se leen.'
+].join('\n')
+
+/**
  * Credenciales de prueba del proyecto (herramientas `credenciales_*` del MCP `odesk`). Texto fijo a propósito: no nombra las que hay
  * (para eso está `credenciales_listar`), así crear o borrar una no cambia el prompt de sistema.
  */
@@ -43,7 +57,8 @@ export const GUIA_CREDENCIALES = [
   'Este proyecto puede tener credenciales de PRUEBA guardadas en este equipo (usuarios, claves de sandbox, URLs, tokens).',
   '- Cuando necesites un usuario, clave o URL para probar: credenciales_listar y luego credenciales_obtener, antes de pedírselos al usuario.',
   '- Cuando el usuario te dé una credencial de prueba, o te pida crear, cambiar, renombrar o borrar una: credenciales_guardar (crea o actualiza por nombre; solo cambian los campos que mandes) y credenciales_eliminar. Tras guardarla, no repitas sus valores en la respuesta.',
-  '- No las escribas en archivos versionados, commits ni incidencias.'
+  '- No las escribas en archivos versionados, commits ni incidencias.',
+  '- Leer `.env`, variables de entorno o secretos (locales o de producción: vercel/heroku/kubectl/aws…) y credenciales_obtener está permitido, pero el usuario tiene que escribir la contraseña del equipo cada vez: hazlo solo si de verdad lo necesitas, junta lo que necesites en un solo acceso y, si lo deniega, no lo intentes por otra vía.'
 ].join('\n')
 
 // Delegar en un subagente (herramienta Agent/Task) bloquea el turno hasta que termina: no hay aviso aparte cuando acaba.

@@ -119,3 +119,12 @@ Biblioteca de recursos (compartidos o individuales de un proyecto) con activaci�
 - **API actualizado y reiniciado**: rutas `GET /auth/sessions`, `DELETE /auth/sessions/:id` y `POST /auth/sessions/close-others`. Con un servidor antiguo la lista no carga.
 - La IP solo es la real del cliente con `TRUST_PROXY` puesto detrás del proxy (ya está en `ecosystem.config.cjs`).
 - Las sesiones abiertas antes de actualizar aparecen como «Equipo sin identificar» hasta que ese equipo, ya con la app nueva, haga una petición.
+
+## 14. Controlar tu Chrome real desde los asistentes
+
+- Instalar la extensión **a mano** en cada navegador (Chrome, Edge, Brave…): `chrome://extensions` → «Modo de desarrollador» → «Cargar descomprimida» → carpeta `extension/` del repositorio (en la app instalada, la que muestra **Proveedores de IA → Chrome → Carpeta**; dentro de los recursos de la app: `extension-chrome/`). Chrome de marca ya no admite `--load-extension`: no se puede instalar sola.
+- **Emparejarla una vez**: Odesk → Proveedores de IA → Chrome → «Emparejar» y escribir el código de 6 cifras en el botón de la extensión (caduca a los 5 min, 5 intentos).
+- Al actualizar Odesk, pulsar «Recargar» en la tarjeta de la extensión en `chrome://extensions` (la carpeta cambia de contenido, no de sitio; en AppImage cambia de sitio en cada arranque: volver a «Cargar descomprimida»).
+- Chrome muestra la barra «Odesk Code · Chrome está depurando este navegador» mientras la IA controla una pestaña: es obligatoria y no se puede quitar. «Cancelar» en esa barra pausa el control.
+- Puertos locales 47615–47619 (solo 127.0.0.1): si están todos ocupados, el panel lo avisa.
+- Ver `docs/chrome.md`.

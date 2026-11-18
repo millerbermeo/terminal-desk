@@ -144,3 +144,10 @@
   .prov-acciones { margin-left: auto; opacity: 1 !important; }
   .prov-resumen { display: none; }
 }
+
+/* Chrome real (ChromeReal.tsx) */
+.chrome-codigo { font: 700 15px/1 var(--fuente-mono); letter-spacing: 0.12em; padding: 3px 8px; border-radius: 6px; color: var(--acento-claro); background: var(--acento-suave); border: 1px solid var(--acento-borde); }
+.chrome-sitios .prov-texto { flex: 1; }
+.chrome-lista { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.chrome-lista li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.chrome-lista code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

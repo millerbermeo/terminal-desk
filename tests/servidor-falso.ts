@@ -65,6 +65,45 @@ export class ServidorFalso {
         })
         return
       }
+      if (uno && req.method === 'DELETE') {
+        const i = this.proyectos.findIndex((x) => x.id === decodeURIComponent(uno[1]!))
+        if (i < 0) return responder(404, { message: 'El proyecto no existe' })
+        this.proyectos.splice(i, 1)
+        return responder(204)
+      }
+      const grupoDe = /^\/projects\/([^/?]+)\/group$/.exec(req.url ?? '')
+      if (grupoDe && req.method === 'PUT') {
+        const trozos: Buffer[] = []
+        req.on('data', (t: Buffer) => trozos.push(t))
+        req.on('end', () => {
+          const c = JSON.parse(Buffer.concat(trozos).toString() || '{}') as { groupId?: string | null }
+          const p = this.proyectos.find((x) => x.id === decodeURIComponent(grupoDe[1]!))
+          if (!p) return responder(404, { message: 'El proyecto no existe' })
+          if (c.groupId) p.grupo = c.groupId
+          else delete p.grupo
+          responder(200, { id: p.id })
+        })
+        return
+      }
+      if (req.url === '/groups' && req.method === 'POST') {
+        const trozos: Buffer[] = []
+        req.on('data', (t: Buffer) => trozos.push(t))
+        req.on('end', () => {
+          const c = JSON.parse(Buffer.concat(trozos).toString() || '{}') as { name: string }
+          const g = this.grupos.find((x) => x.nombre.toLowerCase() === c.name.toLowerCase()) ?? { id: randomUUID(), nombre: c.name }
+          if (!this.grupos.includes(g)) this.grupos.push(g)
+          responder(201, { id: g.id, name: g.nombre })
+        })
+        return
+      }
+      const grupo = /^\/groups\/([^/?]+)$/.exec(req.url ?? '')
+      if (grupo && req.method === 'DELETE') {
+        const i = this.grupos.findIndex((g) => g.id === decodeURIComponent(grupo[1]!))
+        if (i < 0) return responder(404, { message: 'El grupo no existe' })
+        const [g] = this.grupos.splice(i, 1)
+        for (const p of this.proyectos) if (p.grupo === g!.id) delete p.grupo
+        return responder(204)
+      }
       if (req.url === '/comandos') {
         if (req.method === 'GET') return responder(200, { commands: this.comandos })
         const trozos: Buffer[] = []

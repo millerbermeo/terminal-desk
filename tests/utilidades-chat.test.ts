@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { EventoAgente } from '../src/shared/core/agente'
 import {
+  editableHasta,
+  LIMITE_EDICION_MS,
   alternarFijada,
   buscarEnTurnos,
   cambiosDeEdicion,
@@ -195,5 +197,22 @@ describe('organizar conversaciones', () => {
     expect(leerOrganizacion()).toEqual(organizacionVacia())
     vi.stubGlobal('localStorage', { getItem: () => { throw new Error('bloqueado') } })
     expect(leerOrganizacion()).toEqual(organizacionVacia())
+  })
+})
+
+describe('editableHasta', () => {
+  const base = { modo: 'chat', prompt: 'hola', inicio: 1_000 }
+  it('el último mensaje se puede editar durante LIMITE_EDICION_MS desde que se envió', () => {
+    expect(editableHasta(base, true, 1_000)).toBe(1_000 + LIMITE_EDICION_MS)
+    expect(editableHasta(base, true, 1_000 + LIMITE_EDICION_MS - 1)).toBe(1_000 + LIMITE_EDICION_MS)
+    expect(editableHasta(base, true, 1_000 + LIMITE_EDICION_MS)).toBeUndefined()
+  })
+  it('no se editan en su sitio: otros mensajes, laterales, heredados, descartados, comandos ni los del historial (sin inicio)', () => {
+    expect(editableHasta(base, false, 1_000)).toBeUndefined()
+    expect(editableHasta({ ...base, lateral: true }, true, 1_000)).toBeUndefined()
+    expect(editableHasta({ ...base, heredado: true }, true, 1_000)).toBeUndefined()
+    expect(editableHasta({ ...base, descartado: true }, true, 1_000)).toBeUndefined()
+    expect(editableHasta({ ...base, modo: 'comando' }, true, 1_000)).toBeUndefined()
+    expect(editableHasta({ modo: 'chat', prompt: 'hola' }, true, 1_000)).toBeUndefined()
   })
 })

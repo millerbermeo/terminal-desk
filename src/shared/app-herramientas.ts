@@ -1,4 +1,5 @@
 import type { DefHerramientaTareas } from './tareas-herramientas'
+import { CHROME_PUEDEN_CONFIRMAR } from './chrome-herramientas'
 
 /**
  * Herramientas para manejar la propia aplicación desde cualquier asistente (el Asistente de Odesk, Claude Code en una terminal ✦ o un
@@ -424,6 +425,7 @@ export function confirmacionApp(nombre: string, e: Record<string, unknown>): str
 
 /** Herramientas que pueden quedarse esperando a la persona: el cliente MCP les da más tiempo. */
 export const PUEDEN_CONFIRMAR = new Set([
+  ...CHROME_PUEDEN_CONFIRMAR,
   'proyecto_quitar',
   'terminal_cerrar',
   'servicios_detener',

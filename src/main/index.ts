@@ -36,7 +36,7 @@ import { cambiarPerfil } from './perfiles'
 import { Boveda } from './servidor/boveda'
 import { seccionesSecretas } from './servidor/secretos'
 import { FuenteArchivos, FuenteTareas, SincronizadorCuenta } from './servidor/sync-cuenta'
-import { DIR, MIGRACION_DATOS, rutasLocales, agregarProyectos, carpetaDeProyecto, cambiarCarpetaProyecto, enlazarCarpetaExistente, eliminarGrupo, eliminarProyecto, moverProyectoAGrupo, renombrarProyecto, leerProyectos, proyectosSinCarpeta, sugerirRutas, validarRuta } from './proyectos'
+import { DIR, MIGRACION_DATOS, rutasLocales, agregarProyectos, carpetaDeProyecto, cambiarCarpetaProyecto, cambiarModo, enlazarCarpetaExistente, eliminarGrupo, eliminarProyecto, moverProyectoAGrupo, renombrarProyecto, leerProyectos, proyectosSinCarpeta, sugerirRutas, validarRuta } from './proyectos'
 import { configurarMcpTareas } from './core/tareas/mcp-config'
 import { ejecutarOperacionGit } from './core/git/operaciones'
 import { appendFile, readFile, writeFile } from 'node:fs/promises'
@@ -45,6 +45,10 @@ import { ServicioApi } from './api/servicio'
 import { ejecutarOperacionApi } from './api/operaciones'
 import { abrirEnNavegadorDelSistema, GestorNavegador, rutaPreload } from './navegador'
 import { NavegadorIA } from './navegador-ia'
+import { ChromeIA } from './chrome-ia'
+import { PuenteChrome } from './chrome/puente'
+import { carpetaExtension, ejecutarOperacionChrome, estadoChrome } from './chrome/servicio'
+import type { NombreOperacionChrome } from '@shared/chrome'
 import { MovilIA } from './movil'
 import { esPaginaDeLaApp } from './navegacion'
 import { cerrarProceso, duenoDePuerto, puertoAbierto, servidoresLocales } from './puertos'
@@ -257,6 +261,36 @@ nucleo.conectarNavegador(new NavegadorIA(navegador))
 // Igual con los teléfonos Android conectados por USB (herramientas movil_*, con adb); capturas y registros quedan como evidencia.
 nucleo.conectarMovil(new MovilIA(join(DIR, 'evidencias', 'movil')))
 
+/**
+ * El Chrome real del usuario (herramientas chrome_*): la extensión «Odesk Code · Chrome» se conecta al puente local. Cada sitio nuevo se
+ * autoriza aquí y lo delicado se confirma (ver `chrome-ia.ts`). `chrome.json` es personal de la cuenta (tokens y sitios autorizados).
+ */
+const puenteChrome = new PuenteChrome({ archivo: join(DIR, 'chrome.json') })
+const carpetaChrome = carpetaExtension({ empaquetada: app.isPackaged, recursos: process.resourcesPath, rutaApp: app.getAppPath() })
+let avisoChrome: NodeJS.Timeout | undefined
+puenteChrome.alCambio = () => {
+  // Agrupa ráfagas (cada pestaña que carga avisa): un aviso cada 150 ms como mucho.
+  if (avisoChrome) return
+  avisoChrome = setTimeout(() => {
+    avisoChrome = undefined
+    void estadoChrome(puenteChrome, carpetaChrome).then((e) => avisarPrincipal(Canales.chromeEstado, e))
+  }, 150)
+}
+nucleo.conectarChrome(
+  new ChromeIA({
+    puente: puenteChrome,
+    confirmar: (pregunta, cliente) => confirmarEnOdesk(pregunta, cliente),
+    preguntarSitio: async (origen, cliente) => {
+      const r = await preguntarEnOdesk({
+        mensaje: `${cliente ? `«${cliente}»` : 'Un asistente'} quiere usar ${origen} en tu Chrome`,
+        detalle: `Podrá leer lo que muestra esa web (con tu sesión iniciada) y actuar en ella en las pestañas del grupo «Odesk». Lo que lea se envía al modelo de IA.\n\nPuedes quitar el permiso en Proveedores de IA → Chrome.`,
+        botones: ['No permitir', 'Permitir en esta sesión', 'Permitir siempre']
+      })
+      return r === 2 ? 'siempre' : r === 1 ? 'sesion' : 'no'
+    }
+  })
+)
+
 /** Cierra las terminales de una ventana (se recargó o se cerró). */
 function cerrarDe(webContentsId: number): void {
   for (const [pty, dueno] of [...duenos]) {
@@ -414,34 +448,31 @@ depsEquipos.historial = (proyectoId) => historial.resumen(proyectoId)
  */
 const metaTerminales = new Map<string, MetaTerminal>()
 let colaConfirmar: Promise<unknown> = Promise.resolve()
-const confirmarEnOdesk = (pregunta: string, cliente?: string): Promise<boolean> => {
+/**
+ * Pregunta en un diálogo nativo de Odesk (una pregunta a la vez). Devuelve el índice del botón; 0 (el primero, el que niega) si no hay
+ * ventana o se cierra el diálogo.
+ */
+function preguntarEnOdesk(o: { mensaje: string; detalle: string; botones: string[] }): Promise<number> {
   const p = colaConfirmar.then(async () => {
     // Solo en desarrollo (pruebas e2e): la respuesta sale de un archivo y la pregunta se anota, porque un diálogo nativo no se pulsa por CDP.
     const e2e = !app.isPackaged ? process.env.ODESK_E2E_CONFIRMAR : undefined
     if (e2e) {
-      await appendFile(`${e2e}.log`, JSON.stringify({ pregunta, cliente }) + '\n')
-      return (await readFile(e2e, 'utf8').catch(() => '')).trim() === 'permitir'
+      await appendFile(`${e2e}.log`, JSON.stringify({ pregunta: o.detalle, mensaje: o.mensaje }) + '\n')
+      return (await readFile(e2e, 'utf8').catch(() => '')).trim() === 'permitir' ? o.botones.length - 1 : 0
     }
     const v = principal
-    if (!v || v.isDestroyed()) return false
+    if (!v || v.isDestroyed()) return 0
     if (v.isMinimized()) v.restore()
     v.flashFrame(true)
-    const r = await dialog.showMessageBox(v, {
-      type: 'warning',
-      title: 'Odesk Code · Confirmar',
-      message: `${cliente ? `«${cliente}»` : 'Un asistente'} quiere hacer esto en Odesk:`,
-      detail: pregunta,
-      buttons: ['Rechazar', 'Permitir'],
-      defaultId: 0,
-      cancelId: 0,
-      noLink: true
-    })
+    const r = await dialog.showMessageBox(v, { type: 'warning', title: 'Odesk Code · Confirmar', message: o.mensaje, detail: o.detalle, buttons: o.botones, defaultId: 0, cancelId: 0, noLink: true })
     v.flashFrame(false)
-    return r.response === 1
+    return r.response
   })
   colaConfirmar = p.catch(() => undefined)
   return p
 }
+const confirmarEnOdesk = async (pregunta: string, cliente?: string): Promise<boolean> =>
+  (await preguntarEnOdesk({ mensaje: `${cliente ? `«${cliente}»` : 'Un asistente'} quiere hacer esto en Odesk:`, detalle: pregunta, botones: ['Rechazar', 'Permitir'] })) === 1
 const operarArranque = <K extends NombreOperacionArranque>(op: K, entrada: OperacionesArranque[K]['entrada']): Promise<OperacionesArranque[K]['salida']> =>
   ejecutarOperacionArranque(arranque, op, entrada)
 const controlApp = new ControlApp({
@@ -750,6 +781,9 @@ function registrarIpc(): void {
   ipcMain.handle(Canales.credencialesOperar, (_e, op: 'listar' | 'guardar' | 'eliminar', entrada: unknown) => ejecutarOperacionCredenciales(op, entrada as never))
   ipcMain.handle(Canales.chatOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionChat(servicioChat, op, entrada))
   ipcMain.handle(Canales.equiposOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionEquipos(equipos, depsEquipos, op, entrada))
+  ipcMain.handle(Canales.chromeOperar, (_e, op: NombreOperacionChrome, entrada: unknown) =>
+    ejecutarOperacionChrome(puenteChrome, { carpeta: carpetaChrome, abrirCarpeta: (ruta) => shell.openPath(ruta) }, op, entrada)
+  )
   ipcMain.handle(Canales.apiOperar, (_e, op: string, entrada: unknown) => ejecutarOperacionApi(servicioApi, op, entrada))
   ipcMain.handle(Canales.navegadorAbrir, (_e, url: string) => navegador.abrir(String(url)))
   ipcMain.handle(Canales.navegadorAccion, (e, id: number, accion: AccionNavegador) => navegador.accion(Number(id), accion, e.sender))
@@ -808,6 +842,13 @@ function registrarIpc(): void {
     const datos = await eliminarGrupo(id)
     await nucleo.tareas.desvincular({ grupoId: id })
     return datos
+  })
+  ipcMain.handle(Canales.proyectosCambiarModo, async (_e, grupoId: string | null, modo: string) => {
+    if (modo !== 'local' && modo !== 'remoto') throw new Error('Modo desconocido.')
+    const r = await cambiarModo(grupoId ? String(grupoId) : null, modo)
+    // Lo de este equipo (tablero, conversaciones) sigue al proyecto con su id nuevo; al pasar a remoto se sube solo.
+    await nucleo.reasignarProyectos(r.proyectos, r.grupo)
+    return { datos: r.datos, avisos: r.avisos }
   })
   ipcMain.handle(Canales.agentesListar, () => leerBiblioteca())
   ipcMain.handle(Canales.agentesGuardar, (_e, r: Recurso) => guardarRecurso(r))
@@ -893,6 +934,7 @@ function registrarIpc(): void {
 let servidorTareas: ServidorTareas | undefined
 
 app.whenReady().then(() => {
+  void puenteChrome.iniciar().then(() => puenteChrome.error && registro.registrar({ level: 'warn', source: 'main', kind: 'chrome-puente', message: puenteChrome.error }))
   const anterior = cierreAnteriorInesperado(ARCHIVO_SESION)
   marcarInicio(ARCHIVO_SESION)
   void registro.iniciar().then(() => {
@@ -973,6 +1015,7 @@ app.on('before-quit', (e) => {
   registro.detener()
 })
 app.on('will-quit', () => {
+  void puenteChrome.detener()
   arranque.cerrar()
   terminales.cerrarTodas()
   historial.detener()

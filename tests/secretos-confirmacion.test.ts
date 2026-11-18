@@ -6,6 +6,9 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { EventoAgente } from '@shared/core/agente'
 
 vi.mock('../src/main/proyectos', () => ({ DIR: '/nonexistent' }))
+// Contraseña del equipo: «buena» vale (sin ejecutar `sudo` de verdad).
+vi.mock('../src/main/autenticacion', () => ({ verificarPassword: async (p: string) => (p === 'buena' ? { ok: true } : { ok: false, motivo: 'incorrecta' }) }))
+import { verificarSudo } from '../src/main/core/hitl/sudo'
 import { Agente } from '../src/main/core/agents/agente'
 import { Harness, type ConfirmadorSecretos } from '../src/main/core/agents/harness'
 import { ejecutarOperacionGit } from '../src/main/core/git/operaciones'
@@ -179,34 +182,47 @@ describe('suscripción: Read de un archivo con credenciales', () => {
     return { puerta, eventos, solicitudes, permiso }
   }
 
-  it('avisa con el modal de credenciales y respeta la decisión', async () => {
+  it('pide la contraseña del equipo y solo deja leer si se verificó', async () => {
     const d = await temporal('leer-secretos-')
     const ruta = join(d, 'config.ts')
     await writeFile(ruta, CON_SECRETO)
     const { puerta, solicitudes, permiso } = montar()
     const r = permiso({ herramienta: 'Read', entrada: { file_path: ruta } })
     await vi.waitFor(() => expect(solicitudes()).toHaveLength(1))
-    expect(solicitudes()[0]).toMatchObject({ secretos: true, herramienta: 'Read' })
+    expect(solicitudes()[0]).toMatchObject({ credenciales: true, sudo: true, herramienta: 'Read' })
     expect(solicitudes()[0]!.contenido).not.toContain(TOKEN)
     puerta.responder(solicitudes()[0]!.solicitudId, { aprobado: false })
-    const negado = await r
-    expect(negado.permitir).toBe(false)
+    expect((await r).permitir).toBe(false)
 
+    // Aprobado sin contraseña verificada: no vale.
     const r2 = permiso({ herramienta: 'Read', entrada: { file_path: ruta } })
     await vi.waitFor(() => expect(solicitudes()).toHaveLength(2))
     puerta.responder(solicitudes()[1]!.solicitudId, { aprobado: true })
-    expect(await r2).toEqual({ permitir: true })
+    expect((await r2).permitir).toBe(false)
+
+    const r3 = permiso({ herramienta: 'Read', entrada: { file_path: ruta } })
+    await vi.waitFor(() => expect(solicitudes()).toHaveLength(3))
+    const id = solicitudes()[2]!.solicitudId
+    expect(await verificarSudo(id, 'mala')).toEqual({ ok: false, motivo: 'incorrecta' })
+    expect(await verificarSudo(id, 'buena')).toEqual({ ok: true })
+    puerta.responder(id, { aprobado: true })
+    expect(await r3).toEqual({ permitir: true })
   })
 
-  it('en autónomo se deniega sin preguntar; un archivo limpio se permite sin preguntar', async () => {
+  it('un .env se trata como credenciales por su nombre; también en autónomo se pregunta; un archivo limpio pasa', async () => {
     const d = await temporal('leer-secretos-')
-    await writeFile(join(d, 'config.ts'), CON_SECRETO)
+    await writeFile(join(d, '.env.production'), 'PUERTO=3000\n')
+    await writeFile(join(d, '.env.example'), 'PUERTO=\n')
     await writeFile(join(d, 'limpio.ts'), 'export const a = 1\n')
     const auto = montar('autonomo')
-    expect((await auto.permiso({ herramienta: 'Read', entrada: { file_path: join(d, 'config.ts') } })).permitir).toBe(false)
-    expect(auto.solicitudes()).toHaveLength(0)
+    const r = auto.permiso({ herramienta: 'Read', entrada: { file_path: join(d, '.env.production') } })
+    await vi.waitFor(() => expect(auto.solicitudes()).toHaveLength(1))
+    expect(auto.solicitudes()[0]).toMatchObject({ credenciales: true })
+    auto.puerta.responder(auto.solicitudes()[0]!.solicitudId, { aprobado: false })
+    expect((await r).permitir).toBe(false)
     expect(auto.eventos.some((e) => e.tipo === 'guardrail')).toBe(true)
     const normal = montar()
+    expect(await normal.permiso({ herramienta: 'Read', entrada: { file_path: join(d, '.env.example') } })).toEqual({ permitir: true })
     expect(await normal.permiso({ herramienta: 'Read', entrada: { file_path: join(d, 'limpio.ts') } })).toEqual({ permitir: true })
   })
 })

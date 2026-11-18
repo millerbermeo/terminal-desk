@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ContextoUso, InfoModelo, LimiteApi, ResumenUso, UsoModelo, UsoPlan, VentanaPlan } from '@shared/core/uso'
 import type { ContextoActual } from '../agente/useAgente'
 import { fmt, useUso, ventanaDe } from '../agente/uso'
@@ -135,6 +135,23 @@ function Detalle({ uso, tokensSesion }: { uso: ResumenUso; tokensSesion: number 
 export function BarraUso({ detalle, contexto, modelo, modelos, tokensSesion }: Props) {
   const uso = useUso()
   const [abierto, setAbierto] = useState(false)
+  const barra = useRef<HTMLDivElement>(null)
+  // Abierto, se cierra con un clic fuera de la barra (los chips están dentro: siguen alternando) o con Esc.
+  useEffect(() => {
+    if (!abierto) return
+    const fuera = (e: PointerEvent): void => {
+      if (!barra.current?.contains(e.target as Node)) setAbierto(false)
+    }
+    const tecla = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setAbierto(false)
+    }
+    document.addEventListener('pointerdown', fuera, true)
+    window.addEventListener('keydown', tecla)
+    return () => {
+      document.removeEventListener('pointerdown', fuera, true)
+      window.removeEventListener('keydown', tecla)
+    }
+  }, [abierto])
   const real = contexto?.ventana && (!modelo || modelo === contexto.modelo) ? contexto.ventana : undefined
   // La ventana efectiva es la que el CLI aplica (con la compactación temprana: 200 k aunque el modelo admita 1 M).
   const ventana = detalle?.maximo || (real ?? ventanaDe(modelos, modelo ?? contexto?.modelo))
@@ -145,7 +162,7 @@ export function BarraUso({ detalle, contexto, modelo, modelos, tokensSesion }: P
   const libre = limiteTokens && limiteTokens.limite > 0 ? Math.round((limiteTokens.restante / limiteTokens.limite) * 100) : undefined
 
   return (
-    <div className="ag-estado-barra">
+    <div className="ag-estado-barra" ref={barra}>
       <div
         className="ag-ctx"
         title={

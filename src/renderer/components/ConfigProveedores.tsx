@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { McpExterno } from './McpExterno'
+import { ChromeReal } from './ChromeReal'
 import type { ProveedorEstado } from '@shared/modelos'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoBasura, IconoChispa, IconoLapiz, IconoMas, IconoTerminal, IconoUsuario } from './Iconos'
@@ -89,6 +90,8 @@ export function ConfigProveedores({ proveedores, onProveedores }: Props) {
       </SeccionAjustes>
 
       <McpExterno />
+
+      <ChromeReal />
 
       {modal && <ModalProveedor inicial={modal.inicial} onGuardado={onProveedores} onCerrar={() => setModal(null)} />}
     </div>

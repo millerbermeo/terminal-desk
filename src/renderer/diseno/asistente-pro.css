@@ -49,6 +49,8 @@
 .md-bloque-codigo.diff .mas { color: var(--ok); }
 .md-bloque-codigo.diff .menos { color: var(--error); }
 .md-bloque-codigo.diff .meta { color: var(--acento-claro); }
+.md-bloque.prosa .md-bloque-codigo { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 13px; line-height: 1.6; color: var(--texto); }
+.md-bloque.prosa .md-bloque-acciones { opacity: 1; }
 
 /* ───────────── Turnos descartados y heredados; regenerar ───────────── */
 .ag-turno.descartado { opacity: 0.45; }
@@ -198,3 +200,15 @@
 @media (prefers-reduced-transparency: reduce) {
   .ag-regenerar-menu { backdrop-filter: none; background: var(--bg-popover); }
 }
+
+/* Editar en su sitio el último mensaje enviado */
+.ag-editar-btn { align-self: flex-end; margin-top: 4px; padding: 2px 8px; font-size: 12px; color: var(--texto-tenue); background: none; border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
+.ag-editar-btn:hover { color: var(--texto); background: var(--bg-hover); border-color: var(--borde); }
+.ag-editar { display: flex; flex-direction: column; gap: 6px; min-width: min(520px, 70vw); }
+.ag-editar textarea { width: 100%; resize: vertical; font: inherit; line-height: 1.5; color: var(--texto); background: rgba(0, 0, 0, 0.25); border: 1px solid var(--borde); border-radius: 8px; padding: 8px 10px; }
+.ag-editar textarea:focus { outline: none; border-color: var(--acento-claro); }
+.ag-editar-acciones { display: flex; align-items: center; gap: 6px; }
+.ag-editar-acciones span { flex: 1; font-size: 11.5px; color: var(--texto-tenue); }
+.ag-editar-acciones button { padding: 4px 10px; font-size: 12px; border-radius: 6px; border: 1px solid var(--borde); background: none; color: var(--texto); cursor: pointer; }
+.ag-editar-acciones button.primario { background: var(--acento, #6366f1); border-color: transparent; color: #fff; }
+.ag-editar-acciones button:disabled { opacity: 0.5; cursor: default; }

@@ -95,7 +95,7 @@ describe('credenciales de prueba: archivo local', () => {
     expect(esDestructiva('credenciales_eliminar', {})).toMatch(/elimina/)
     expect(esDestructiva('credenciales_guardar', {})).toBeNull()
     const autonomo = permisosCli('autonomo', [], true)
-    expect(autonomo).toContain('mcp__odesk__credenciales_obtener')
+    expect(autonomo).not.toContain('mcp__odesk__credenciales_obtener') // entrega valores: contraseña del equipo (permiso-cli)
     expect(autonomo).not.toContain('mcp__odesk__credenciales_eliminar')
     expect(permisosCli('ediciones', [], true)).toContain('mcp__odesk__credenciales_guardar')
     expect(permisosCli('preguntar', [], true)).not.toContain('mcp__odesk__credenciales_guardar')
