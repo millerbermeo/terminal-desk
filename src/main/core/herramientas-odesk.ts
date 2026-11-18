@@ -76,7 +76,7 @@ const lista = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [])
 
 const NOMBRES_ESTADO: Record<string, string> = { M: 'modificado', A: 'añadido', D: 'eliminado', R: 'renombrado', C: 'copiado', T: 'tipo cambiado', U: 'conflicto', '.': '' }
 
-async function ejecutarGit(s: ServiciosOdesk, nombre: string, e: Entrada, proyectoId: string): Promise<unknown> {
+async function ejecutarGit(s: ServiciosOdesk, nombre: string, e: Entrada, proyectoId: string, ctx: ContextoOdesk): Promise<unknown> {
   const repo = new Repositorio(await s.carpetaDe(proyectoId), s.credenciales)
   switch (nombre) {
     case 'git_estado': {
@@ -126,10 +126,14 @@ async function ejecutarGit(s: ServiciosOdesk, nombre: string, e: Entrada, proyec
       const antes = await repo.estado()
       const sensibles = antes.archivos.filter((a) => !a.conflicto && a.indice !== '.' && esArchivoSensible(a.ruta)).map((a) => a.ruta)
       if (sensibles.length) throw new Error(`Hay archivos que parecen secretos entre los preparados (${sensibles.join(', ')}). Quítalos del commit (Versiones → Cambios) antes de confirmar.`)
-      // Sin `permitirSecretos`: la IA nunca confirma credenciales. Solo la persona puede hacerlo, desde Versiones y tras ver el aviso.
-      const r = await repo.commit(String(e.mensaje ?? '')).catch((err: Error) => {
-        if (err.message.startsWith(ERROR_SECRETOS)) throw new Error(`${err.message}\nNo lo intentes de otra forma: quita la credencial del código (variable de entorno, archivo ignorado por git) o dile al usuario que revise el aviso y confirme él desde Versiones.`)
-        throw err
+      // La IA nunca pasa `permitirSecretos` por su cuenta: si se detectan credenciales, se pregunta a la persona en Odesk
+      // (la IA no puede responder esa pregunta) y solo con su confirmación se repite el commit permitiéndolas.
+      const mensaje = String(e.mensaje ?? '')
+      const r = await repo.commit(mensaje).catch(async (err: Error) => {
+        if (!err.message.startsWith(ERROR_SECRETOS)) throw err
+        const ok = s.confirmar ? await s.confirmar(`${err.message}\n\nEl agente quiere hacer commit igual. ¿Confirmas? Solo acepta si no es un secreto real.`, ctx.cliente).catch(() => false) : false
+        if (!ok) throw new Error(`${err.message}\nLa persona no confirmó el commit. No lo intentes de otra forma: quita la credencial del código (variable de entorno, archivo ignorado por git).`)
+        return repo.commit(mensaje, false, true)
       })
       return { hash: r.hash, archivos: antes.archivos.filter((a) => !a.conflicto && a.indice !== '.').length, rama: r.estado.rama }
     }
@@ -319,7 +323,7 @@ export function crearEjecutorOdesk(s: ServiciosOdesk): EjecutorOdesk {
     const proyectoId = (typeof e.proyecto_id === 'string' && e.proyecto_id ? e.proyecto_id : ctx.proyectoId) ?? ''
     if (!proyectoId) return { texto: 'Indica proyecto_id (usa listar_proyectos): esta conversación no está ligada a un proyecto.', error: true }
     try {
-      const r = nombre.startsWith('github_') ? await ejecutarGitHub(s, nombre, e, proyectoId) : await ejecutarGit(s, nombre, e, proyectoId)
+      const r = nombre.startsWith('github_') ? await ejecutarGitHub(s, nombre, e, proyectoId) : await ejecutarGit(s, nombre, e, proyectoId, ctx)
       return { texto: aTexto(r) }
     } catch (err) {
       return { texto: (err as Error).message, error: true }
