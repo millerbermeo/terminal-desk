@@ -149,6 +149,8 @@ export class Nucleo {
     if (nuevo) this.sync.encolar(nuevo.proyectoId, 'chat', id, nuevo as unknown as Record<string, unknown>, Date.parse(nuevo.actualizada) || Date.now())
   })
   readonly memoria = new MemoriaLargoPlazo(join(DIR, 'memoria'))
+  /** Conversaciones donde ya se escribió la contraseña del equipo para leer credenciales (solo en memoria). */
+  private readonly credencialesAutorizadas = new Set<string>()
   private readonly monitor = new MonitorContexto()
   private readonly router = new Router()
   private readonly puerta = new PuertaHumana()
@@ -640,7 +642,9 @@ export class Nucleo {
           validar: (l) => this.guardrails.validarLlamada(l),
           reglas: () => this.permisos.efectivas(sol.proyectoId),
           guardarRegla: async (r) => void (await this.permisos.agregar(r, sol.proyectoId ?? 'global')),
-          autonomia
+          autonomia,
+          // La contraseña se pide una vez por conversación (en memoria; reiniciar la app la vuelve a pedir).
+          credenciales: { autorizadas: () => this.credencialesAutorizadas.has(sesionId), autorizar: () => void this.credencialesAutorizadas.add(sesionId) }
         })
         const probadas = new Set<string>()
         let costoPendiente = 0 // USD que informó el CLI en este turno (se suma a la conversación al terminar)
@@ -1269,6 +1273,7 @@ export class Nucleo {
   async borrarSesion(id: string): Promise<void> {
     const s = await this.sesiones.obtener(validarId(id))
     this.procesos.cerrar(id)
+    this.credencialesAutorizadas.delete(id)
     await this.metaCli.actualizar(id, () => undefined).catch(() => undefined)
     await this.sesiones.borrar(id)
     this.sync.borrar(s?.proyectoId, 'chat', id)

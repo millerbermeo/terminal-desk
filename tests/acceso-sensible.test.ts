@@ -85,6 +85,33 @@ describe('permiso del CLI: acceso a credenciales con la contraseña del equipo',
     }
   })
 
+  it('con la contraseña una vez, la misma conversación no la vuelve a pedir; otra conversación sí', async () => {
+    const autorizadas = new Set<string>()
+    const conversacion = (sid: string) => {
+      const puerta = new PuertaHumana()
+      const eventos: EventoAgente[] = []
+      const permiso = crearPermisoCli({ puerta, ejecucionId: sid, alEvento: (e) => void eventos.push(e), validar: async () => null, reglas: async () => [], guardarRegla: async () => undefined, credenciales: { autorizadas: () => autorizadas.has(sid), autorizar: () => void autorizadas.add(sid) } })
+      const solicitudes = () => eventos.filter((e): e is Extract<EventoAgente, { tipo: 'solicitud_humana' }> => e.tipo === 'solicitud_humana')
+      return { puerta, solicitudes, permiso }
+    }
+    const a = conversacion('a')
+    // Denegar no deja nada autorizado.
+    const negada = a.permiso({ herramienta: 'Bash', entrada: { command: 'printenv' } })
+    await vi.waitFor(() => expect(a.solicitudes()).toHaveLength(1))
+    a.puerta.responder(a.solicitudes()[0]!.solicitudId, { aprobado: false })
+    expect((await negada).permitir).toBe(false)
+    const r1 = a.permiso({ herramienta: 'Bash', entrada: { command: 'cat .env' } })
+    await autorizar(a, 2)
+    expect(await r1).toEqual({ permitir: true })
+    expect(await a.permiso({ herramienta: 'Bash', entrada: { command: 'printenv' } })).toEqual({ permitir: true })
+    expect(await a.permiso({ herramienta: 'Grep', entrada: { pattern: 'KEY', path: '.env' } })).toEqual({ permitir: true })
+    expect(a.solicitudes()).toHaveLength(2)
+    const b = conversacion('b')
+    const r2 = b.permiso({ herramienta: 'Bash', entrada: { command: 'cat .env' } })
+    await autorizar(b, 1)
+    expect(await r2).toEqual({ permitir: true })
+  })
+
   it('denegar o aprobar sin contraseña verificada no deja pasar', async () => {
     const m = montar()
     const r = m.permiso({ herramienta: 'Bash', entrada: { command: 'printenv' } })

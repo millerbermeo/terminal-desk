@@ -28,6 +28,11 @@ export interface DepsPermisoCli {
   guardarRegla: (r: NuevaRegla) => Promise<void>
   /** En «autónomo» nadie confirma: los comandos se aprueban solos salvo los catastróficos (`motivoBloqueoAutonomo`), que se deniegan. */
   autonomia?: ModoAutonomia
+  /**
+   * Acceso a credenciales ya autorizado en esta conversación: con la contraseña verificada una vez, el resto de accesos de la misma
+   * conversación no la vuelven a pedir. Vive solo en memoria (cerrar la app lo olvida). Sin esto, se pide cada vez.
+   */
+  credenciales?: { autorizadas: () => boolean; autorizar: () => void }
 }
 
 const MAX_DETALLE = 1500
@@ -114,6 +119,10 @@ export async function pedirContrasena(
   o: { herramienta: string; contenido: string; motivo: string }
 ): Promise<RespuestaPermiso> {
   const evento = (m: string): void => d.alEvento({ ejecucionId: d.ejecucionId, agente: 'asistente', profundidad: 0, tipo: 'guardrail', herramienta: o.herramienta, motivo: m } as EventoAgente)
+  if (d.credenciales?.autorizadas()) {
+    evento(`acceso a credenciales permitido (ya autorizado en esta conversación): ${o.motivo}`)
+    return { permitir: true }
+  }
   const negado = `El usuario no autorizó este acceso a credenciales (${o.motivo}). No lo intentes por otra vía (cat, grep, sed, otro comando…); si necesitas un dato que no sea secreto, pídeselo al usuario.`
   let sid = ''
   try {
@@ -139,6 +148,7 @@ export async function pedirContrasena(
       evento(`acceso a credenciales denegado: ${o.motivo}`)
       return { permitir: false, mensaje: dec.comentario ? `${negado} Comentario del usuario: ${dec.comentario}` : negado }
     }
+    d.credenciales?.autorizar()
     evento(`acceso a credenciales autorizado con la contraseña del equipo: ${o.motivo}`)
     return { permitir: true }
   } finally {
