@@ -1025,12 +1025,15 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
 
   /** Responde ya, en paralelo, sin interrumpir la tarea en marcha (a diferencia de «Encolar», que espera a que termine). */
   const preguntarAhora = (): void => {
-    const prompt = texto.trim()
-    if (!prompt || prompt.startsWith('/')) return
+    const prompt = texto.trim() || (pendientes.length ? 'Revisa los archivos adjuntos.' : '')
+    if (!prompt || prompt.startsWith('/') || subiendo > 0) return
+    const adjuntos = pendientes
     setTexto('')
-    void agente.preguntarAhora(prompt, etiqueta, proyecto?.id).then((ok) => {
+    setPendientes([])
+    setErrorAdjunto('')
+    void agente.preguntarAhora(prompt, etiqueta, proyecto?.id, adjuntos).then((ok) => {
       // Nada consultable (p. ej. un flujo, o acabó justo ahora): se encola como un mensaje normal, nunca en paralelo.
-      if (!ok) setCola((c) => [...c, { prompt, adjuntos: [] }])
+      if (!ok) setCola((c) => [...c, { prompt, adjuntos }])
     })
   }
 
@@ -1700,7 +1703,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               )}
             </Desplegable>
             {agente.enCurso && (
-              <button className="cmp-lateral" onClick={preguntarAhora} disabled={!texto.trim() || texto.trim().startsWith('/') || subiendo > 0} title="Responde ya, en paralelo y sin interrumpir lo que está haciendo (solo suscripción, en solo lectura)">
+              <button className="cmp-lateral" onClick={preguntarAhora} disabled={(!texto.trim() && pendientes.length === 0) || texto.trim().startsWith('/') || subiendo > 0} title="Responde ya, en paralelo y sin interrumpir lo que está haciendo (solo suscripción, en solo lectura)">
                 Preguntar<span className="cmp-lateral-largo"> ahora</span>
               </button>
             )}

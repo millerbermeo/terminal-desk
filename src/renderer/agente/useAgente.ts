@@ -283,17 +283,17 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
    * Devuelve false si no hay una tarea en marcha a la que preguntar.
    */
   const preguntarAhora = useCallback(
-    async (prompt: string, destino: string, proyectoId?: string): Promise<boolean> => {
+    async (prompt: string, destino: string, proyectoId?: string, adjuntos: Adjunto[] = []): Promise<boolean> => {
       const principal = [...ref.current].reverse().find((t) => t.estado === 'en_curso' && !t.lateral && t.ejecucionId && t.modo === 'chat')
       if (!principal?.ejecucionId) return false
       const clave = `t${++contador.current}`
       actualizar((ts) => [
         ...ts,
-        { clave, prompt, modo: 'chat', destino, raiz: 'asistente', eventos: [], parcial: '', estado: 'en_curso', inicio: Date.now(), lateral: true, ...(proyectoId ? { proyectoId } : {}) }
+        { clave, prompt, modo: 'chat', destino, raiz: 'asistente', eventos: [], parcial: '', estado: 'en_curso', inicio: Date.now(), lateral: true, ...(proyectoId ? { proyectoId } : {}), ...(adjuntos.length ? { adjuntos } : {}) }
       ])
       enVuelo.current++
       try {
-        const { ejecucionId } = await window.api.core.lateral(principal.ejecucionId, prompt)
+        const { ejecucionId } = await window.api.core.lateral(principal.ejecucionId, prompt, adjuntos.length ? adjuntos.map((a) => a.id) : undefined)
         etiquetarEjecucion(ejecucionId, destino)
         const previos = huerfanos.current.get(ejecucionId) ?? []
         actualizar((ts) => ts.map((t) => (t.clave === clave ? previos.reduce(aplicar, { ...t, ejecucionId }) : t)))

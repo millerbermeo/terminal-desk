@@ -19,7 +19,7 @@ import { pluginCavemanLigero } from '../caveman'
 import { pluginGuardia } from '../guardia'
 import { AVISO_CONTEXTO, AVISO_COSTO_TURNO, bloqueContextoPrevio, bloqueLaterales, conLateral, decidirRotacion, digestDeConversacion, maxContinuarAutomatico, MetaSesionesCli, type MotivoRotacion, presupuestoTurnoUsd, umbralesDeEntorno } from './consumo'
 import { prepararRotacion } from './rotacion'
-import { Bitacora } from './bitacora'
+import { Bitacora, preguntaSobreTarea } from './bitacora'
 import { leerProveedores } from '../proveedores'
 import { DIR, carpetaDeProyecto, esProyectoLocal, leerProyectos, registrarProyecto, vincularCarpetaAProyecto } from '../proyectos'
 import { Agente } from './agents/agente'
@@ -597,19 +597,7 @@ export class Nucleo {
     const mensajeId = randomUUID()
 
     // Texto en línea; imágenes y PDF se dejan en una carpeta temporal para que el CLI los lea.
-    const partes: string[] = []
-    let carpeta: string | undefined
-    for (const b of bloques) {
-      if (b.tipo === 'texto') partes.push(b.texto)
-      else if (b.tipo === 'imagen' || b.tipo === 'documento') {
-        const c = await this.adjuntos.contenido(b.adjuntoId)
-        if (!c) continue
-        carpeta ??= await mkdtemp(join(tmpdir(), 'odesk-adj-'))
-        const ruta = join(carpeta, basename(b.nombre).replace(/[^\w.-]+/g, '_') || `${b.adjuntoId}.bin`)
-        await writeFile(ruta, c.datos, { mode: 0o600 })
-        partes.push(`Archivo adjunto «${b.nombre}» disponible en: ${ruta}`)
-      }
-    }
+    const { partes, carpeta } = await this.adjuntosEnDisco(bloques)
     const prompt = partes.length ? `${partes.join('\n\n')}\n\n${sol.prompt}` : sol.prompt
 
     // Una ejecución a la vez por conversación (como la cola de mensajes de Claude Code): un mensaje enviado mientras otro sigue en
@@ -958,11 +946,12 @@ export class Nucleo {
    * Lanza otro `claude -p` (modelo rápido, solo lectura) con la bitácora de la ejecución; no reanuda su sesión (retomaría la tarea).
    * Los eventos salen con su propio `ejecucionId` (cancelable aparte).
    */
-  async preguntarLateral(ejecucionId: string, prompt: string, alEvento: (e: EventoAgente) => void): Promise<EjecucionIniciada> {
+  async preguntarLateral(ejecucionId: string, prompt: string, alEvento: (e: EventoAgente) => void, adjuntos?: string[]): Promise<EjecucionIniciada> {
     const viva = this.vivas.get(ejecucionId)
     if (!viva) throw new Error('Solo se puede preguntar mientras una tarea de la suscripción sigue en marcha. Envíalo como mensaje normal.')
     const sesion = await estadoSesion(this.cuentas.carpetaDe(await this.cuentas.activa()))
     if (!sesion.sesion) throw new Error(sesion.aviso ?? 'Inicia sesión con tu cuenta de Claude para usar tu suscripción.')
+    const bloques = await this.bloquesDeAdjuntos(adjuntos)
     const id = randomUUID()
     const ctl = new AbortController()
     this.activas.set(id, ctl)
@@ -978,12 +967,14 @@ export class Nucleo {
     // Con el proceso de la tarea a mano, la pregunta se hace con `side_question` del CLI: responde con el contexto REAL de la conversación (sin
     // bitácora ni otro proceso) y sin tocar la tarea. Cada llamada relee todo el contexto, así que con una conversación grande sale más barato
     // el camino de siempre (modelo rápido con un resumen de la bitácora).
+    // `side_question` solo admite texto: con adjuntos se va por el otro camino, que puede leerlos.
     const maxLateral = Number(process.env.ODESK_LATERAL_MAX_CONTEXTO) > 0 ? Number(process.env.ODESK_LATERAL_MAX_CONTEXTO) : 80_000
-    if (viva.control && viva.contexto <= maxLateral) {
-      void (async () => {
-        emitir({ tipo: 'inicio', prompt })
+    const control = viva.contexto <= maxLateral && !bloques.length ? viva.control : undefined
+    void (async () => {
+      emitir({ tipo: 'inicio', prompt })
+      if (control) {
         try {
-          const r = await viva.control!.control<{ response: string | null }>({ subtype: 'side_question', question: prompt }, 90_000)
+          const r = await control.control<{ response: string | null }>({ subtype: 'side_question', question: preguntaSobreTarea(prompt, viva.bitacora.texto()) }, 90_000)
           if (typeof r.response === 'string' && r.response.trim()) {
             emitir({ tipo: 'texto', texto: r.response })
             emitir({ tipo: 'fin', resultado: { estado: 'completado', texto: r.response, mensajes: [], uso: { tokensEntrada: 0, tokensSalida: 0 }, pasos: 1 } })
@@ -992,22 +983,19 @@ export class Nucleo {
         } catch {
           /* sin respuesta del CLI: se usa el camino de siempre */
         }
-        await this.lateralPorBitacora(viva, id, ctl, prompt, emitir, true)
-      })().finally(() => this.activas.delete(id))
-      return { ejecucionId: id, sesionId: '' }
-    }
-    void this.lateralPorBitacora(viva, id, ctl, prompt, emitir, false).finally(() => this.activas.delete(id))
+      }
+      await this.lateralPorBitacora(viva, ctl, prompt, bloques, emitir)
+    })().finally(() => this.activas.delete(id))
     return { ejecucionId: id, sesionId: '' }
   }
 
   /** Pregunta lateral con otro `claude -p` de modelo rápido y la bitácora de la tarea como contexto. */
   private async lateralPorBitacora(
     viva: NonNullable<ReturnType<Nucleo['vivas']['get']>>,
-    id: string,
     ctl: AbortController,
     prompt: string,
-    emitir: (e: Record<string, unknown>) => void,
-    omitirInicio: boolean
+    bloques: BloqueContenido[],
+    emitir: (e: Record<string, unknown>) => void
   ): Promise<void> {
     // La bitácora solo cubre la ejecución en marcha: sin los mensajes anteriores, una pregunta sobre algo dicho antes («¿por qué
     // elegiste eso?») quedaba sin contexto y la respuesta no tenía que ver con la conversación.
@@ -1017,33 +1005,39 @@ export class Nucleo {
       'La pregunta del usuario se refiere a ESA tarea y a esta conversación salvo que diga claramente otra cosa: «esto», «eso», «lo que haces», «ya» o «cuánto falta» hablan de ella. Responde en pocas líneas a partir del registro (qué pidió, el plan, qué lleva hecho y qué está ejecutando ahora) y de los mensajes anteriores. Si con eso no basta, puedes leer archivos para comprobarlo; si aun así no lo sabes, dilo, no inventes.',
       'Si el usuario no pregunta sino que pide un cambio o da una instrucción para la tarea, no la ejecutes tú: dile que queda anotada y que el asistente la verá al terminar el paso actual, con su siguiente mensaje (o que detenga la tarea y la envíe si corre prisa).',
       'Solo lectura: puedes mirar archivos para comprobar algo, pero no modifiques nada ni ejecutes comandos que cambien algo.',
-      previos.trim() ? `<mensajes_anteriores_de_la_conversacion>\n${previos}\n</mensajes_anteriores_de_la_conversacion>` : '',
-      `<registro_de_la_tarea_en_marcha>\n${viva.bitacora.texto()}\n</registro_de_la_tarea_en_marcha>`
+      bloques.length ? 'La persona adjuntó archivos a su pregunta: léelos con Read desde las rutas indicadas en su mensaje.' : '',
+      previos.trim() ? `<mensajes_anteriores_de_la_conversacion>\n${previos}\n</mensajes_anteriores_de_la_conversacion>` : ''
     ]
       .filter(Boolean)
       .join('\n\n')
+    let carpeta: string | undefined
     try {
+      const enDisco = await this.adjuntosEnDisco(bloques)
+      carpeta = enDisco.carpeta
+      const carpetasExtra = [...(carpeta ? [carpeta] : []), ...viva.carpetasExtra]
       const pluginDirs = [await pluginCavemanLigero(), await pluginGuardia()].filter((d): d is string => Boolean(d))
       const carpetaCuenta = this.cuentas.carpetaDe(await this.cuentas.activa())
       await ejecutarSuscripcion({
         alUso: (u) => (u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo })), this.planPronto()),
-        prompt,
+        prompt: [...enDisco.partes, preguntaSobreTarea(prompt, viva.bitacora.texto())].join('\n\n'),
         presupuestoUsd: 1,
         cwd: viva.cwd,
         modelo: MODELO_LATERAL,
         autonomia: 'preguntar',
         verificaciones: [],
         sistemaExtra,
-        ...(viva.carpetasExtra.length ? { carpetasExtra: viva.carpetasExtra } : {}),
+        ...(carpetasExtra.length ? { carpetasExtra } : {}),
         ...(carpetaCuenta ? { carpetaCuenta } : {}),
         ...(pluginDirs.length ? { pluginDirs } : {}),
-        ...(omitirInicio ? { omitirInicio: true } : {}),
+        omitirInicio: true, // ya lo emitió `preguntarLateral`, con la pregunta tal como la escribió la persona
         senal: ctl.signal,
         alEvento: emitir
       })
     } catch (err) {
       const cancelado = ctl.signal.aborted
       emitir({ tipo: 'fin', resultado: { estado: cancelado ? 'cancelado' : 'error', texto: '', mensajes: [], uso: { tokensEntrada: 0, tokensSalida: 0 }, pasos: 0, error: cancelado ? 'Cancelado' : (err as Error).message } })
+    } finally {
+      if (carpeta) await rm(carpeta, { recursive: true, force: true }).catch(() => undefined)
     }
   }
 
@@ -1181,6 +1175,24 @@ export class Nucleo {
   }
 
   /** Traduce los adjuntos subidos en bloques del mensaje: imágenes y PDFs por referencia, el texto en línea. */
+  /** Texto de los adjuntos y, para imágenes y PDF, copia en una carpeta temporal que el CLI pueda leer (la borra quien la pide). */
+  private async adjuntosEnDisco(bloques: BloqueContenido[]): Promise<{ partes: string[]; carpeta?: string }> {
+    const partes: string[] = []
+    let carpeta: string | undefined
+    for (const b of bloques) {
+      if (b.tipo === 'texto') partes.push(b.texto)
+      else if (b.tipo === 'imagen' || b.tipo === 'documento') {
+        const c = await this.adjuntos.contenido(b.adjuntoId)
+        if (!c) continue
+        carpeta ??= await mkdtemp(join(tmpdir(), 'odesk-adj-'))
+        const ruta = join(carpeta, basename(b.nombre).replace(/[^\w.-]+/g, '_') || `${b.adjuntoId}.bin`)
+        await writeFile(ruta, c.datos, { mode: 0o600 })
+        partes.push(`Archivo adjunto «${b.nombre}» disponible en: ${ruta}`)
+      }
+    }
+    return { partes, ...(carpeta ? { carpeta } : {}) }
+  }
+
   private async bloquesDeAdjuntos(ids?: string[]): Promise<BloqueContenido[]> {
     if (!ids?.length) return []
     if (ids.length > LIMITES_ADJUNTOS.porMensaje) throw new Error(`Máximo ${LIMITES_ADJUNTOS.porMensaje} archivos por mensaje`)
@@ -1431,12 +1443,17 @@ export function registrarIpcCore(nucleo: Nucleo): void {
     })
   })
   ipcMain.handle(Canales.coreCancelar, (_e, id: string) => nucleo.cancelar(String(id)))
-  ipcMain.handle(Canales.coreLateral, async (e, ejecucionId: string, prompt: string) => {
+  ipcMain.handle(Canales.coreLateral, async (e, ejecucionId: string, prompt: string, adjuntos?: string[]) => {
     if (typeof prompt !== 'string' || !prompt.trim()) throw new Error('prompt vacío')
     const emisor = e.sender
-    return nucleo.preguntarLateral(String(ejecucionId), prompt, (ev) => {
-      if (!emisor.isDestroyed()) emisor.send(Canales.coreEvento, ev)
-    })
+    return nucleo.preguntarLateral(
+      String(ejecucionId),
+      prompt,
+      (ev) => {
+        if (!emisor.isDestroyed()) emisor.send(Canales.coreEvento, ev)
+      },
+      Array.isArray(adjuntos) ? adjuntos.map(String) : undefined
+    )
   })
   ipcMain.handle(Canales.coreResponder, (_e, solicitudId: string, decision: DecisionHumana) => nucleo.responder(solicitudId, decision))
   ipcMain.handle(Canales.coreSudoVerificar, (_e, solicitudId: string, password: string) => verificarSudo(String(solicitudId), typeof password === 'string' ? password : ''))

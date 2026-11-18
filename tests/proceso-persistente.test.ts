@@ -1,6 +1,7 @@
+import { existsSync } from 'node:fs'
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { EventoAgente } from '@shared/core/agente'
 import type { Nucleo as TipoNucleo } from '../src/main/core/index'
@@ -41,6 +42,15 @@ if (a.includes('--no-session-persistence')) {
     anota({ consulta: true, texto: t.slice(0, 80) })
     console.log(JSON.stringify({ is_error: false, result: 'Título de prueba.', modelUsage: { 'claude-haiku-5-5': { inputTokens: 10, outputTokens: 5, costUSD: 0.0001 } } }))
     process.exit(0)
+  })
+} else if (!a.includes('--input-format')) {
+  // Sin permisos por stdio (preguntas laterales): el mensaje llega como texto plano y el proceso responde una vez.
+  process.stdin.on('data', (d) => (entrada += d))
+  process.stdin.on('end', () => {
+    anota({ usuario: entrada, uuid: null })
+    l({ type: 'system', subtype: 'init', session_id: sid, model: 'claude-haiku-5-5' })
+    paso('respuesta lateral')
+    resultado(false)
   })
 } else {
   process.stdin.on('data', (d) => {
@@ -394,11 +404,52 @@ describe('Nucleo con proceso persistente', () => {
         if (e.tipo === 'fin') res()
       })
     })
-    expect(lateral.find((e) => e.tipo === 'texto')).toMatchObject({ texto: 'RESP-LATERAL: ¿qué haces ahora?' })
+    // La pregunta llega al CLI junto con el estado de la tarea en marcha.
+    const respuesta = (lateral.find((e) => e.tipo === 'texto') as Extract<EventoAgente, { tipo: 'texto' }>).texto
+    expect(respuesta).toContain('<tarea_en_marcha>')
+    expect(respuesta).toContain('Petición original: LENTO')
+    expect(respuesta).toContain('<pregunta>\n¿qué haces ahora?\n</pregunta>')
+    expect(lateral.find((e) => e.tipo === 'inicio')).toMatchObject({ prompt: '¿qué haces ahora?' })
     expect(lateral.find((e) => e.tipo === 'fin')).toMatchObject({ resultado: { estado: 'completado' } })
     const fin = (await principal).find((e) => e.tipo === 'fin')
     expect(fin).toMatchObject({ resultado: { estado: 'completado' } }) // la tarea siguió y terminó
     expect((await lineas()).some((x) => x.control === 'side_question')).toBe(true)
+  })
+
+  it('«Preguntar ahora» con una imagen la deja legible para el modelo y no usa side_question (solo admite texto)', async () => {
+    await writeFile(volcado, '')
+    vi.stubEnv('ODESK_SIN_TITULO', '1')
+    const n = await nuevo()
+    let ejecucionId = ''
+    const principal = ejecutar(n, 's-img', 'LENTO', (e) => void (ejecucionId = e.ejecucionId))
+    await esperar(700)
+    const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])
+    const adjunto = await n.adjuntos.guardar('captura.png', png)
+    const lateral: EventoAgente[] = []
+    await new Promise<void>((res) => {
+      void n.preguntarLateral(
+        ejecucionId,
+        '¿qué ves aquí?',
+        (e) => {
+          lateral.push(e)
+          if (e.tipo === 'fin') res()
+        },
+        [adjunto.id]
+      )
+    })
+    const finLateral = lateral.find((e) => e.tipo === 'fin') as Extract<EventoAgente, { tipo: 'fin' }>
+    expect(finLateral.resultado.error).toBeUndefined()
+    expect(finLateral.resultado.estado).toBe('completado')
+    expect(lateral.filter((e) => e.tipo === 'inicio')).toHaveLength(1)
+    expect(lateral.find((e) => e.tipo === 'inicio')).toMatchObject({ prompt: '¿qué ves aquí?' })
+    await principal
+    const todas = await lineas()
+    expect(todas.some((x) => x.control === 'side_question')).toBe(false)
+    const mensaje = todas.find((x) => x.usuario?.includes('<pregunta>\n¿qué ves aquí?'))!.usuario!
+    expect(mensaje).toContain('<tarea_en_marcha>')
+    const ruta = /Archivo adjunto «captura\.png» disponible en: (\S+)/.exec(mensaje)![1]!
+    expect(todas.some((x) => x.args?.includes('--add-dir') && x.args.includes(dirname(ruta)))).toBe(true)
+    await vi.waitFor(() => expect(existsSync(ruta)).toBe(false)) // la copia temporal se borra al terminar
   })
 
   it('informa el uso real del contexto y deshace los cambios de archivos avisando al modelo', async () => {

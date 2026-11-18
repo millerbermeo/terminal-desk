@@ -39,7 +39,7 @@ const api: ApiCentro = {
   core: {
     ejecutar: (solicitud) => ipcRenderer.invoke(Canales.coreEjecutar, solicitud),
     cancelar: (id) => ipcRenderer.invoke(Canales.coreCancelar, id),
-    lateral: (ejecucionId, prompt) => ipcRenderer.invoke(Canales.coreLateral, ejecucionId, prompt),
+    lateral: (ejecucionId, prompt, adjuntos) => ipcRenderer.invoke(Canales.coreLateral, ejecucionId, prompt, adjuntos),
     contextoUso: (sesionId) => ipcRenderer.invoke(Canales.coreContextoUso, sesionId),
     rebobinar: (sesionId, mensajeId, soloVer) => ipcRenderer.invoke(Canales.coreRebobinar, sesionId, mensajeId, soloVer),
     responder: (solicitudId, decision) => ipcRenderer.invoke(Canales.coreResponder, solicitudId, decision),

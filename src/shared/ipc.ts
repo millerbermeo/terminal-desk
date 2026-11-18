@@ -296,7 +296,7 @@ export interface ApiCentro {
     /** Lanza el agente. El progreso y el resultado llegan por onEvento. */
     ejecutar(solicitud: SolicitudAgente): Promise<EjecucionIniciada>
     /** Pregunta lateral: se responde ya, en paralelo, con el contexto de la ejecución en marcha, sin interrumpirla (solo suscripción). */
-    lateral(ejecucionId: string, prompt: string): Promise<EjecucionIniciada>
+    lateral(ejecucionId: string, prompt: string, adjuntos?: string[]): Promise<EjecucionIniciada>
     /** Uso real del contexto de una conversación (lo informa el CLI; solo mientras su proceso sigue vivo, si no `undefined`). */
     contextoUso(sesionId: string): Promise<ContextoUso | undefined>
     /** Deshace los cambios de archivos que hizo la IA desde un mensaje del usuario (`soloVer`: solo dice cuáles cambiarían). */
