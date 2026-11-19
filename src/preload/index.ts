@@ -8,7 +8,7 @@ import type { EventoAgente } from '@shared/core/agente'
 import type { ResumenUso } from '@shared/core/uso'
 import type { EstadoNavegador } from '@shared/navegador'
 import type { EstadoZoom } from '@shared/zoom'
-import { Canales, CanalesArchivos as CA, type ApiCentro, type DatosTerminal, type PayloadVentana, type SalidaTerminal } from '@shared/ipc'
+import { Canales, CanalesArchivos as CA, type ApiCentro, type CambioConexion, type DatosTerminal, type PayloadVentana, type SalidaTerminal } from '@shared/ipc'
 
 function suscribir<T>(canal: string, cb: (e: T) => void): () => void {
   const handler = (_: unknown, e: T): void => cb(e)
@@ -64,6 +64,8 @@ const api: ApiCentro = {
     cuentaCambioAutomatico: (activo) => ipcRenderer.invoke(Canales.coreCuentaAuto, activo),
     uso: () => ipcRenderer.invoke(Canales.coreUsoObtener),
     usoPlan: () => ipcRenderer.invoke(Canales.coreUsoPlan),
+    bitacora: (dias) => ipcRenderer.invoke(Canales.coreBitacora, dias),
+    bitacoraCarpeta: () => ipcRenderer.invoke(Canales.coreBitacoraCarpeta),
     onUso: (cb) => suscribir<ResumenUso>(Canales.coreUso, cb),
     adjuntoSubir: (nombre, datos) => ipcRenderer.invoke(Canales.coreAdjuntoSubir, nombre, datos),
     adjuntoLeer: (id) => ipcRenderer.invoke(Canales.coreAdjuntoLeer, id),
@@ -168,7 +170,10 @@ const api: ApiCentro = {
     listar: () => ipcRenderer.invoke(Canales.agentesListar),
     guardar: (r) => ipcRenderer.invoke(Canales.agentesGuardar, r),
     eliminar: (id) => ipcRenderer.invoke(Canales.agentesEliminar, id),
-    activar: (destino, id, activo) => ipcRenderer.invoke(Canales.agentesActivar, destino, id, activo)
+    activar: (destino, id, activo) => ipcRenderer.invoke(Canales.agentesActivar, destino, id, activo),
+    delProyecto: (id) => ipcRenderer.invoke(Canales.agentesCarpeta, id),
+    sugerir: (id) => ipcRenderer.invoke(Canales.agentesSugerir, id),
+    copiar: (s) => ipcRenderer.invoke(Canales.agentesCopiar, s)
   },
   ventana: {
     separar: (payload, pos) => ipcRenderer.send(Canales.ventanaSeparar, payload, pos),
@@ -183,6 +188,8 @@ const api: ApiCentro = {
   },
   proyectos: {
     listar: () => ipcRenderer.invoke(Canales.proyectosListar),
+    caidos: () => ipcRenderer.invoke(Canales.proyectosCaidos),
+    onConexion: (cb) => suscribir<CambioConexion>(Canales.proyectosConexion, cb),
     validarRuta: (ruta) => ipcRenderer.invoke(Canales.proyectosValidarRuta, ruta),
     agregar: (solicitud) => ipcRenderer.invoke(Canales.proyectosAgregar, solicitud),
     elegirCarpetas: () => ipcRenderer.invoke(Canales.proyectosElegirCarpetas),

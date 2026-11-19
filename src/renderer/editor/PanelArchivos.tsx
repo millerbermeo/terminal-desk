@@ -547,6 +547,12 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
     return s
   }, [marcas])
 
+  const conConflictos = useMemo(() => {
+    const s = new Set<string>()
+    for (const [r, m] of Object.entries(marcas)) if (m === 'C') for (let i = r.indexOf('/'); i !== -1; i = r.indexOf('/', i + 1)) s.add(r.slice(0, i))
+    return s
+  }, [marcas])
+
   const actual = abiertos.find((a) => a.ruta === activa)
   const estado = !actual || actual.noEditable ? '' : actual.estado === 'guardando' ? 'Guardando…' : actual.estado === 'error' ? `Error: ${actual.mensaje}` : actual.estado === 'conflicto' ? 'Conflicto con el disco' : actual.sucio ? (auto ? 'Sin guardar…' : 'Sin guardar') : 'Guardado'
 
@@ -624,6 +630,7 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
             expandidas={expandidas}
             marcas={marcas}
             conCambios={conCambios}
+            conConflictos={conConflictos}
             activa={activa}
             creando={creando}
             renombrando={renombrando}
@@ -654,8 +661,8 @@ export function PanelArchivos({ proyectoId, nombre, visible }: Props) {
               key={a.ruta}
               role="tab"
               aria-selected={a.ruta === activa}
-              className={`ed-pestana${a.ruta === activa ? ' activa' : ''}`}
-              title={a.ruta}
+              className={`ed-pestana${a.ruta === activa ? ' activa' : ''}${marcas[a.ruta] === 'C' ? ' conflicto' : ''}`}
+              title={marcas[a.ruta] === 'C' ? `${a.ruta} — tiene conflictos` : a.ruta}
               onClick={() => setActiva(a.ruta)}
               onAuxClick={(e) => {
                 if (e.button === 1) void cerrar(a.ruta)

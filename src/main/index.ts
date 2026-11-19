@@ -5,13 +5,16 @@ import { join } from 'node:path'
 import icono from '../../resources/icon.png?asset'
 import type { Proveedor, Recurso } from '@shared/modelos'
 import type { AccionNavegador } from '@shared/navegador'
-import { Canales, type DestinoActivacion, type OpcionesTerminal, type PayloadVentana, type SolicitudAgregar } from '@shared/ipc'
+import { Canales, type CambioConexion, type DestinoActivacion, type OpcionesTerminal, type PayloadVentana, type SolicitudAgregar, type SolicitudCopia } from '@shared/ipc'
 import { registrarIpcArchivos } from './archivos-ipc'
 import { ServicioHistorial } from './historial/servicio'
 import { ejecutarOperacionHistorial } from './historial/operaciones'
 import { Nucleo, registrarIpcCore } from './core'
 import { GestorTerminales } from './terminales'
 import { eliminarProveedor, enCola as enColaProveedores, guardarProveedor, listarProveedores, obtenerProveedor } from './proveedores'
+import { comprobarAhora, exigirConexion, MonitorConexion, mensajeSinConexion, rutaCaida } from './montajes'
+import { copiarEntreProyectos, listarRecursosDeProyecto } from './copiar-recursos'
+import { sugerirRecursos } from './sugerencias-agentes'
 import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones } from './agentes'
 import { resolverPerfil } from './migracion'
 import { mantenerCavemanActualizado } from './caveman'
@@ -235,6 +238,7 @@ const arranque = new ServicioArranque({
   proyectos: async () => (await leerProyectos()).proyectos.map((p) => ({ id: p.id, nombre: p.nombre, ruta: p.ruta })),
   terminales: {
     crear: ({ cwd, cols, rows }) => {
+      if (cwd) exigirConexion(cwd) // montaje de red caído: no se lanza nada ahí
       const id = terminales.crear({ cwd, cols, rows })
       if (principal && !principal.isDestroyed()) duenos.set(id, principal.webContents.id)
       return id
@@ -256,6 +260,8 @@ const arranque = new ServicioArranque({
 
 // Núcleo de agentes (Fase 1): sin aprobador, solo herramientas de lectura. La Fase 4 añade confirmación humana.
 const nucleo = new Nucleo()
+// Los fallos del Asistente también van al registro técnico (app.log y, con sesión, al servidor): contexto sin el contenido del chat
+nucleo.alFallo = (f) => registro.registrar({ level: 'error', source: 'asistente', kind: f.causa, message: f.error, context: { conversacion: f.conversacion } })
 // La IA (herramientas navegador_* del servidor MCP «odesk») maneja las mismas ventanas del navegador integrado, a la vista del usuario.
 nucleo.conectarNavegador(new NavegadorIA(navegador))
 // Igual con los teléfonos Android conectados por USB (herramientas movil_*, con adb); capturas y registros quedan como evidencia.
@@ -491,6 +497,7 @@ const controlApp = new ControlApp({
     escribir: (id, datos) => terminales.escribir(id, datos),
     cerrar: (id) => terminales.cerrar(id),
     crear: async ({ cwd, proyectoId, claude, titulo }) => {
+      if (cwd && !(await comprobarAhora(cwd))) throw new Error(mensajeSinConexion(cwd))
       const prov = claude ? await obtenerProveedor('claude') : undefined
       if (claude && !prov) throw new Error('No hay un proveedor «claude» configurado en Odesk.')
       const comando = prov ? await comandoConAgentes(prov.comando, proyectoId) : undefined
@@ -558,13 +565,36 @@ nucleo.alEscribirIA = (momento, proyectoId, ruta, meta) => {
 }
 async function sincronizarHistorial(): Promise<void> {
   try {
-    await historial.sincronizarProyectos(Object.entries(await rutasLocales.todas()).map(([id, ruta]) => ({ id, ruta })))
+    // Un proyecto en un montaje de red caído se deja fuera: vigilar su carpeta colgaría el proceso. Vuelve solo cuando responde.
+    await historial.sincronizarProyectos(Object.entries(await rutasLocales.todas()).filter(([, ruta]) => !rutaCaida(ruta)).map(([id, ruta]) => ({ id, ruta })))
   } catch (err) {
     console.warn('No se pudo preparar el historial local:', (err as Error).message)
   }
 }
 // Un proyecto recién agregado o clonado ya tiene historial: sin esto fallaba con «no está en este equipo» hasta la siguiente ronda (15 s).
 rutasLocales.alCambiar = () => void sincronizarHistorial()
+
+/** Proyectos en carpetas montadas por red (SSH…): si el montaje se cae se cierran sus terminales y no se abren hasta que vuelva. */
+const monitorConexion = new MonitorConexion(
+  async () => (await leerProyectos()).proyectos.map((p) => ({ id: p.id, ruta: p.ruta })),
+  ({ proyectoIds, ruta, conectada }) => {
+    if (!conectada) {
+      for (const [ptyId, m] of metaTerminales) {
+        if (m.proyectoId && proyectoIds.includes(m.proyectoId)) {
+          terminales.cerrar(ptyId)
+          duenos.delete(ptyId)
+          metaTerminales.delete(ptyId)
+        }
+      }
+    } else void sincronizarHistorial()
+    const cambio: CambioConexion = {
+      proyectoIds,
+      conectada,
+      mensaje: conectada ? `Se recuperó la conexión con ${ruta}.` : mensajeSinConexion(ruta)
+    }
+    for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(Canales.proyectosConexion, cambio)
+  }
+)
 
 let bucleCuenta: NodeJS.Timeout | undefined
 const CADA_MS = 30_000
@@ -813,6 +843,7 @@ function registrarIpc(): void {
     return servidor.cerrar()
   })
   ipcMain.handle(Canales.proyectosListar, () => leerProyectos())
+  ipcMain.handle(Canales.proyectosCaidos, async () => (await leerProyectos()).proyectos.filter((p) => rutaCaida(p.ruta)).map((p) => p.id))
   ipcMain.handle(Canales.proyectosValidarRuta, (_e, ruta: string) => validarRuta(ruta))
   ipcMain.handle(Canales.proyectosAgregar, async (_e, sol: SolicitudAgregar) => {
     const r = await agregarProyectos(sol)
@@ -854,10 +885,17 @@ function registrarIpc(): void {
   ipcMain.handle(Canales.agentesGuardar, (_e, r: Recurso) => guardarRecurso(r))
   ipcMain.handle(Canales.agentesEliminar, (_e, id: string) => eliminarRecurso(id))
   ipcMain.handle(Canales.agentesActivar, (_e, d: DestinoActivacion, id: string, activo: boolean) => activarRecurso(d, id, activo))
+  ipcMain.handle(Canales.agentesSugerir, (_e, id: string) => sugerirRecursos(String(id)))
+  ipcMain.handle(Canales.agentesCarpeta, (_e, id: string) => listarRecursosDeProyecto(String(id)))
+  ipcMain.handle(Canales.agentesCopiar, (_e, s: SolicitudCopia) =>
+    copiarEntreProyectos({ origenId: String(s?.origenId), destinoId: String(s?.destinoId), items: Array.isArray(s?.items) ? s.items.map((i) => ({ tipo: i.tipo, clave: String(i.clave) })) : [], sobrescribir: s?.sobrescribir === true })
+  )
   ipcMain.handle(Canales.proveedoresListar, () => listarProveedores())
   ipcMain.handle(Canales.proveedoresGuardar, (_e, p: Proveedor) => guardarProveedor(p))
   ipcMain.handle(Canales.proveedoresEliminar, (_e, id: string) => eliminarProveedor(id))
   ipcMain.handle(Canales.terminalCrear, async (e, op: OpcionesTerminal) => {
+    // Carpeta en un montaje de red caído: no se crea la terminal (hacer chdir a ella dejaría colgado el proceso).
+    if (op.cwd && !(await comprobarAhora(op.cwd))) throw new Error(mensajeSinConexion(op.cwd))
     // El renderer solo envía el id: el comando se resuelve aquí, desde la config guardada.
     const prov = op.proveedorId ? await obtenerProveedor(op.proveedorId) : undefined
     // Con Claude Code se le cargan los agentes y skills activos del proyecto; una terminal normal no los lleva.
@@ -963,6 +1001,7 @@ app.whenReady().then(() => {
   // Socket local para que la IA (servidor MCP, en otro proceso) use las tareas; solo este proceso las escribe.
   void sincronizarHistorial()
   setInterval(() => void sincronizarHistorial(), 15_000).unref() // proyectos nuevos o quitados
+  monitorConexion.iniciar()
   void refrescarMcpExterno() // los clientes externos que ya lo tenían apuntan a las rutas de esta versión de la app
   void iniciarServidorTareas(DIR, nucleo.ejecutarHerramienta, async (p, proyectoId) => {
     // Claude Code escribió (o va a escribir) un archivo en una terminal: el gancho del plugin avisa por aquí.

@@ -13,6 +13,7 @@ interface Props {
   expandidas: ReadonlySet<string>
   marcas: Record<string, MarcaGit>
   conCambios: ReadonlySet<string> // carpetas que contienen archivos con cambios
+  conConflictos?: ReadonlySet<string> // carpetas que contienen archivos en conflicto
   activa: string | null
   creando: CreandoEn | null
   renombrando: string | null
@@ -24,7 +25,7 @@ interface Props {
   onCancelarNombre: () => void
 }
 
-const COLOR_MARCA: Record<MarcaGit, string> = { M: '#fbbf24', A: '#34d399', D: '#f87171', R: '#67e8f9', U: '#34d399', C: '#f87171' }
+const COLOR_MARCA: Record<MarcaGit, string> = { M: '#fbbf24', A: '#34d399', D: '#f87171', R: '#67e8f9', U: '#34d399', C: '#ef4444' }
 const TITULO_MARCA: Record<MarcaGit, string> = { M: 'Modificado', A: 'Añadido', D: 'Borrado', R: 'Renombrado', U: 'Sin seguimiento', C: 'Conflicto' }
 
 function Nombre({ inicial, sangria, onNombre, onCancelar }: { inicial: string; sangria: number; onNombre: (t: string) => void; onCancelar: () => void }) {
@@ -63,7 +64,7 @@ export function ArbolArchivos(p: Props) {
         return (
           <li key={e.ruta}>
             <div
-              className={`ed-fila${p.activa === e.ruta ? ' sel' : ''}`}
+              className={`ed-fila${p.activa === e.ruta ? ' sel' : ''}${marca === 'C' || (e.tipo === 'carpeta' && p.conConflictos?.has(e.ruta)) ? ' conflicto' : ''}`}
               style={{ paddingLeft: 8 + sangria * 14 }}
               role="treeitem"
               aria-expanded={e.tipo === 'carpeta' ? abierta : undefined}
@@ -77,11 +78,12 @@ export function ArbolArchivos(p: Props) {
             >
               {e.tipo === 'carpeta' ? <span className="ed-chev">{abierta ? '▾' : '▸'}</span> : <span className="ed-chev" />}
               {e.tipo === 'carpeta' ? <span className="ed-ico ed-ico-carpeta">{abierta ? <IconoCarpetaAbierta /> : <IconoCarpeta />}</span> : <span className="ed-ico ed-ins" style={{ color: ins.color }}>{ins.txt}</span>}
-              <span className={`ed-nombre${marca ? ' con-marca' : ''}`} style={marca ? { color: COLOR_MARCA[marca] } : undefined}>
+              <span className={`ed-nombre${marca ? ' con-marca' : ''}`} style={marca ? { color: COLOR_MARCA[marca] } : e.tipo === 'carpeta' && p.conConflictos?.has(e.ruta) ? { color: COLOR_MARCA.C } : undefined}>
                 {e.nombre}
               </span>
-              {marca && <span className="ed-marca" style={{ color: COLOR_MARCA[marca] }} title={TITULO_MARCA[marca]}>{marca}</span>}
-              {!marca && e.tipo === 'carpeta' && p.conCambios.has(e.ruta) && <span className="ed-marca" style={{ color: '#fbbf24' }} title="Contiene cambios">●</span>}
+              {marca && <span className="ed-marca" style={{ color: COLOR_MARCA[marca] }} title={TITULO_MARCA[marca]}>{marca === 'C' ? '!' : marca}</span>}
+              {!marca && e.tipo === 'carpeta' && p.conConflictos?.has(e.ruta) && <span className="ed-marca" style={{ color: COLOR_MARCA.C }} title="Contiene archivos en conflicto">●</span>}
+              {!marca && e.tipo === 'carpeta' && !p.conConflictos?.has(e.ruta) && p.conCambios.has(e.ruta) && <span className="ed-marca" style={{ color: '#fbbf24' }} title="Contiene cambios">●</span>}
             </div>
             {e.tipo === 'carpeta' && abierta && <ul role="group">{nivel(e.ruta, sangria + 1)}</ul>}
           </li>

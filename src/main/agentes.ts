@@ -4,7 +4,7 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/p
 import type { BibliotecaAgentes, Recurso } from '@shared/modelos'
 import type { DestinoActivacion, ResultadoRecurso } from '@shared/ipc'
 import { activosDe, slug } from '@shared/agentes'
-import { DIR, leerProyectos } from './proyectos'
+import { DIR, esProyectoLocal, leerProyectos } from './proyectos'
 import { AJUSTES_CONSUMO, COMANDOS_BLOQUEADOS } from './core/suscripcion'
 import { pluginGuardia } from './guardia'
 import { cavemanEnAjustes, pluginCavemanLigero } from './caveman'
@@ -46,6 +46,53 @@ function aRecurso(r: RecursoApi): Recurso {
   }
 }
 
+/**
+ * Lo de los proyectos y grupos LOCALES (id `local-…`), que el servidor no conoce: activaciones de recursos compartidos y los agentes y
+ * skills propios de un proyecto local. Vive en este equipo (`agentes-locales.json`) y se mezcla con la biblioteca de la cuenta al leer.
+ */
+interface DatosLocales {
+  recursos: Recurso[]
+  activaciones: BibliotecaAgentes['activaciones']
+}
+const ARCHIVO_LOCAL = join(DIR, 'agentes-locales.json')
+const esLocal = (id: unknown): id is string => typeof id === 'string' && id.startsWith('local-')
+let colaLocal: Promise<unknown> = Promise.resolve()
+/** Serializa las escrituras de `agentes-locales.json`: dos activaciones seguidas no se pisan. */
+const enColaLocal = <T>(f: () => Promise<T>): Promise<T> => {
+  const r = colaLocal.then(f, f)
+  colaLocal = r.catch(() => undefined)
+  return r
+}
+
+async function leerLocales(): Promise<DatosLocales> {
+  try {
+    const j = JSON.parse(await readFile(ARCHIVO_LOCAL, 'utf8')) as Partial<DatosLocales>
+    const listas = (m: unknown): Record<string, string[]> =>
+      Object.fromEntries(Object.entries((m && typeof m === 'object' ? m : {}) as Record<string, unknown>).map(([k, v]) => [k, Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []]))
+    return {
+      recursos: Array.isArray(j.recursos) ? j.recursos.filter((r) => r && typeof r.id === 'string' && esLocal(r.id)) : [],
+      activaciones: { proyectos: listas(j.activaciones?.proyectos), grupos: listas(j.activaciones?.grupos) }
+    }
+  } catch {
+    return { recursos: [], activaciones: { proyectos: {}, grupos: {} } }
+  }
+}
+
+async function escribirLocales(d: DatosLocales): Promise<void> {
+  await mkdir(DIR, { recursive: true })
+  const tmp = `${ARCHIVO_LOCAL}.${process.pid}.tmp`
+  await writeFile(tmp, JSON.stringify(d, null, 2), { mode: 0o600 })
+  await rename(tmp, ARCHIVO_LOCAL)
+}
+
+/** Cambia lo local bajo la cola. */
+const cambiarLocales = (f: (d: DatosLocales) => void): Promise<void> =>
+  enColaLocal(async () => {
+    const d = await leerLocales()
+    f(d)
+    await escribirLocales(d)
+  })
+
 let ultimaBiblioteca: { datos: BibliotecaApi; usuario: string | undefined } | undefined
 
 /** Biblioteca de agentes y skills de la cuenta, desde el servidor (o la última leída, si ahora mismo no responde). */
@@ -66,7 +113,11 @@ export async function leerBiblioteca(): Promise<BibliotecaAgentes> {
     const mapa = a.targetType === 'grupo' ? activaciones.grupos : activaciones.proyectos
     ;(mapa[a.targetId] ??= []).push(a.resourceId)
   }
-  return { recursos: b.resources.map(aRecurso), activaciones }
+  const locales = await leerLocales()
+  for (const [tipo, mapa] of [['proyectos', locales.activaciones.proyectos], ['grupos', locales.activaciones.grupos]] as const) {
+    for (const [id, ids] of Object.entries(mapa)) activaciones[tipo][id] = [...new Set([...(activaciones[tipo][id] ?? []), ...ids])]
+  }
+  return { recursos: [...b.resources.map(aRecurso), ...locales.recursos], activaciones }
 }
 
 export async function guardarRecurso(entrada: Recurso): Promise<ResultadoRecurso> {
@@ -95,6 +146,26 @@ export async function guardarRecurso(entrada: Recurso): Promise<ResultadoRecurso
     return { ok: false, mensaje: `Ya existe ${entrada.tipo === 'agente' ? 'un agente' : 'una skill'} con ese nombre` }
   }
 
+  // Agente o skill propio de un proyecto local (o ya guardado como local): se queda en este equipo, el servidor no lo conoce.
+  if ((entrada.ambito === 'proyecto' && esProyectoLocal(entrada.proyectoId)) || esLocal(entrada.id)) {
+    if (entrada.ambito !== 'proyecto') return { ok: false, mensaje: 'Un recurso local solo puede ser de su proyecto' }
+    const id = entrada.id && esLocal(entrada.id) ? entrada.id : `local-${randomUUID()}`
+    const recurso: Recurso = {
+      id,
+      tipo: entrada.tipo,
+      nombre,
+      descripcion,
+      contenido,
+      ambito: 'proyecto',
+      proyectoId: entrada.proyectoId,
+      ...(entrada.tipo === 'agente' ? { herramientas, modelo: entrada.modelo ?? '' } : {})
+    }
+    await cambiarLocales((d) => {
+      d.recursos = [...d.recursos.filter((r) => r.id !== id), recurso]
+    })
+    return { ok: true, biblioteca: await leerBiblioteca() }
+  }
+
   try {
     await servidor.put('/agentes', {
       ...(entrada.id ? { id: entrada.id } : {}),
@@ -114,6 +185,12 @@ export async function guardarRecurso(entrada: Recurso): Promise<ResultadoRecurso
 }
 
 export async function eliminarRecurso(id: string): Promise<BibliotecaAgentes> {
+  if (esLocal(id)) {
+    await cambiarLocales((d) => {
+      d.recursos = d.recursos.filter((r) => r.id !== id)
+    })
+    return leerBiblioteca()
+  }
   await servidor.delete(`/agentes/${encodeURIComponent(id)}`)
   return leerBiblioteca()
 }
@@ -122,6 +199,18 @@ export async function activarRecurso(destino: DestinoActivacion, recursoId: stri
   const b = await leerBiblioteca()
   const recurso = b.recursos.find((r) => r.id === recursoId)
   if (!recurso || recurso.ambito !== 'compartido') return b // solo los compartidos se activan a mano
+  if (esLocal(destino.id)) {
+    // Proyecto o grupo local: el servidor no los conoce, la activación se guarda en este equipo.
+    await cambiarLocales((d) => {
+      const mapa = destino.tipo === 'grupo' ? d.activaciones.grupos : d.activaciones.proyectos
+      const ids = new Set(mapa[destino.id] ?? [])
+      if (activo) ids.add(recursoId)
+      else ids.delete(recursoId)
+      if (ids.size) mapa[destino.id] = [...ids]
+      else delete mapa[destino.id]
+    })
+    return leerBiblioteca()
+  }
   const cuerpo = { targetType: destino.tipo, targetId: destino.id, resourceId: recursoId }
   if (activo) await servidor.post('/agentes/activaciones', cuerpo)
   else await servidor.delete('/agentes/activaciones', cuerpo)

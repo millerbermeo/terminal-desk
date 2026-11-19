@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { BibliotecaAgentes, DatosProyectos, Recurso, TipoRecurso } from '@shared/modelos'
+import type { RecursoCarpeta } from '@shared/ipc'
+import type { SugerenciaRecurso } from '@shared/sugerencias-agentes'
 import { activosDe } from '@shared/agentes'
 import { EstadoVacio } from './EstadoVacio'
 import { IconoAgente, IconoBasura, IconoBuscar, IconoCarpeta, IconoChevron, IconoChispa, IconoLapiz, IconoMas, IconoRayo } from './Iconos'
 import { ModalConfirmar } from './ModalConfirmar'
 import { ModalRecurso } from './ModalRecurso'
+import { CopiarConfig } from './CopiarConfig'
+import { AplicarVarios } from './AplicarVarios'
 
 interface Props {
   datos: DatosProyectos
@@ -54,10 +58,34 @@ export function ConfigAgentes({ datos, biblioteca, onBiblioteca }: Props) {
   const [ocupado, setOcupado] = useState<Set<string>>(new Set())
   const [modal, setModal] = useState<{ tipo: TipoRecurso; inicial?: Recurso } | null>(null)
   const [porEliminar, setPorEliminar] = useState<Recurso | null>(null)
+  const [copiando, setCopiando] = useState(false)
+  const [aplicando, setAplicando] = useState(false)
+  const [delRepo, setDelRepo] = useState<RecursoCarpeta[]>([])
+  const [sugeridos, setSugeridos] = useState<SugerenciaRecurso[]>([])
   const [destino, setDestino] = useState<Destino | null>(
     datos.grupos[0] ? { tipo: 'grupo', id: datos.grupos[0].id } : datos.proyectos[0] ? { tipo: 'proyecto', id: datos.proyectos[0].id } : null
   )
   const refBusca = useRef<HTMLInputElement>(null)
+
+  // Del proyecto elegido: lo que trae su `.claude/` (siempre activo) y qué recursos compartidos encajan con su stack
+  const proyectoDestinoId = destino?.tipo === 'proyecto' ? destino.id : undefined
+  const activacionesProyecto = proyectoDestinoId ? biblioteca.activaciones.proyectos[proyectoDestinoId] : undefined
+  useEffect(() => {
+    let vigente = true
+    setDelRepo([])
+    if (proyectoDestinoId) void window.api.agentes.delProyecto(proyectoDestinoId).then((l) => vigente && setDelRepo(l)).catch(() => undefined)
+    return () => {
+      vigente = false
+    }
+  }, [proyectoDestinoId])
+  useEffect(() => {
+    let vigente = true
+    setSugeridos([])
+    if (proyectoDestinoId) void window.api.agentes.sugerir(proyectoDestinoId).then((l) => vigente && setSugeridos(l)).catch(() => undefined)
+    return () => {
+      vigente = false
+    }
+  }, [proyectoDestinoId, activacionesProyecto, biblioteca.recursos.length])
 
   // «/» enfoca el buscador de la biblioteca (como en la mayoría de apps de escritorio)
   useEffect(() => {
@@ -296,6 +324,10 @@ export function ConfigAgentes({ datos, biblioteca, onBiblioteca }: Props) {
     const cargaAgentes = resumen.filter((a) => a.recurso.tipo === 'agente').length
     const cargaSkills = resumen.length - cargaAgentes
     const pal = sinAcentos(buscaActivos).split(/\s+/).filter(Boolean)
+    const sugerencias = sugeridos.flatMap((x) => {
+      const recurso = compartidos.find((r) => r.id === x.recursoId)
+      return recurso ? [{ recurso, motivos: x.motivos }] : []
+    })
     const propio = (r: Recurso): boolean => (destino.tipo === 'grupo' ? enGrupo.has(r.id) : enProyecto.has(r.id))
 
     const fila = (r: Recurso) => {
@@ -370,6 +402,12 @@ export function ConfigAgentes({ datos, biblioteca, onBiblioteca }: Props) {
             <span className="ak-sobre">{destino.tipo === 'grupo' ? 'Grupo' : grupo ? `Proyecto · grupo «${grupo.nombre}»` : 'Proyecto sin grupo'}</span>
             <h3>{destino.tipo === 'grupo' ? grupo?.nombre : proyecto?.nombre}</h3>
           </div>
+          <button className="ak-mini" onClick={() => setCopiando(true)} title="Activa aquí lo mismo que tiene otro proyecto">
+            Copiar de otro proyecto…
+          </button>
+          <button className="ak-mini" onClick={() => setAplicando(true)} title="Activa en otros proyectos lo que está activado aquí">
+            Aplicar a otros…
+          </button>
           <div className="ak-carga" title={destino.tipo === 'grupo' ? 'Lo que se carga en cada proyecto del grupo' : 'Lo que se carga al abrir Claude en este proyecto'}>
             <span><b>{cargaAgentes}</b> {cargaAgentes === 1 ? 'subagente' : 'subagentes'}</span>
             <span><b>{cargaSkills}</b> {cargaSkills === 1 ? 'skill' : 'skills'}</span>
@@ -380,6 +418,33 @@ export function ConfigAgentes({ datos, biblioteca, onBiblioteca }: Props) {
             ? 'Lo que actives aquí se carga en todos los proyectos del grupo.'
             : 'Se suma a lo que ya activa su grupo. Lo heredado se quita desde el grupo.'}
         </p>
+        {proyecto && sugerencias.length > 0 && (
+          <section className="ak-bloque ak-sugerencias">
+            <div className="ak-bloque-cab">
+              <Ficha tipo="skill" chica />
+              <h4>Sugeridos para este proyecto</h4>
+              <span className="contador">{sugerencias.length}</span>
+              <span className="ag-espacio" />
+              <button className="ak-mini" onClick={() => void activar(sugerencias.map((x) => x.recurso.id), true)}>
+                Activar todos
+              </button>
+            </div>
+            <div className="ak-filas">
+              {sugerencias.map(({ recurso: r, motivos }) => (
+                <div key={r.id} className="ak-fila">
+                  <Ficha tipo={r.tipo} chica />
+                  <span className="ak-fila-txt">
+                    <strong className="mono">{r.nombre}</strong>
+                    <span title={r.descripcion}>Encaja con: {motivos.join(', ')}</span>
+                  </span>
+                  <button className="ak-mini" disabled={ocupado.has(r.id)} onClick={() => void activar([r.id], true)}>
+                    Activar
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {compartidos.length > 5 && (
           <div className="buscar ak-buscar chico">
             <IconoBuscar />
@@ -404,6 +469,27 @@ export function ConfigAgentes({ datos, biblioteca, onBiblioteca }: Props) {
                     <span title={r.descripcion}>{r.descripcion || 'Sin descripción'}</span>
                   </span>
                   <span className="ak-heredado ok">Siempre activo</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+        {proyecto && delRepo.length > 0 && (
+          <section className="ak-bloque">
+            <div className="ak-bloque-cab">
+              <Ficha tipo="skill" chica />
+              <h4>Del repositorio (.claude/)</h4>
+              <span className="contador">{delRepo.length}</span>
+            </div>
+            <div className="ak-filas">
+              {delRepo.map((r) => (
+                <div key={`${r.tipo}:${r.clave}`} className="ak-fila on fijo">
+                  <Ficha tipo={r.tipo} chica />
+                  <span className="ak-fila-txt">
+                    <strong className="mono">{r.nombre}</strong>
+                    <span title={r.descripcion}>{r.descripcion || 'Sin descripción'}</span>
+                  </span>
+                  <span className="ak-heredado ok" title="Viene en el propio repo: Claude Code lo carga solo">Del repo</span>
                 </div>
               ))}
             </div>
@@ -531,6 +617,8 @@ export function ConfigAgentes({ datos, biblioteca, onBiblioteca }: Props) {
       {modal && (
         <ModalRecurso key={modal.inicial?.id ?? modal.tipo} tipo={modal.tipo} inicial={modal.inicial} datos={datos} onGuardado={onBiblioteca} onCerrar={() => setModal(null)} />
       )}
+      {aplicando && destino && <AplicarVarios datos={datos} biblioteca={biblioteca} destino={destino} onBiblioteca={onBiblioteca} onCerrar={() => setAplicando(false)} />}
+      {copiando && destino && <CopiarConfig datos={datos} biblioteca={biblioteca} destino={destino} onBiblioteca={onBiblioteca} onCerrar={() => setCopiando(false)} />}
       {porEliminar && (
         <ModalConfirmar
           titulo={`Eliminar «${porEliminar.nombre}»`}

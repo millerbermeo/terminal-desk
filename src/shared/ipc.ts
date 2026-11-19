@@ -25,7 +25,9 @@ import type { ResumenSesion, SesionGuardada, TurnoGuardado } from './core/sesion
 import type { OperacionProgramadas, TareaProgramada } from './programadas'
 import type { EntradaMemoria, NuevaEntradaMemoria } from './core/memoria'
 import type { AjustesAsistente } from './ajustes'
-import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso } from './modelos'
+import type { SugerenciaRecurso } from './sugerencias-agentes'
+import type { EntradaBitacora } from './bitacora-asistente'
+import type { BibliotecaAgentes, DatosProyectos, Proveedor, ProveedorEstado, Recurso, TipoRecurso } from './modelos'
 import type { CredencialesSesion, EstadoSesion, NombreOperacionCuenta, OperacionesCuenta, ResultadoSesion } from './sesion'
 
 export const Canales = {
@@ -41,10 +43,15 @@ export const Canales = {
   agentesGuardar: 'agentes:guardar',
   agentesEliminar: 'agentes:eliminar',
   agentesActivar: 'agentes:activar',
+  agentesCarpeta: 'agentes:carpeta',
+  agentesCopiar: 'agentes:copiar',
+  agentesSugerir: 'agentes:sugerir',
   proveedoresListar: 'proveedores:listar',
   proveedoresGuardar: 'proveedores:guardar',
   proveedoresEliminar: 'proveedores:eliminar',
   proyectosListar: 'proyectos:listar',
+  proyectosCaidos: 'proyectos:caidos',
+  proyectosConexion: 'proyectos:conexion',
   proyectosValidarRuta: 'proyectos:validar-ruta',
   proyectosAgregar: 'proyectos:agregar',
   proyectosElegirCarpetas: 'proyectos:elegir-carpetas',
@@ -131,6 +138,8 @@ export const Canales = {
   coreUsoObtener: 'core:uso-obtener',
   coreUso: 'core:uso',
   coreUsoPlan: 'core:uso-plan',
+  coreBitacora: 'core:bitacora',
+  coreBitacoraCarpeta: 'core:bitacora-carpeta',
   coreAdjuntoSubir: 'core:adjunto-subir',
   coreAdjuntoLeer: 'core:adjunto-leer',
   coreAdjuntoEliminar: 'core:adjunto-eliminar',
@@ -245,6 +254,35 @@ export interface PayloadVentana {
 
 export type ResultadoRecurso = { ok: true; biblioteca: BibliotecaAgentes } | { ok: false; mensaje: string }
 
+/** Agente (`.claude/agents/<clave>`) o skill (`.claude/skills/<clave>/`) que trae la carpeta de un proyecto. */
+export interface RecursoCarpeta {
+  tipo: TipoRecurso
+  clave: string // nombre del archivo (agente) o de la carpeta (skill)
+  nombre: string
+  descripcion: string
+}
+
+export interface SolicitudCopia {
+  origenId: string
+  destinoId: string
+  items: { tipo: TipoRecurso; clave: string }[]
+  /** Por defecto lo que ya existe en el destino no se toca. */
+  sobrescribir?: boolean
+}
+
+export interface ResultadoCopia {
+  tipo: TipoRecurso
+  clave: string
+  estado: 'copiado' | 'existe' | 'error'
+  mensaje?: string
+}
+
+export interface CambioConexion {
+  proyectoIds: string[]
+  conectada: boolean
+  mensaje: string
+}
+
 export interface DestinoActivacion {
   tipo: 'proyecto' | 'grupo'
   id: string
@@ -336,6 +374,10 @@ export interface ApiCentro {
     uso(): Promise<ResumenUso>
     /** Consulta ya el uso del plan de suscripción (botón «actualizar»). */
     usoPlan(): Promise<ResumenUso>
+    /** Bitácora local del Asistente: consumo por mensaje y fallos de los últimos `dias` días (1–30), lo más reciente primero. */
+    bitacora(dias: number): Promise<EntradaBitacora[]>
+    /** Abre la carpeta donde se guardan esos registros. */
+    bitacoraCarpeta(): Promise<void>
     /** Cambios en el consumo en tiempo real (tras cada llamada al modelo). */
     onUso(cb: (r: ResumenUso) => void): () => void
     /** Valida y guarda un archivo (imagen, PDF o texto) para adjuntarlo a un mensaje; lanza con un motivo claro si no es admisible. */
@@ -479,6 +521,12 @@ export interface ApiCentro {
     eliminar(id: string): Promise<BibliotecaAgentes>
     /** Activa o desactiva un recurso compartido para un grupo o un proyecto. */
     activar(destino: DestinoActivacion, recursoId: string, activo: boolean): Promise<BibliotecaAgentes>
+    /** Agentes y skills que hay en `.claude/` de un proyecto. */
+    delProyecto(proyectoId: string): Promise<RecursoCarpeta[]>
+    /** Copia agentes y skills de la carpeta de un proyecto a la de otro. */
+    copiar(solicitud: SolicitudCopia): Promise<ResultadoCopia[]>
+    /** Agentes y skills compartidos que encajan con el stack del proyecto (por sus archivos de dependencias) y aún no están activos. */
+    sugerir(proyectoId: string): Promise<SugerenciaRecurso[]>
   }
   ventana: {
     /** Abre una ventana nueva con estas terminales (opcionalmente en la posición de pantalla indicada). */
@@ -498,6 +546,10 @@ export interface ApiCentro {
   }
   proyectos: {
     listar(): Promise<DatosProyectos>
+    /** Ids de los proyectos cuya carpeta (montaje de red/SSH) no responde ahora mismo. */
+    caidos(): Promise<string[]>
+    /** Una carpeta de red se cayó o volvió: la interfaz cierra las ventanas de esos proyectos y no deja abrirlos hasta que vuelva. */
+    onConexion(cb: (cambio: CambioConexion) => void): () => void
     validarRuta(ruta: string): Promise<ValidacionRuta>
     agregar(solicitud: SolicitudAgregar): Promise<ResultadoAgregar>
     /** Diálogo nativo para elegir una o varias carpetas; devuelve [] si se cancela. */

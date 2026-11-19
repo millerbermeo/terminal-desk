@@ -20,6 +20,8 @@ export class ServidorFalso {
   /** Comandos con `/` de la cuenta, tal como los guarda la API. */
   readonly comandos: Record<string, unknown>[] = []
   readonly grupos: { id: string; nombre: string }[] = []
+  /** Recursos de la biblioteca de agentes y skills, como los devuelve `/agentes`. */
+  readonly recursos: Record<string, unknown>[] = []
   /** Comandos de arranque de la cuenta, como los devuelve `/arranque` (con las mismas reglas de repetidos que la API real). */
   readonly arranque: Record<string, unknown>[] = []
   /** Peticiones recibidas (`METODO ruta`), para comprobar lo que NO se pide. */
@@ -123,7 +125,7 @@ export class ServidorFalso {
         })
         return
       }
-      if (req.url === '/agentes' && req.method === 'GET') return responder(200, { resources: [], activations: [] })
+      if (req.url === '/agentes' && req.method === 'GET') return responder(200, { resources: this.recursos, activations: [] })
       responder(404, { message: 'no implementado en el servidor falso' })
     })
     await new Promise<void>((ok) => this.http.listen(0, '127.0.0.1', ok))

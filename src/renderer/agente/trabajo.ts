@@ -1,5 +1,6 @@
 import type { EventoAgente } from '@shared/core/agente'
 import { describirHerramienta, type Categoria } from './actividad'
+import { explicarDenegacion } from './permisos-denegados'
 
 /**
  * «Ver trabajo»: arma, a partir de los eventos de un turno, el árbol de agentes (raíz → subagentes), lo que hace cada uno, su
@@ -63,7 +64,25 @@ export interface ActividadTrabajo {
   paso?: string
 }
 
+/** Una skill que el asistente (o un subagente) carga: con la herramienta `Skill` o leyendo su `SKILL.md`. */
+export interface SkillUso {
+  id: string
+  nombre: string
+  nodo: string
+  agente: string
+  inicio: number
+  /** Sin `fin`: se está cargando ahora mismo. */
+  fin?: number
+  error?: boolean
+  argumentos?: string
+  /** Cómo se detectó: llamada a la herramienta `Skill` o lectura de su archivo `SKILL.md`. */
+  via: 'skill' | 'archivo'
+  /** Primeras líneas de lo que devolvió (sus instrucciones), si ya cargó. */
+  resumen?: string
+}
+
 export interface Trabajo {
+  skills: SkillUso[]
   nodos: Record<string, NodoTrabajo>
   orden: string[]
   actividad: ActividadTrabajo[]
@@ -114,6 +133,8 @@ export function construirTrabajo(o: EntradaTrabajo): Trabajo {
   const orden: string[] = []
   const pasos = new Map<string, PasoTrabajo>()
   const actividad: ActividadTrabajo[] = []
+  const skills: SkillUso[] = []
+  const skillDe = new Map<string, SkillUso>() // id de la llamada -> skill
   const nodoDe = (e: EventoAgente): string => e.padre ?? RAIZ
 
   const crear = (id: string, datos: Omit<NodoTrabajo, 'id' | 'hijos' | 'pasos' | 'estado'> & { estado?: EstadoNodo }): NodoTrabajo => {
@@ -158,6 +179,13 @@ export function construirTrabajo(o: EntradaTrabajo): Trabajo {
         const paso: PasoTrabajo = { id: llamada.id, nodo: n.id, nombre: llamada.nombre, categoria: d.categoria, titulo: d.titulo, detalle: d.detalle, enCurso: d.enCurso, entrada: llamada.entrada, inicio: t }
         pasos.set(llamada.id, paso)
         n.pasos.push(paso)
+        const skill = skillDeLlamada(llamada.nombre, llamada.entrada)
+        // Si ya se cargó con la herramienta Skill en este agente, leer su archivo no cuenta como otra
+        if (skill && !(skill.via === 'archivo' && skills.some((s) => s.nombre === skill.nombre && s.nodo === n.id))) {
+          const uso: SkillUso = { id: llamada.id, nombre: skill.nombre, nodo: n.id, agente: n.agente, inicio: t, via: skill.via, ...(skill.argumentos ? { argumentos: skill.argumentos } : {}) }
+          skills.push(uso)
+          skillDe.set(llamada.id, uso)
+        }
         anotar({ t, nodo: n.id, agente: n.agente, tipo: 'herramienta', texto: d.detalle ? `${d.titulo} · ${d.detalle}` : d.titulo, categoria: d.categoria, paso: paso.id }, i)
         break
       }
@@ -174,9 +202,16 @@ export function construirTrabajo(o: EntradaTrabajo): Trabajo {
         if (!paso) break
         paso.fin = t
         paso.resultado = e.resultado.texto
+        const uso = skillDe.get(e.llamada.id)
+        if (uso) {
+          uso.fin = t
+          if (e.resultado.error) uso.error = true
+          else if (e.resultado.texto) uso.resumen = corto(e.resultado.texto.replace(/^---[\s\S]*?---\s*/, ''), 200)
+        }
         if (e.resultado.error) {
           paso.error = true
-          anotar({ t, nodo: paso.nodo, agente: nodos[paso.nodo]!.agente, tipo: 'herramienta', texto: `Falló: ${paso.titulo}${paso.detalle ? ` · ${paso.detalle}` : ''}`, categoria: paso.categoria, error: true, paso: paso.id }, i)
+          const sinPermiso = explicarDenegacion({ herramienta: paso.nombre, entrada: paso.entrada, texto: e.resultado.texto })
+          anotar({ t, nodo: paso.nodo, agente: nodos[paso.nodo]!.agente, tipo: 'herramienta', texto: sinPermiso ? `Sin permiso: ${sinPermiso.titulo}${sinPermiso.objetivo ? ` · ${corto(sinPermiso.objetivo, 80)}` : ''}` : `Falló: ${paso.titulo}${paso.detalle ? ` · ${paso.detalle}` : ''}`, categoria: paso.categoria, error: true, paso: paso.id }, i)
         }
         break
       }
@@ -192,7 +227,10 @@ export function construirTrabajo(o: EntradaTrabajo): Trabajo {
         anotar({ t, nodo: n.id, agente: n.agente, tipo: 'permiso', texto: e.secretos ? 'Pide permiso: contenido con posibles credenciales' : e.clase === 'pregunta' ? 'Te hace una pregunta' : `Pide permiso${e.herramienta ? ` para ${e.herramienta}` : ''}`, ...(e.destructivo || e.secretos ? { error: true } : {}) }, i)
         break
       case 'guardrail':
-        anotar({ t, nodo: n.id, agente: n.agente, tipo: 'guardrail', texto: `Guardrail · ${corto(e.motivo, 120)}`, error: true }, i)
+        {
+          const sinPermiso = explicarDenegacion({ herramienta: e.herramienta, texto: e.motivo, guardrail: true })
+          anotar({ t, nodo: n.id, agente: n.agente, tipo: 'guardrail', texto: sinPermiso ? `${sinPermiso.titulo} · ${corto(sinPermiso.porque, 100)}` : `Guardrail · ${corto(e.motivo, 120)}`, error: true }, i)
+        }
         break
       case 'contexto':
         anotar({ t, nodo: n.id, agente: n.agente, tipo: 'contexto', texto: `Contexto ${e.estrategia === 'resumen' ? 'resumido' : 'podado'}: ${Math.round(e.tokensAntes / 1000)} k → ${Math.round(e.tokensDespues / 1000)} k tokens` }, i)
@@ -219,6 +257,7 @@ export function construirTrabajo(o: EntradaTrabajo): Trabajo {
       n.categoriaActual = abierto.categoria
     }
     if (!o.enCurso) {
+      for (const s of skills) if (s.nodo === n.id) s.fin ??= ahora
       if (n.estado === 'trabajando' || n.estado === 'esperando') {
         n.estado = raiz.estado === 'completado' ? 'completado' : raiz.estado
         n.fin ??= ahora
@@ -229,7 +268,21 @@ export function construirTrabajo(o: EntradaTrabajo): Trabajo {
 
   const totalPasos = Object.values(nodos).reduce((s, n) => s + n.pasos.length, 0)
   const activos = Object.values(nodos).filter((n) => n.id !== RAIZ && (n.estado === 'trabajando' || n.estado === 'esperando')).length
-  return { nodos, orden, actividad, desde, hasta: Math.max(ahora, desde + 1), relativo: !reales, activos, totalPasos }
+  return { skills, nodos, orden, actividad, desde, hasta: Math.max(ahora, desde + 1), relativo: !reales, activos, totalPasos }
+}
+
+/** ¿Es esta llamada la carga de una skill? Con la herramienta `Skill`, o leyendo el `SKILL.md` de una skill. */
+export function skillDeLlamada(nombre: string, entrada: Record<string, unknown>): { nombre: string; via: 'skill' | 'archivo'; argumentos?: string } | null {
+  if (nombre === 'Skill') {
+    const s = cadena(entrada.skill) || cadena(entrada.command) || cadena(entrada.name)
+    const args = cadena(entrada.args) || cadena(entrada.arguments)
+    return s ? { nombre: s.replace(/^\//, ''), via: 'skill', ...(args ? { argumentos: corto(args, 160) } : {}) } : null
+  }
+  if (nombre === 'Read') {
+    const m = /(?:^|[\\/])skills[\\/]([^\\/]+)[\\/]SKILL\.md$/i.exec(cadena(entrada.file_path))
+    return m ? { nombre: m[1]!, via: 'archivo' } : null
+  }
+  return null
 }
 
 /** Duración legible («850 ms», «12 s», «3 min 05 s»). */

@@ -13,6 +13,7 @@ interface Props {
   onAbrirGrupo: (clave: string, nombre: string, p: Proyecto[]) => void
   abiertos: Set<string> // claves de grupo con pestaña abierta
   terminalesPorProyecto: Record<string, number> // terminales abiertas de cada proyecto
+  caidos: ReadonlySet<string> // proyectos cuya carpeta de red (SSH…) no responde
   onNueva: () => void
   onMulti: () => void
   /** Diálogo nativo para elegir carpetas y agregarlas como proyectos. */
@@ -116,7 +117,7 @@ interface MenuIA {
   left: number
 }
 
-export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, onNueva, onMulti, onAbrirCarpeta, onAgregarRuta, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente, onAbrirAsistente, onArranque, enMarcha, serviciosActivos, email, onCuenta, pendientes, avisosPorProyecto, onClonarPendientes }: Props) {
+export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorProyecto, caidos, onNueva, onMulti, onAbrirCarpeta, onAgregarRuta, proveedores, onAbrirConProveedor, vista, onVista, pendientesAsistente, onAbrirAsistente, onArranque, enMarcha, serviciosActivos, email, onCuenta, pendientes, avisosPorProyecto, onClonarPendientes }: Props) {
   const chatNoLeidos = useChat().noLeidos
   const [cerrados, setCerrados] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<MenuIA | null>(null)
@@ -209,6 +210,7 @@ export function Sidebar({ datos, onAbrir, onAbrirGrupo, abiertos, terminalesPorP
                   <IconoCarpeta />
                   <span className="item-nombre">{p.nombre}</span>
                   {repetidos.has(p.id) && <span className="chip chip-repetido">repetido</span>}
+                  {caidos.has(p.id) && <span className="chip chip-repetido" title="La carpeta está en un montaje de red (SSH) que no responde">sin conexión</span>}
                   {avisosPorProyecto[p.id]?.length > 0 && (
                     <span
                       className={`aviso-equipo${avisosPorProyecto[p.id]!.some((a) => trabajandoAhora(a)) ? ' vivo' : ''}`}

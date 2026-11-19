@@ -1,3 +1,4 @@
+import { exigirConexion } from './montajes'
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
@@ -413,6 +414,7 @@ export async function eliminarGrupo(id: string): Promise<DatosProyectos> {
 export async function carpetaDeProyecto(id: string): Promise<string> {
   const p = (await leerProyectos()).proyectos.find((x) => x.id === String(id))
   if (!p) throw new Error('El proyecto ya no existe.')
+  exigirConexion(p.ruta) // montaje de red caído: no se toca el disco (se quedaría colgado)
   return p.ruta
 }
 

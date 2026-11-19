@@ -49,6 +49,18 @@ export const GUIA_COPIABLE = [
 ].join('\n')
 
 /**
+ * Botones de acción al final de una respuesta (bloque ```acciones): la interfaz los pinta como botones y, al pulsar, manda el
+ * `mensaje` como si lo escribiera la persona (pasa por los mismos permisos). Texto fijo: viaja en el prompt de sistema estable.
+ */
+export const GUIA_ACCIONES = [
+  '## Botones de acción',
+  'Cuando la respuesta termine en una decisión de la persona (confirmar un commit, seguir con la siguiente fase, aplicar un cambio propuesto), cierra con un bloque ```acciones con un array JSON de 1 a 4 botones: {"etiqueta": texto corto del botón, "mensaje": lo que se enviará al pulsarlo, redactado como lo diría la persona}.',
+  '- Úsalo solo cuando haya una acción clara y siguiente; no en respuestas informativas ni para repetir lo que ya ofrece la interfaz.',
+  '- Un solo bloque, al final, con JSON válido (etiqueta ≤ 60 caracteres, mensaje ≤ 500). Incluye siempre una opción para no hacerlo si la acción no es obvia.',
+  '- Pulsar un botón equivale a escribir el mensaje: nunca ejecutes nada hasta recibirlo.'
+].join('\n')
+
+/**
  * Credenciales de prueba del proyecto (herramientas `credenciales_*` del MCP `odesk`). Texto fijo a propósito: no nombra las que hay
  * (para eso está `credenciales_listar`), así crear o borrar una no cambia el prompt de sistema.
  */

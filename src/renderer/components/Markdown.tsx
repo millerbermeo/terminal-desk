@@ -1,5 +1,5 @@
-import { Fragment, memo, useContext, useMemo, useState, type ReactNode } from 'react'
-import { avisosComando, comandosDeBloque, esBloqueShell, parsearInline, parsearMarkdown, type Bloque, type Inline } from '../agente/markdown'
+import { createContext, Fragment, memo, useContext, useMemo, useState, type ReactNode } from 'react'
+import { avisosComando, comandosDeBloque, esBloqueShell, parsearAcciones, parsearInline, parsearMarkdown, type AccionChat, type Bloque, type Inline } from '../agente/markdown'
 import { confirmar } from '../confirmar'
 import { ProyectoDelChat } from './DiffEdicion'
 import { DiagramaMermaid } from './DiagramaMermaid'
@@ -9,6 +9,46 @@ export const EVENTO_EJECUTAR_EN_TERMINAL = 'odesk:terminal-ejecutar'
 export interface DetalleEjecutarEnTerminal {
   proyectoId: string
   comando: string
+}
+
+/** Lo que el chat ofrece a los botones de acción: enviar un mensaje como si lo escribiera la persona (con los permisos de siempre). */
+export interface AccionesDelChat {
+  enviar: (mensaje: string) => void
+  /** Hay una ejecución en marcha: los botones esperan. */
+  ocupado: boolean
+}
+export const AccionesChat = createContext<AccionesDelChat | undefined>(undefined)
+
+/** Botones ya pulsados (por clave del bloque): sobreviven a repintar o recargar el chat. Solo en memoria. */
+const pulsados = new Map<string, string>()
+
+/** Bloque ```acciones: botones que mandan un mensaje al Asistente. Tras pulsar uno, el grupo queda desactivado marcando el elegido. */
+function BotonesAccion({ acciones, clave }: { acciones: AccionChat[]; clave: string }) {
+  const chat = useContext(AccionesChat)
+  const [elegida, setElegida] = useState<string | undefined>(() => pulsados.get(clave))
+  const usado = elegida !== undefined
+  return (
+    <div className="md-acciones" role="group" aria-label="Acciones sugeridas">
+      {acciones.map((a) => (
+        <button
+          key={a.etiqueta}
+          type="button"
+          className={`md-accion${elegida === a.etiqueta ? ' elegida' : ''}`}
+          disabled={!chat || usado || chat.ocupado}
+          title={a.mensaje}
+          onClick={() => {
+            if (!chat || usado) return
+            pulsados.set(clave, a.etiqueta)
+            setElegida(a.etiqueta)
+            chat.enviar(a.mensaje)
+          }}
+        >
+          {elegida === a.etiqueta ? '✓ ' : ''}
+          {a.etiqueta}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 function InlineVista({ nodos }: { nodos: Inline[] }) {
@@ -127,8 +167,11 @@ function BloqueCodigo({ lenguaje, codigo }: { lenguaje: string; codigo: string }
 
 function BloqueVista({ b }: { b: Bloque }): ReactNode {
   switch (b.t) {
-    case 'codigo':
+    case 'codigo': {
+      const acciones = b.lenguaje === 'acciones' ? parsearAcciones(b.codigo) : null
+      if (acciones) return <BotonesAccion acciones={acciones} clave={b.codigo} />
       return <BloqueCodigo lenguaje={b.lenguaje} codigo={b.codigo} />
+    }
     case 'titulo': {
       const Etiqueta = (`h${Math.min(6, b.nivel + 2)}` as 'h3')
       return <Etiqueta className={`md-titulo n${b.nivel}`}><Texto v={b.texto} /></Etiqueta>

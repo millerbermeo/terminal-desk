@@ -1,3 +1,5 @@
+import { AvisoPermiso } from './AvisoPermiso'
+import { explicarDenegacion } from '../agente/permisos-denegados'
 import { coincide } from '@shared/atajos'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EventoAgente } from '@shared/core/agente'
@@ -34,7 +36,7 @@ import { Cargando } from './Cargando'
 import { EstadoVivo, GrupoHerramientas } from './ActividadAgente'
 import { IconoTrabajo, PanelTrabajo } from './PanelTrabajo'
 import { agruparEventos } from '../agente/actividad'
-import { Markdown } from './Markdown'
+import { AccionesChat, Markdown } from './Markdown'
 import { RevisionCambios } from './RevisionCambios'
 import { Programadas } from './Programadas'
 import { ContextoFijadoBarra } from './ContextoFijado'
@@ -165,6 +167,9 @@ function Linea({ e, todos, raiz }: { e: EventoAgente; todos: EventoAgente[]; rai
         return etapas.length ? <PlanVista etapas={etapas} /> : null
       }
       const fin = todos.find((x): x is Extract<EventoAgente, { tipo: 'herramienta_fin' }> => x.tipo === 'herramienta_fin' && x.llamada.id === e.llamada.id)
+      // Sin permiso para hacerlo: en vez del error crudo, qué intentó, por qué no pudo y qué permiso necesita
+      const denegacion = fin?.resultado.error ? explicarDenegacion({ herramienta: e.llamada.nombre, entrada: e.llamada.entrada, texto: fin.resultado.texto }) : null
+      if (denegacion) return <AvisoPermiso d={denegacion} tecnico={fin!.resultado.texto} sangria={sangria} />
       return (
         <details className={`ag-herramienta${fin?.resultado.error ? ' error' : ''}`} style={sangria}>
           <summary>
@@ -184,7 +189,10 @@ function Linea({ e, todos, raiz }: { e: EventoAgente; todos: EventoAgente[]; rai
         </div>
       )
     case 'guardrail':
-      return <div className="ag-guardrail">🛡 Guardrail bloqueó «{e.herramienta}»: {e.motivo}</div>
+    {
+      const denegacion = explicarDenegacion({ herramienta: e.herramienta, texto: e.motivo, guardrail: true })
+      return denegacion ? <AvisoPermiso d={{ ...denegacion, accion: denegacion.accion === 'Hacer esto' ? `Usar ${e.herramienta}` : denegacion.accion }} tecnico={e.motivo} /> : <div className="ag-guardrail">🛡 {e.motivo}</div>
+    }
     case 'solicitud_humana':
       return <div className="ag-nota">Esperando tu confirmación: {e.clase === 'plan' ? 'plan' : e.clase === 'confirmacion' ? 'resultado' : e.clase === 'pregunta' ? 'una respuesta tuya' : e.herramienta}</div>
     case 'worktree':
@@ -917,6 +925,11 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     })
   }
 
+  /** Botones de acción de las respuestas: mandan su mensaje como uno más (sin tocar los adjuntos pendientes). Valor estable: no repinta las respuestas. */
+  const lanzarRef = useRef(lanzar)
+  lanzarRef.current = lanzar
+  const accionesChat = useMemo(() => ({ enviar: (mensaje: string): void => lanzarRef.current(mensaje, false, []), ocupado: agente.enCurso }), [agente.enCurso])
+
   /** `/comando argumentos`: comandos de la aplicación y comandos propios. */
   const comandoSlash = (linea: string): void => {
     const m = /^\/([a-z0-9_-]+)\s*([\s\S]*)$/i.exec(linea)
@@ -1325,12 +1338,14 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
           />
         )}
         <ProyectoDelChat.Provider value={proyecto?.id}>
+          <AccionesChat.Provider value={accionesChat}>
           {agente.turnos.map((t, i) => (
             <div key={t.clave} data-turno={t.clave} className={coincidencias.includes(i) ? (i === coincidencias[indiceCoincidencia] ? 'ag-coincide actual' : 'ag-coincide') : undefined}>
               <TurnoVista t={t} onCancelar={cancelarTurno} onDeshacer={deshacerTurno} onEditar={editarYReenviar} lecturaDisponible={lectura.disponible} leyendo={lectura.leyendo === t.clave} onLeer={leerTurno} esUltimo={t.clave === ultimoVigente} modelos={opcionesModelo} onRamificar={ramificarTurno} onRegenerar={regenerarTurno} onVerTrabajo={abrirTrabajo} editableHasta={t === ultimoMensaje ? editableHasta(t, true, Date.now()) : undefined} onEditarEnSitio={editarEnSitioTurno} />
             </div>
           ))}
           {turnoTrabajo && <PanelTrabajo key={turnoTrabajo.clave} turno={turnoTrabajo} onCerrar={cerrarTrabajo} />}
+          </AccionesChat.Provider>
         </ProyectoDelChat.Provider>
         {agente.herencia?.rama && (
           <div className="ag-herencia rama">

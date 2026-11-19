@@ -129,6 +129,11 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   const [pendientes, setPendientes] = useState<PendienteClonar[]>([])
   const [clonarPend, setClonarPend] = useState<{ inicial?: string } | null>(null)
   const [avisosEquipos, setAvisosEquipos] = useState<AvisoEquipo[]>([])
+  // Proyectos en carpetas de red (SSH…) que ahora no responden: sus ventanas se cierran y no se abren hasta que vuelvan.
+  const [caidos, setCaidos] = useState<ReadonlySet<string>>(new Set())
+  const caidosRef = useRef(caidos)
+  caidosRef.current = caidos
+  const [avisoConexion, setAvisoConexion] = useState<string | null>(null)
   const [modalMulti, setModalMulti] = useState(false)
   const [modalAgregar, setModalAgregar] = useState<{ rutas: string[] } | null>(null)
   const [arranqueDe, setArranqueDe] = useState<Proyecto | null>(null)
@@ -333,6 +338,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   // Con proveedor de IA (✦) sí se abre una terminal nueva, porque es una acción explícita.
   const abrirProyecto = useCallback(
     (p: Proyecto, prov?: ProveedorEstado) => {
+      if (caidosRef.current.has(p.id)) return setAvisoConexion(`«${p.nombre}» no tiene conexión (${p.ruta}). Vuelve a montar la carpeta y se podrá abrir.`)
       const { id, nombre } = claveDe(p)
       const ventana = ventanas.find((v) => v.id === id)
       if (!prov) {
@@ -349,6 +355,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   // «Asistente integrado»: una celda del proyecto que arranca en la vista del asistente (su terminal queda viva debajo).
   const abrirAsistente = useCallback(
     (p: Proyecto) => {
+      if (caidosRef.current.has(p.id)) return setAvisoConexion(`«${p.nombre}» no tiene conexión (${p.ruta}). Vuelve a montar la carpeta y se podrá abrir.`)
       const { id, nombre } = claveDe(p)
       const ventana = ventanas.find((v) => v.id === id)
       const titulo = tituloUnico(`${p.nombre} · Asistente`, ventana?.terminales ?? [])
@@ -360,7 +367,9 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   // Un grupo: sin pestaña se abre con una terminal por proyecto; con pestaña se va a ella
   // y se reabren las terminales de los proyectos que hayan quedado sin ninguna.
   const abrirGrupo = useCallback(
-    (clave: string, nombre: string, proyectos: Proyecto[]) => {
+    (clave: string, nombre: string, todos: Proyecto[]) => {
+      const proyectos = todos.filter((p) => !caidosRef.current.has(p.id))
+      if (proyectos.length < todos.length) setAvisoConexion(`Sin conexión, no se abren: ${todos.filter((p) => caidosRef.current.has(p.id)).map((p) => p.nombre).join(', ')}.`)
       const ventana = ventanas.find((v) => v.id === clave)
       if (!ventana) {
         if (proyectos.length > 0) {
@@ -459,6 +468,33 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
   // Un asistente maneja Odesk por MCP (servidor «odesk»): main ya hizo lo suyo y aquí se refleja en la interfaz.
   const ventanasRef = useRef(ventanas)
   ventanasRef.current = ventanas
+
+  // Una carpeta de red se cae: se cierran las terminales de esos proyectos (main ya mató sus ptys) y quedan bloqueados hasta que vuelva.
+  useEffect(() => {
+    void window.api.proyectos.caidos().then((ids) => setCaidos(new Set(ids))).catch(() => undefined)
+    return window.api.proyectos.onConexion(({ proyectoIds, conectada, mensaje }) => {
+      setCaidos((s) => {
+        const n = new Set(s)
+        for (const id of proyectoIds) conectada ? n.delete(id) : n.add(id)
+        return n
+      })
+      setAvisoConexion(mensaje)
+      if (conectada) return
+      const caen = new Set(proyectoIds)
+      setVentanas((vs) => {
+        const nuevas = vs
+          .map((v) => {
+            const resto = v.terminales.filter((t) => !(t.proyectoId && caen.has(t.proyectoId)))
+            if (resto.length === v.terminales.length) return v
+            return { ...v, terminales: resto, activa: resto.some((t) => t.id === v.activa) ? v.activa : (resto[resto.length - 1]?.id ?? null) }
+          })
+          // la pestaña que se queda sin nada por esta caída se cierra entera
+          .filter((v, i) => v.terminales.length > 0 || vs[i]!.terminales.length === 0)
+        setVentanaActiva((a) => (a && nuevas.some((v) => v.id === a) ? a : (nuevas[nuevas.length - 1]?.id ?? null)))
+        return nuevas
+      })
+    })
+  }, [])
   const accionIa = useRef<(a: AccionIa) => Promise<void>>(async () => undefined)
   accionIa.current = async (a) => {
     if (a.tipo === 'proyectos-cambiados') return void (await window.api.proyectos.listar().then(setDatos).catch(() => undefined))
@@ -761,6 +797,7 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
         onAbrirGrupo={abrirGrupo}
         abiertos={abiertos}
         terminalesPorProyecto={terminalesPorProyecto}
+        caidos={caidos}
         onNueva={abrirLibre}
         onMulti={() => setModalMulti(true)}
         onAbrirCarpeta={() => void abrirCarpeta()}
@@ -863,6 +900,14 @@ export function App({ email, onCuenta, onSesionPerdida }: PropsApp) {
         </Suspense>
       )}
       {/* siempre montado (oculto en las pantallas de configuración) para no matar los procesos de las terminales */}
+      {avisoConexion && (
+        <div className="aviso-conexion" role="alert">
+          <span>{avisoConexion}</span>
+          <button className="icono" onClick={() => setAvisoConexion(null)} aria-label="Cerrar aviso">
+            ✕
+          </button>
+        </div>
+      )}
       <main className="principal" style={{ display: vista !== 'terminales' ? 'none' : 'flex' }}>
         <div className="ventanas" role="tablist" ref={barraPestanas}>
           {ventanas.map((v) => (

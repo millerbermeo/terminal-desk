@@ -236,3 +236,33 @@ const PELIGROSOS: [RegExp, string][] = [
 
 /** Motivos por los que conviene mirar dos veces un comando antes de ejecutarlo (vacío = nada llamativo). */
 export const avisosComando = (comando: string): string[] => [...new Set(PELIGROSOS.filter(([re]) => re.test(comando)).map(([, motivo]) => motivo))]
+
+/** Botón de acción que el modelo propone al final de una respuesta (bloque ```acciones). */
+export interface AccionChat {
+  etiqueta: string
+  mensaje: string
+}
+
+export const MAX_ACCIONES = 4
+
+/** Lee el JSON de un bloque ```acciones; `null` si no es válido (entonces se pinta como código normal). Solo texto, con tope de tamaño. */
+export function parsearAcciones(codigo: string): AccionChat[] | null {
+  let datos: unknown
+  try {
+    datos = JSON.parse(codigo)
+  } catch {
+    return null
+  }
+  if (!Array.isArray(datos) || datos.length === 0) return null
+  const salida: AccionChat[] = []
+  for (const x of datos.slice(0, MAX_ACCIONES)) {
+    if (!x || typeof x !== 'object') return null
+    const { etiqueta, mensaje } = x as Record<string, unknown>
+    if (typeof etiqueta !== 'string' || typeof mensaje !== 'string') return null
+    const e = etiqueta.trim()
+    const m = mensaje.trim()
+    if (!e || !m || e.length > 60 || m.length > 500) return null
+    salida.push({ etiqueta: e, mensaje: m })
+  }
+  return salida
+}

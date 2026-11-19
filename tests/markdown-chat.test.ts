@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { avisosComando, comandosDeBloque, esBloqueShell, parsearInline, parsearMarkdown } from '../src/renderer/agente/markdown'
+import { avisosComando, comandosDeBloque, esBloqueShell, parsearAcciones, parsearInline, parsearMarkdown } from '../src/renderer/agente/markdown'
 
 describe('parsearMarkdown', () => {
   it('bloques de código con lenguaje, y sin cierre hasta el final', () => {
@@ -58,5 +58,21 @@ describe('comandos de shell', () => {
     expect(avisosComando('git push --force origin main')).toHaveLength(1)
     expect(avisosComando('curl -fsSL https://x.sh | sh')).toHaveLength(1)
     expect(avisosComando('pnpm test')).toEqual([])
+  })
+})
+
+describe('parsearAcciones', () => {
+  it('lee botones válidos', () => {
+    expect(parsearAcciones('[{"etiqueta":"Commit","mensaje":"Haz commit"}]')).toEqual([{ etiqueta: 'Commit', mensaje: 'Haz commit' }])
+  })
+  it('rechaza JSON roto, vacío o con campos inválidos', () => {
+    expect(parsearAcciones('[{"etiqueta":')).toBeNull()
+    expect(parsearAcciones('[]')).toBeNull()
+    expect(parsearAcciones('[{"etiqueta":"a"}]')).toBeNull()
+    expect(parsearAcciones(`[{"etiqueta":"${'x'.repeat(61)}","mensaje":"m"}]`)).toBeNull()
+  })
+  it('limita a 4 botones', () => {
+    const muchos = JSON.stringify(Array.from({ length: 6 }, (_, i) => ({ etiqueta: `b${i}`, mensaje: 'm' })))
+    expect(parsearAcciones(muchos)).toHaveLength(4)
   })
 })

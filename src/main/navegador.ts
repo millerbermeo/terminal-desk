@@ -36,6 +36,10 @@ export interface Entrada {
   accionIA?: string
   consola: MensajeConsola[]
   red: PeticionRed[]
+  /** DevTools acoplados a la derecha de la página (solo mientras están abiertos). */
+  herramientas?: WebContentsView
+  /** Recoloca la página y las herramientas según el tamaño de la ventana. */
+  ajustar?: () => void
 }
 
 export interface OpcionesAbrir {
@@ -144,8 +148,14 @@ export class GestorNavegador {
 
     const ajustar = (): void => {
       const { width, height } = win.getContentBounds()
-      vista.setBounds({ x: 0, y: ALTO_BARRA_NAVEGADOR, width, height: Math.max(0, height - ALTO_BARRA_NAVEGADOR) })
+      const alto = Math.max(0, height - ALTO_BARRA_NAVEGADOR)
+      const dt = entradaMapa.herramientas
+      // Con las herramientas abiertas ocupan el 40 % del ancho (mínimo 360 px) y la página el resto
+      const anchoDt = dt ? Math.min(Math.max(Math.round(width * 0.4), 360), Math.max(0, width - 200)) : 0
+      vista.setBounds({ x: 0, y: ALTO_BARRA_NAVEGADOR, width: width - anchoDt, height: alto })
+      dt?.setBounds({ x: width - anchoDt, y: ALTO_BARRA_NAVEGADOR, width: anchoDt, height: alto })
     }
+    entradaMapa.ajustar = ajustar
     ajustar()
     win.on('resize', ajustar)
     win.on('maximize', ajustar)
@@ -186,6 +196,14 @@ export class GestorNavegador {
     wc.on('console-message', (d) => {
       if (d.message.startsWith('%cElectron Security Warning')) return // aviso de Electron en desarrollo, no de la página
       anadir(entradaMapa.consola, { nivel: d.level, texto: d.message, ...(d.sourceId ? { origen: `${d.sourceId}:${d.lineNumber}` } : {}), cuando: Date.now() })
+    })
+    // F12 y Ctrl+Mayús+I con el foco en la página (la barra solo oye el teclado cuando el foco está en ella)
+    wc.on('before-input-event', (ev, input) => {
+      if (input.type !== 'keyDown') return
+      if (input.key === 'F12' || (input.key.toLowerCase() === 'i' && input.control && input.shift)) {
+        ev.preventDefault()
+        this.alternarHerramientas(entradaMapa)
+      }
     })
     wc.on('render-process-gone', (_e, d) => {
       entradaMapa.error = `la página se cerró (${d.reason})`
@@ -291,8 +309,7 @@ export class GestorNavegador {
         wc.stop()
         return
       case 'devtools':
-        if (wc.isDevToolsOpened()) wc.closeDevTools()
-        else wc.openDevTools({ mode: 'detach' })
+        this.alternarHerramientas(e)
         return
       case 'externo': {
         const url = wc.getURL()
@@ -305,6 +322,28 @@ export class GestorNavegador {
       default:
         throw new Error('Acción de navegador desconocida.')
     }
+  }
+
+  /** Abre o cierra las herramientas de desarrollo acopladas a la derecha de la página (como en un navegador normal). */
+  private alternarHerramientas(e: Entrada): void {
+    const wc = e.vista.webContents
+    if (wc.isDestroyed() || e.win.isDestroyed()) return
+    if (e.herramientas) {
+      wc.closeDevTools() // dispara 'devtools-closed', que lo desmonta
+      return
+    }
+    const dt = new WebContentsView()
+    e.herramientas = dt
+    e.win.contentView.addChildView(dt)
+    wc.once('devtools-closed', () => {
+      delete e.herramientas
+      if (!e.win.isDestroyed()) e.win.contentView.removeChildView(dt)
+      if (!dt.webContents.isDestroyed()) dt.webContents.close()
+      e.ajustar?.()
+    })
+    wc.setDevToolsWebContents(dt.webContents)
+    wc.openDevTools()
+    e.ajustar?.()
   }
 
   cerrarTodas(): void {

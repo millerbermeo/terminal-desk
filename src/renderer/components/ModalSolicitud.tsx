@@ -179,7 +179,7 @@ function PanelConfirmacion({ solicitud: s, pendientes, onResponder }: Props) {
   return (
     <div className="ag-solicitud-fondo">
       <div
-        className={`ag-solicitud${s.destructivo || s.secretos ? ' destructiva' : ''}`}
+        className={`ag-solicitud${s.destructivo || s.secretos ? ' destructiva' : ''}${s.clase === 'pregunta' ? ' sin-scroll' : ''}`}
         role="alertdialog"
         aria-label={s.secretos ? 'Posibles credenciales' : TITULOS[s.clase]}
         onKeyDown={(e) => {

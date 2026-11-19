@@ -41,7 +41,7 @@ export function BuscadorArchivos({ consulta, resultados, error, sel, marcas, onS
         const ins = insigniaDe(nombre)
         const marca = marcas[c.ruta]
         return (
-          <li key={c.ruta} role="option" aria-selected={i === sel} className={`ed-fila ed-res${i === sel ? ' sel' : ''}`} title={c.ruta} onMouseEnter={() => onSel(i)} onClick={() => onAbrir(c.ruta)}>
+          <li key={c.ruta} role="option" aria-selected={i === sel} className={`ed-fila ed-res${i === sel ? ' sel' : ''}${marca === 'C' ? ' conflicto' : ''}`} title={c.ruta} onMouseEnter={() => onSel(i)} onClick={() => onAbrir(c.ruta)}>
             <span className="ed-ico ed-ins" style={{ color: ins.color }}>{ins.txt}</span>
             <span className="ed-nombre">
               <Resaltado texto={nombre} desde={inicio} posiciones={pos} />
@@ -52,7 +52,7 @@ export function BuscadorArchivos({ consulta, resultados, error, sel, marcas, onS
                 </small>
               )}
             </span>
-            {marca && <span className="ed-marca">{marca}</span>}
+            {marca && <span className="ed-marca" title={marca === 'C' ? 'Conflicto' : undefined}>{marca === 'C' ? '!' : marca}</span>}
           </li>
         )
       })}

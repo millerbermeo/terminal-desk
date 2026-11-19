@@ -18,7 +18,7 @@ const letra = (a: ArchivoCambio, lado: Lado): string => (a.conflicto ? '!' : a.s
 function Fila({ a, lado, seleccionado, ocupado, onSel, onPreparar, onDespreparar, onDescartar }: { a: ArchivoCambio; lado: Lado; seleccionado: boolean; ocupado: boolean; onSel: () => void; onPreparar?: () => void; onDespreparar?: () => void; onDescartar?: () => void }) {
   const l = letra(a, lado)
   return (
-    <li className={`vc-fila${seleccionado ? ' sel' : ''}`}>
+    <li className={`vc-fila${seleccionado ? ' sel' : ''}${a.conflicto ? ' conflicto' : ''}`}>
       <button className="vc-fila-btn" onClick={onSel} title={a.anterior ? `${a.anterior} → ${a.ruta}` : a.ruta}>
         <span className={`vc-estado vc-e-${l === '!' ? 'conf' : l}`} title={NOMBRE_ESTADO[l] ?? l}>
           {l}

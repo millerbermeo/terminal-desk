@@ -1,8 +1,10 @@
+import { BitacoraAsistente } from './uso/bitacora'
+import { clasificarFallo } from '@shared/bitacora-asistente'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { basename, isAbsolute, join, relative } from 'node:path'
-import { BrowserWindow, Notification, ipcMain } from 'electron'
+import { BrowserWindow, Notification, ipcMain, shell } from 'electron'
 import type { InfoSuite, ResultadoEvals } from '@shared/core/evals'
 import type { TurnoGuardado } from '@shared/core/sesion'
 import { LIMITES_ADJUNTOS } from '@shared/core/adjuntos'
@@ -78,7 +80,7 @@ import { ejecutarOperacionTareas } from './tareas/operaciones'
 import { archivoMcpTareas, servidoresExternos } from './tareas/mcp-config'
 import { cerrarSesion, consultarCli, ejecutarSuscripcion, ESFUERZOS, estadoCuenta, estadoSesion, iniciarSesion, listarModelosCli, Preferencias, rebobinarArchivos, SesionesCli, type ControlProceso, type ResultadoRebobinado, type SalidaEjecucion } from './suscripcion'
 import { ejecutarEnProceso, ProcesosCli } from './proceso-cli'
-import { AVISO_SUBAGENTES, GUIA_COPIABLE, GUIA_CREDENCIALES, GUIA_RESPUESTAS, GUIA_TRABAJO, guiaNavegador, guiaRecursos } from './avisos'
+import { AVISO_SUBAGENTES, GUIA_ACCIONES, GUIA_COPIABLE, GUIA_CREDENCIALES, GUIA_RESPUESTAS, GUIA_TRABAJO, guiaNavegador, guiaRecursos } from './avisos'
 import { registrarIntegradas } from './tools/integradas'
 import { RegistroHerramientas } from './tools/registro'
 
@@ -164,6 +166,10 @@ export class Nucleo {
   readonly comandos = new ComandosStore(join(DIR, 'comandos'))
   readonly adjuntos = new AlmacenAdjuntos(join(DIR, 'adjuntos'))
   readonly medidor = new Medidor(join(DIR, 'uso'))
+  /** Registro local por mensaje del Asistente: consumo de tokens y por qué falló lo que falló (`consumo/`). */
+  readonly bitacoraUso = new BitacoraAsistente(join(DIR, 'consumo'), homedir())
+  /** Aviso de un fallo del Asistente (el proceso principal lo suma al registro técnico). */
+  alFallo?: (f: { conversacion: string; error: string; causa: string }) => void
   readonly preferencias = new Preferencias(join(DIR, 'preferencias.json'))
   private readonly sesionesCli = new SesionesCli(join(DIR, 'sesiones-cli.json'))
   /** Contexto, imágenes y acumulado del CLI por conversación: decide cuándo abrir una sesión nueva y permite medir solo lo de cada ejecución. */
@@ -448,7 +454,7 @@ export class Nucleo {
     // Texto fijo (sin nombres ni cuántas hay): si cambiara al guardar una credencial, se relanzaría el proceso y se perdería la caché.
     const credsCtx = proyecto ? GUIA_CREDENCIALES : ''
     return {
-      estable: [GUIA_TRABAJO, GUIA_RESPUESTAS, GUIA_COPIABLE, git.guia, credsCtx, AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim(),
+      estable: [GUIA_TRABAJO, GUIA_RESPUESTAS, GUIA_COPIABLE, GUIA_ACCIONES, git.guia, credsCtx, AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim(),
       dinamico: [memoria, tareas, git.estado, conAdjuntos ? AVISO_ADJUNTOS : ''].filter(Boolean).join('\n\n').trim()
     }
   }
@@ -459,7 +465,7 @@ export class Nucleo {
     const tareas = proyecto ? await this.tareas.contextoParaIA(proyecto.id, proyecto.nombre, prompt).catch(() => '') : ''
     const gitCtx = proyecto ? (({ estado, guia }) => [estado, guia].filter(Boolean).join('\n'))(await this.contextoGit(proyecto.ruta)) : ''
     const credsCtx = proyecto ? GUIA_CREDENCIALES : ''
-    return [GUIA_RESPUESTAS, GUIA_COPIABLE, memoria, tareas, gitCtx, credsCtx, conAdjuntos ? AVISO_ADJUNTOS : '', AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim()
+    return [GUIA_RESPUESTAS, GUIA_COPIABLE, GUIA_ACCIONES, memoria, tareas, gitCtx, credsCtx, conAdjuntos ? AVISO_ADJUNTOS : '', AVISO_SUBAGENTES].filter(Boolean).join('\n\n').trim()
   }
 
   private planEnCurso: Promise<void> | undefined
@@ -604,6 +610,7 @@ export class Nucleo {
     // marcha espera a que termine. Antes, si traía otra configuración (autonomía, modelo…), se cerraba el proceso del CLI con la tarea
     // a medias; y con un proceso por turno, dos CLI reanudaban a la vez la misma conversación.
     const anterior = this.turnosSesion.get(sesionId)
+    const inicioTurno = Date.now()
     const ejecucion = (async () => {
       let estado: 'completado' | 'cancelado' | 'error' | 'limite_pasos' = 'completado'
       try {
@@ -636,6 +643,9 @@ export class Nucleo {
         })
         const probadas = new Set<string>()
         let costoPendiente = 0 // USD que informó el CLI en este turno (se suma a la conversación al terminar)
+        // Lo que gastó cada ejecución del CLI de este turno, para la bitácora (por modelo: el principal y los subagentes)
+        let usoLlamada: { modelo: string; entrada: number; salida: number; cache: number }[] = []
+        let inicioLlamada = Date.now()
         let cuenta = await this.cuentaParaEjecutar()
         let previa = await this.sesionesCli.obtener(sesionId)
         let meta = await this.metaCli.obtener(sesionId)
@@ -713,10 +723,14 @@ export class Nucleo {
           else delete viva.carpetaCuenta
           // En el proceso persistente el tope de gasto del CLI no tiene un alcance claro (¿proceso o mensaje?): allí corta el tope de pasos.
           const presupuesto = this.persistente ? 0 : presupuestoTurnoUsd()
+          usoLlamada = []
+          inicioLlamada = Date.now()
+          const rotadaAntes = motivoRotacion
           const esfuerzo = ESFUERZOS.find((x) => x === sol.esfuerzo)
           const r = await this.correrCli(sesionId, {
             alUso: (u) => {
               u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo }))
+              u.forEach((x) => usoLlamada.push({ modelo: x.modelo, entrada: x.uso.tokensEntrada, salida: x.uso.tokensSalida, cache: x.cache }))
               const costo = u.reduce((t, x) => t + x.costo, 0)
               costoPendiente += costo
               if (costo >= AVISO_COSTO_TURNO) emitir({ tipo: 'aviso_consumo', motivo: 'costo', costo })
@@ -775,6 +789,44 @@ export class Nucleo {
             if (eraNueva && r.resultado.estado === 'completado') void this.titular(sesionId, sol.prompt, r.resultado.texto, this.cuentas.carpetaDe(cuenta))
           }
           this.trazador.anotarUso(id, r.resultado.uso)
+          // Bitácora: una línea por ejecución del CLI con lo que de verdad se envió y se recibió (y por qué falló, si falló)
+          {
+            const principal = [...usoLlamada].sort((a, b) => b.entrada - a.entrada)[0]
+            const suma = (f: (x: (typeof usoLlamada)[number]) => number): number => usoLlamada.reduce((t, x) => t + f(x), 0)
+            const duracionMs = Date.now() - inicioLlamada
+            this.bitacoraUso.anotar({
+              tipo: 'turno',
+              ts: Date.now(),
+              conversacion: sesionId,
+              ...(proyecto ? { proyecto: proyecto.nombre } : {}),
+              mensaje: sol.prompt.replace(/\s+/g, ' ').trim(),
+              mensajeChars: sol.prompt.length,
+              respuestaChars: r.resultado.texto.length,
+              modelo: principal?.modelo ?? sol.modelo ?? 'auto',
+              cuenta,
+              autonomia,
+              estado: r.resultado.estado,
+              entrada: usoLlamada.length ? suma((x) => x.entrada) : r.resultado.uso.tokensEntrada,
+              salida: usoLlamada.length ? suma((x) => x.salida) : r.resultado.uso.tokensSalida,
+              cacheLeida: suma((x) => x.cache),
+              costo: usoLlamada.length ? costoPendiente : 0,
+              contexto: r.contexto,
+              ...(r.ventana ? { ventana: r.ventana } : {}),
+              pasos: r.resultado.pasos,
+              herramientas: r.herramientas,
+              duracionMs,
+              reanudada: Boolean(previa),
+              ...(rotadaAntes ? { rotacion: rotadaAntes } : {}),
+              ...(r.compactado ? { compactado: true } : {}),
+              ...(r.limite ? { limite: true } : {}),
+              ...(r.imagenes ? { imagenes: r.imagenes } : {})
+            })
+            if (r.resultado.estado === 'error' && !r.limite) {
+              const error = r.resultado.error ?? 'Error sin detalle'
+              this.bitacoraUso.anotar({ tipo: 'fallo', ts: Date.now(), conversacion: sesionId, ...(proyecto ? { proyecto: proyecto.nombre } : {}), mensaje: sol.prompt.replace(/\s+/g, ' ').trim(), error, causa: clasificarFallo(error), modelo: principal?.modelo ?? sol.modelo ?? 'auto', duracionMs })
+              this.alFallo?.({ conversacion: sesionId, error, causa: clasificarFallo(error) })
+            }
+          }
           void this.sesiones.anotarUso(sesionId, r.resultado.uso, costoPendiente).catch(() => undefined)
           costoPendiente = 0
           if (r.limite) {
@@ -815,6 +867,10 @@ export class Nucleo {
       } catch (err) {
         estado = ctl.signal.aborted ? 'cancelado' : 'error'
         const mensaje = ctl.signal.aborted ? 'Cancelado' : (err as Error).message
+        if (!ctl.signal.aborted) {
+          this.bitacoraUso.anotar({ tipo: 'fallo', ts: Date.now(), conversacion: sesionId, ...(proyecto ? { proyecto: proyecto.nombre } : {}), mensaje: sol.prompt.replace(/\s+/g, ' ').trim(), error: `${mensaje}${(err as Error).stack ? `\n${(err as Error).stack}` : ''}`, causa: clasificarFallo(mensaje), ...(sol.modelo ? { modelo: sol.modelo } : {}), duracionMs: Date.now() - inicioTurno })
+          this.alFallo?.({ conversacion: sesionId, error: mensaje, causa: clasificarFallo(mensaje) })
+        }
         emitir({ tipo: 'fin', resultado: { estado: estado === 'cancelado' ? 'cancelado' : 'error', texto: '', mensajes: [], uso: { tokensEntrada: 0, tokensSalida: 0 }, pasos: 0, error: mensaje } })
       } finally {
         if (carpeta) await rm(carpeta, { recursive: true, force: true }).catch(() => undefined)
@@ -1481,6 +1537,8 @@ export function registrarIpcCore(nucleo: Nucleo): void {
   ipcMain.handle(Canales.coreCuentaActivar, (_e, id: string) => nucleo.cuentaActivar(String(id)))
   ipcMain.handle(Canales.coreCuentaAuto, (_e, activo: boolean) => nucleo.cuentaCambioAutomatico(activo))
   ipcMain.handle(Canales.coreUsoObtener, () => nucleo.medidor.resumen())
+  ipcMain.handle(Canales.coreBitacora, (_e, dias: number) => nucleo.bitacoraUso.leer(Number.isFinite(dias) ? Math.floor(dias) : 7))
+  ipcMain.handle(Canales.coreBitacoraCarpeta, () => shell.openPath(join(DIR, 'consumo')).then(() => undefined))
   ipcMain.handle(Canales.coreUsoPlan, () => nucleo.actualizarPlan().then(() => nucleo.medidor.resumen()))
   // Uso del plan de suscripción en tiempo real: cada minuto mientras alguna ventana está a la vista (también cuenta lo que se gasta fuera de la app).
   void nucleo.actualizarPlan()

@@ -212,3 +212,10 @@
 .ag-editar-acciones button { padding: 4px 10px; font-size: 12px; border-radius: 6px; border: 1px solid var(--borde); background: none; color: var(--texto); cursor: pointer; }
 .ag-editar-acciones button.primario { background: var(--acento, #6366f1); border-color: transparent; color: #fff; }
 .ag-editar-acciones button:disabled { opacity: 0.5; cursor: default; }
+
+/* botones de acción sugeridos por el modelo (bloque ```acciones) */
+.md-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
+.md-accion { padding: 6px 14px; border-radius: var(--radio); border: 1px solid var(--acento-borde); background: transparent; color: var(--acento); font-size: 12px; font-weight: 600; cursor: pointer; transition: background var(--rapido) ease; }
+.md-accion:hover:not(:disabled) { background: var(--acento-fondo, rgba(255, 255, 255, 0.06)); }
+.md-accion:disabled { opacity: 0.5; cursor: default; }
+.md-accion.elegida { opacity: 1; border-color: var(--acento); }

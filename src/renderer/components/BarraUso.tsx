@@ -1,3 +1,4 @@
+import { RegistroAsistente } from './RegistroAsistente'
 import { useEffect, useRef, useState } from 'react'
 import type { ContextoUso, InfoModelo, LimiteApi, ResumenUso, UsoModelo, UsoPlan, VentanaPlan } from '@shared/core/uso'
 import type { ContextoActual } from '../agente/useAgente'
@@ -135,6 +136,7 @@ function Detalle({ uso, tokensSesion }: { uso: ResumenUso; tokensSesion: number 
 export function BarraUso({ detalle, contexto, modelo, modelos, tokensSesion }: Props) {
   const uso = useUso()
   const [abierto, setAbierto] = useState(false)
+  const [registro, setRegistro] = useState(false)
   const barra = useRef<HTMLDivElement>(null)
   // Abierto, se cierra con un clic fuera de la barra (los chips están dentro: siguen alternando) o con Esc.
   useEffect(() => {
@@ -209,7 +211,11 @@ export function BarraUso({ detalle, contexto, modelo, modelos, tokensSesion }: P
       <button className="ag-uso-chip" aria-expanded={abierto} onClick={() => setAbierto((a) => !a)} title="Consumo de tokens en tiempo real y límites de la API">
         <span className="largo">Sesión </span>{fmt(tokensSesion)}<span className="largo"> · Hoy </span><span className="corto"> / </span>{fmt(uso ? total(uso.total) : 0)} tokens
       </button>
+      <button className="ag-uso-chip" onClick={() => setRegistro(true)} title="Registro del Asistente: consumo de cada mensaje, diagnóstico y errores">
+        Registro
+      </button>
       {abierto && uso && <Detalle uso={uso} tokensSesion={tokensSesion} />}
+      {registro && <RegistroAsistente onCerrar={() => setRegistro(false)} />}
     </div>
   )
 }

@@ -1,9 +1,11 @@
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent as EventoTeclado } from 'react'
 import { createPortal } from 'react-dom'
 import type { Turno } from '../agente/useAgente'
-import { RAIZ, construirTrabajo, duracion, enOrdenDeArbol, type ActividadTrabajo, type EstadoNodo, type NodoTrabajo, type PasoTrabajo, type Trabajo } from '../agente/trabajo'
+import { RAIZ, construirTrabajo, duracion, enOrdenDeArbol, type ActividadTrabajo, type EstadoNodo, type NodoTrabajo, type PasoTrabajo, type SkillUso, type Trabajo } from '../agente/trabajo'
 import { IconoCategoria } from './ActividadAgente'
 import { DiffEdicion } from './DiffEdicion'
+import { AvisoPermiso } from './AvisoPermiso'
+import { explicarDenegacion } from '../agente/permisos-denegados'
 import { IconoCerrar } from './Iconos'
 
 /**
@@ -11,9 +13,10 @@ import { IconoCerrar } from './Iconos'
  * Tres vistas sobre el mismo modelo puro (`agente/trabajo.ts`): árbol de agentes, línea de tiempo y registro de actividad.
  */
 
-type Vista = 'arbol' | 'tiempo' | 'actividad'
+type Vista = 'arbol' | 'skills' | 'tiempo' | 'actividad'
 const VISTAS: { id: Vista; texto: string }[] = [
   { id: 'arbol', texto: 'Árbol' },
+  { id: 'skills', texto: 'Skills' },
   { id: 'tiempo', texto: 'Línea de tiempo' },
   { id: 'actividad', texto: 'Actividad' }
 ]
@@ -145,6 +148,13 @@ export function PanelTrabajo({ turno, onCerrar }: { turno: Turno; onCerrar: () =
           </dd>
         </div>
         <div>
+          <dt>Skills</dt>
+          <dd>
+            {tr.skills.length}
+            {tr.skills.some((s) => s.fin === undefined) && <span className="trb-activos"> · cargando</span>}
+          </dd>
+        </div>
+        <div>
           <dt>Pasos</dt>
           <dd>{tr.totalPasos}</dd>
         </div>
@@ -170,12 +180,14 @@ export function PanelTrabajo({ turno, onCerrar }: { turno: Turno; onCerrar: () =
           >
             {v.texto}
             {v.id === 'actividad' && tr.actividad.length > 0 && <span className="trb-contador">{tr.actividad.length}</span>}
+            {v.id === 'skills' && tr.skills.length > 0 && <span className={`trb-contador${tr.skills.some((s) => s.fin === undefined) ? ' viva' : ''}`}>{tr.skills.length}</span>}
           </button>
         ))}
       </div>
 
       <div className="trb-cuerpo" role="tabpanel" id={`trb-vista-${vista}`} aria-labelledby={`trb-tab-${vista}`}>
         {vista === 'arbol' && <VistaArbol tr={tr} />}
+        {vista === 'skills' && <VistaSkills tr={tr} vivo={enCurso} />}
         {vista === 'tiempo' && <VistaTiempo tr={tr} />}
         {vista === 'actividad' && <VistaActividad tr={tr} vivo={enCurso} />}
       </div>
@@ -247,6 +259,15 @@ const TarjetaAgente = memo(function TarjetaAgente({ n, tr }: { n: NodoTrabajo; t
       ) : n.ultimoTexto && n.id !== RAIZ ? (
         <p className="trb-ultimo" title={n.ultimoTexto}>{n.ultimoTexto.replace(/\s+/g, ' ').slice(0, 160)}</p>
       ) : null}
+      {tr.skills.some((s) => s.nodo === n.id) && (
+        <div className="trb-skills-fila" aria-label="Skills que usa">
+          {tr.skills.filter((s) => s.nodo === n.id).map((s) => (
+            <span key={s.id} className={`trb-skill-chip${s.fin === undefined ? ' cargando' : ''}${s.error ? ' fallo' : ''}`} title={s.resumen ?? s.nombre}>
+              <IconoSkill /> {s.nombre}
+            </span>
+          ))}
+        </div>
+      )}
       {n.pasos.length > 0 && (
         <div className="trb-huellas" aria-hidden="true">
           {n.pasos.slice(-24).map((p) => (
@@ -306,6 +327,59 @@ export function VistaTiempo({ tr }: { tr: Trabajo }) {
     </div>
   )
 }
+
+// ---------------------------------------------------------------- skills
+
+export function VistaSkills({ tr, vivo }: { tr: Trabajo; vivo: boolean }) {
+  // Más recientes arriba; la que se está cargando ahora, la primera
+  const lista = useMemo(() => [...tr.skills].sort((a, b) => Number(b.fin === undefined) - Number(a.fin === undefined) || b.inicio - a.inicio), [tr.skills])
+  if (lista.length === 0) {
+    return <p className="trb-vacio">{vivo ? 'Todavía no ha usado ninguna skill. Aparecerán aquí en cuanto cargue una.' : 'No se usó ninguna skill en este turno.'}</p>
+  }
+  const nombres = new Set(lista.map((s) => s.nombre))
+  return (
+    <div className="trb-skills">
+      <p className="trb-skills-res">
+        {nombres.size} {nombres.size === 1 ? 'skill distinta' : 'skills distintas'} · {lista.length} {lista.length === 1 ? 'carga' : 'cargas'}
+      </p>
+      <ol className="trb-skills-lista" aria-live={vivo ? 'polite' : 'off'}>
+        {lista.map((s) => (
+          <TarjetaSkill key={s.id} s={s} tr={tr} />
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+function TarjetaSkill({ s, tr }: { s: SkillUso; tr: Trabajo }) {
+  const cargando = s.fin === undefined
+  return (
+    <li className={`trb-skill${cargando ? ' cargando' : ''}${s.error ? ' fallo' : ''}`}>
+      <span className="trb-skill-ico" aria-hidden="true">{s.error ? '!' : cargando ? <span className="trb-punto" /> : <IconoSkill />}</span>
+      <div className="trb-skill-cuerpo">
+        <div className="trb-skill-cab">
+          <strong className="mono">{s.nombre}</strong>
+          <span className={`trb-chip ${s.error ? 'estado-error' : cargando ? 'estado-trabajando' : 'estado-completado'}`}>{s.error ? 'No cargó' : cargando ? 'Cargando' : 'En uso'}</span>
+          <span className={`trb-agente tono-${tonoDe(s.agente)}`}>{s.agente || 'asistente'}</span>
+        </div>
+        {s.argumentos && <p className="trb-skill-args" title={s.argumentos}>Con: {s.argumentos}</p>}
+        {s.resumen && <p className="trb-skill-resumen" title={s.resumen}>{s.resumen}</p>}
+        <span className="trb-skill-meta">
+          {marca(tr, s.inicio)}
+          {s.fin !== undefined && !tr.relativo ? ` · ${duracion(s.fin - s.inicio)}` : ''}
+          {s.via === 'archivo' ? ' · leyendo su SKILL.md' : ''}
+        </span>
+      </div>
+    </li>
+  )
+}
+
+const IconoSkill = () => (
+  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" />
+    <path d="M19 16l.7 1.8L21.5 18.5l-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z" />
+  </svg>
+)
 
 // ---------------------------------------------------------------- actividad
 
@@ -378,8 +452,10 @@ export function VistaActividad({ tr, vivo }: { tr: Trabajo; vivo: boolean }) {
 
 function DetallePaso({ p, tr }: { p: PasoTrabajo; tr: Trabajo }) {
   const entrada = JSON.stringify(p.entrada, null, 2)
+  const sinPermiso = p.error && p.resultado ? explicarDenegacion({ herramienta: p.nombre, entrada: p.entrada, texto: p.resultado }) : null
   return (
     <div className="trb-detalle">
+      {sinPermiso && <AvisoPermiso d={sinPermiso} />}
       <div className="trb-detalle-meta">
         <code>{p.nombre}</code>
         {!tr.relativo && <span>{p.fin === undefined ? 'en curso' : duracion(p.fin - p.inicio)}</span>}
