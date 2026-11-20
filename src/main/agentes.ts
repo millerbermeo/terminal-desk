@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { basename, join } from 'node:path'
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import type { BibliotecaAgentes, Recurso } from '@shared/modelos'
 import type { DestinoActivacion, ResultadoRecurso } from '@shared/ipc'
 import { activosDe, slug } from '@shared/agentes'
@@ -9,6 +9,7 @@ import { AJUSTES_CONSUMO, COMANDOS_BLOQUEADOS } from './core/suscripcion'
 import { pluginGuardia } from './guardia'
 import { cavemanEnAjustes, pluginCavemanLigero } from './caveman'
 import { configMcpTareas } from './core/tareas/mcp-config'
+import { planClaudeMd } from './core/claude-md'
 import { ErrorServidor, ErrorSesion, esFalloDeConexion, servidor } from './servidor/cliente'
 import type { RecursoGuia } from './core/avisos'
 
@@ -383,7 +384,7 @@ export async function comandoConAgentes(comando: string, proyectoId?: string): P
   // Si los ajustes de la cuenta ya activan Caveman (ganchos de `~/.claude/settings.json`), no se añade: sus ganchos se ejecutarían dos veces.
   const caveman = (await cavemanEnAjustes()) ? undefined : await pluginCavemanLigero()
   // Menos tokens por llamada, como en el Asistente: la guardia reduce y limita las imágenes que lee la IA, y el entorno hace que el CLI
-  // compacte el contexto a los ~140 k (en modelos de 1 M no lo haría hasta el 95 %) y recorte las salidas gigantes. En Windows el
+  // compacte el contexto a los ~100 k (en modelos de 1 M no lo haría hasta el 95 %) y recorte las salidas gigantes. En Windows el
   // shell puede ser cmd o PowerShell y no hay una sintaxis común para variables: solo se añade el plugin.
   const guardia = await pluginGuardia()
   const entorno = process.platform === 'win32' ? '' : Object.entries(AJUSTES_CONSUMO).filter(([k]) => process.env[k] === undefined).map(([k, v]) => `${k}=${v} `).join('')
@@ -392,15 +393,46 @@ export async function comandoConAgentes(comando: string, proyectoId?: string): P
   try {
     const dir = (await construirPlugin(proyectoId))?.dir
     const hermanas = await carpetasHermanas(proyectoId)
+    const ruta = (await leerProyectos()).proyectos.find((p) => p.id === proyectoId)?.ruta
+    const md = ruta ? await argsClaudeMd(ruta).catch(() => '') : ''
     // En un grupo la terminal trabaja con libertad: edita y ejecuta sin pedir permiso en el proyecto y en los de su grupo.
     const conGrupo = hermanas.length
       ? `${process.platform === 'win32' ? '' : 'ODESK_GUARDIA_AUTONOMA=1 '}${comando} --add-dir ${hermanas.map((h) => citar(h.ruta)).join(' ')} --permission-mode acceptEdits --allowedTools ${['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'].join(' ')} --disallowedTools ${COMANDOS_BLOQUEADOS.map((c) => citar(c)).join(' ')}`
       : comando
-    return conCaveman(dir ? `${conGrupo} --plugin-dir ${citar(dir)}` : conGrupo)
+    return conCaveman(`${dir ? `${conGrupo} --plugin-dir ${citar(dir)}` : conGrupo}${md}`)
   } catch (err) {
     console.error('No se pudieron preparar los agentes:', err)
     return conCaveman(comando) // mejor abrir Claude sin agentes que no abrirlo
   }
+}
+
+/**
+ * CLAUDE.md grandes en las terminales ✦: lo mismo que en el Asistente (`core/claude-md.ts`). La exclusión y la guía (varios KB)
+ * van en archivos (`--settings <archivo>`, `--append-system-prompt-file`) para no escribir textos largos en el shell, y así la
+ * cita es la misma en todos los sistemas. Carpeta inmutable por contenido en `sesiones/`: si el CLAUDE.md cambia, sale otra.
+ * Probado con el CLI real sin `--setting-sources` (como arrancan las terminales): el archivo excluido no llega al modelo.
+ */
+export async function argsClaudeMd(ruta: string): Promise<string> {
+  const plan = await planClaudeMd(ruta)
+  if (!plan.excluir.length) return ''
+  const ajustes = JSON.stringify({ claudeMdExcludes: plan.excluir })
+  const hash = createHash('sha1').update(ajustes).update('\0').update(plan.guia).digest('hex').slice(0, 10)
+  const dir = join(SESIONES, `claude-md-${hash}`)
+  const archAjustes = join(dir, 'ajustes.json')
+  const archGuia = join(dir, 'guia.md')
+  if (await stat(archGuia).catch(() => undefined)) {
+    // Ya existe: se refresca la fecha para que `limpiarSesiones` no la borre mientras se sigue usando.
+    const ahora = new Date()
+    await utimes(dir, ahora, ahora).catch(() => undefined)
+  } else {
+    const tmp = `${dir}.${randomUUID()}.tmp`
+    await mkdir(tmp, { recursive: true })
+    await writeFile(join(tmp, 'ajustes.json'), ajustes)
+    await writeFile(join(tmp, 'guia.md'), plan.guia)
+    // Otra terminal pudo crearla a la vez: el contenido es idéntico, basta con que exista una.
+    await rename(tmp, dir).catch(() => rm(tmp, { recursive: true, force: true }))
+  }
+  return ` --settings ${citar(archAjustes)} --append-system-prompt-file ${citar(archGuia)}`
 }
 
 /** Qué recursos propios tiene el proyecto: decide si al Asistente se le ofrecen las herramientas `Agent` y `Skill`. */

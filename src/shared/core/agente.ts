@@ -17,6 +17,8 @@ export interface Mensaje {
 export interface Uso {
   tokensEntrada: number
   tokensSalida: number
+  /** De `tokensEntrada`, lo leído de la caché del prompt (cuesta ~10 % de una entrada normal). Solo suscripción. */
+  tokensCache?: number
 }
 
 export type EstadoEjecucion = 'completado' | 'limite_pasos' | 'cancelado' | 'error'

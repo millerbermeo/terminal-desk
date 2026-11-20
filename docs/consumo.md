@@ -14,9 +14,12 @@ teléfono llegó a 350 k tokens por llamada, 378 llamadas y 87 M de tokens en 48
 ## Qué hace ahora
 | Técnica | Dónde | Efecto |
 |---|---|---|
-| Autocompactación temprana del CLI (`CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`) | `AJUSTES_CONSUMO` en `suscripcion.ts` (Asistente y terminales ✦ en Linux/macOS) | El CLI compacta solo a ~140 k. Verificado: dispara en `-p`. |
+| Autocompactación temprana del CLI (`CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=50`) | `AJUSTES_CONSUMO` en `suscripcion.ts` (Asistente y terminales ✦ en Linux/macOS) | El CLI compacta solo a ~100 k (antes 70 % = ~140 k: una conversación de 46 pasos releía ~3,8 M de caché). Verificado: dispara en `-p`. |
+| CLAUDE.md grandes por partes (cualquier proyecto) | `core/claude-md.ts#planClaudeMd` → `--settings {"claudeMdExcludes":[…]}` + guía en `--append-system-prompt` | Los CLAUDE.md del proyecto y de sus carpetas padre de más de `ODESK_CLAUDE_MD_MAX` caracteres (12000) no se cargan enteros; va su comienzo (~3 KB) + índice de secciones con líneas y el modelo lee con `Read` lo que necesita. Ej.: 56 KB (~16 k tokens por paso) → ~1 k. Probado con el CLI real: `claudeMdExcludes` por `--settings` funciona con `--setting-sources project,local`. También en preguntas laterales y en las terminales ✦ con proyecto (`agentes.ts#argsClaudeMd`: `--settings <archivo>` + `--append-system-prompt-file`, archivos en `sesiones/claude-md-<hash>/`). |
+| Agrupar herramientas | `avisos.ts#GUIA_TRABAJO` | Cada herramienta es una llamada que reenvía todo el contexto: se pide juntar comandos en un `Bash` y paralelizar lecturas. |
+| Contador honesto | `Uso.tokensCache`, pie del turno en `ChatAgente.tsx` | «N tokens (X nuevos · Y de caché)»: casi todo es caché leída (~10 % del precio). |
 | Salidas acotadas (`BASH_MAX_OUTPUT_LENGTH=20000`, `MAX_MCP_OUTPUT_TOKENS=12000`) | idem | Un comando/MCP gigante no inunda el contexto. |
-| Rotación de sesión con resumen | `consumo.ts#decidirRotacion`, `rotacion.ts`, `Nucleo.ejecutarPorSuscripcion` | Respaldo si el CLI no compacta: contexto ≥ 170 k, ≥ 10 imágenes o > 55 min inactiva con ≥ 90 k (la caché de 1 h caducó y reanudar cuesta el contexto entero) → resumen con Haiku (~0,001 USD) a partir de la transcripción guardada y sesión nueva. El usuario ve una nota; su mensaje no cambia. Si el resumen falla se usa la cola del digest; sin transcripción no se rota. |
+| Rotación de sesión con resumen | `consumo.ts#decidirRotacion`, `rotacion.ts`, `Nucleo.ejecutarPorSuscripcion` | Respaldo si el CLI no compacta: contexto ≥ 130 k, ≥ 10 imágenes o > 55 min inactiva con ≥ 90 k (la caché de 1 h caducó y reanudar cuesta el contexto entero) → resumen con Haiku (~0,001 USD) a partir de la transcripción guardada y sesión nueva. El usuario ve una nota; su mensaje no cambia. Si el resumen falla se usa la cola del digest; sin transcripción no se rota. |
 | Guardia de imágenes (plugin `odesk-guardia`) | `main/guardia.ts` | Gancho `PreToolUse` sobre `Read`: reduce capturas grandes a 1280 px (ImageMagick, ffmpeg, sips o Python+Pillow) y limita a 25 por sesión explicando cómo seguir con texto. |
 | Medición exacta | `consumo.ts#diferenciaUso`, `sesiones-cli-meta.json` | Se anota solo la diferencia con el acumulado anterior del CLI. |
 | Trazas y conversaciones con tokens | `Trazador.anotarUso`, `MemoriaCortoPlazo.anotarUso`, `finalizar(id, estado)` | Ya no quedan en `error` con 0. |
@@ -25,7 +28,7 @@ teléfono llegó a 350 k tokens por llamada, 378 llamadas y 87 M de tokens en 48
 | Avisos | eventos `aviso_consumo` (contexto ≥ 110 k o ejecución ≥ 1,5 USD) y `contexto_compactado` | Se ve en el chat. |
 
 ## Ajustes por entorno
-`ODESK_ROTAR_CONTEXTO` (170000), `ODESK_ROTAR_IMAGENES` (10), `ODESK_ROTAR_INACTIVIDAD_MIN` (55), `ODESK_ROTAR_INACTIVO_CONTEXTO` (90000)
+`ODESK_CLAUDE_MD_MAX` (12000 caracteres, 0 = cargar siempre entero), `ODESK_ROTAR_CONTEXTO` (130000), `ODESK_ROTAR_IMAGENES` (10), `ODESK_ROTAR_INACTIVIDAD_MIN` (55), `ODESK_ROTAR_INACTIVO_CONTEXTO` (90000)
 — un 0 desactiva ese criterio —, `ODESK_PRESUPUESTO_TURNO_USD` (5, 0 = sin tope), `ODESK_MAX_IMAGENES` (25), `ODESK_IMAGEN_LADO` (1280),
 `ODESK_SIN_GUARDIA=1` (apaga el plugin). Las variables del CLI de `AJUSTES_CONSUMO` solo se fijan si el usuario no las definió.
 

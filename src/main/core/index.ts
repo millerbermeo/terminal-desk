@@ -80,6 +80,7 @@ import { ejecutarOperacionTareas } from './tareas/operaciones'
 import { archivoMcpTareas, servidoresExternos } from './tareas/mcp-config'
 import { cerrarSesion, consultarCli, ejecutarSuscripcion, ESFUERZOS, estadoCuenta, estadoSesion, iniciarSesion, listarModelosCli, Preferencias, rebobinarArchivos, SesionesCli, type ControlProceso, type ResultadoRebobinado, type SalidaEjecucion } from './suscripcion'
 import { ejecutarEnProceso, ProcesosCli } from './proceso-cli'
+import { planClaudeMd } from './claude-md'
 import { AVISO_SUBAGENTES, GUIA_ACCIONES, GUIA_COPIABLE, GUIA_CREDENCIALES, GUIA_RESPUESTAS, GUIA_TRABAJO, guiaNavegador, guiaRecursos } from './avisos'
 import { registrarIntegradas } from './tools/integradas'
 import { RegistroHerramientas } from './tools/registro'
@@ -627,7 +628,9 @@ export class Nucleo {
         const extraGrupo = hermanas.length
           ? `Este proyecto pertenece a un grupo. Tienes acceso completo (leer, crear y modificar archivos) a las carpetas de los demás proyectos del grupo:\n${hermanas.map((h) => `- ${h.nombre}: ${h.ruta}`).join('\n')}`
           : ''
-        const sistema = [sistemaExtra, guiaRecursos(recursos), guiaNavegador(mcpTareas ? Object.keys(externos) : []), extraGrupo].filter(Boolean).join('\n\n')
+        // CLAUDE.md demasiado grandes (de cualquier proyecto): el CLI no los carga y aquí va su comienzo + índice.
+        const claudeMd = await planClaudeMd(proyecto?.ruta ?? process.cwd())
+        const sistema = [sistemaExtra, claudeMd.guia, guiaRecursos(recursos), guiaNavegador(mcpTareas ? Object.keys(externos) : []), extraGrupo].filter(Boolean).join('\n\n')
         // Permisos y preguntas del CLI: salen como confirmaciones del modal (antes, en `-p`, lo no permitido se denegaba sin avisar).
         const alPermiso = crearPermisoCli({
           puerta: this.puerta,
@@ -750,6 +753,7 @@ export class Nucleo {
             autonomia,
             verificaciones,
             ...(sistema ? { sistemaExtra: sistema } : {}),
+            ...(claudeMd.excluir.length ? { excluirClaudeMd: claudeMd.excluir } : {}),
             ...(carpeta || hermanas.length ? { carpetasExtra: [...(carpeta ? [carpeta] : []), ...hermanas.map((h) => h.ruta)] } : {}),
             ...(carpetaCuenta ? { carpetaCuenta } : {}),
             ...(mcpTareas ? { mcpTareas, mcpExternos: Object.entries(externos).map(([nombre, s]) => ({ nombre, riesgo: s.riesgo })) } : {}),
@@ -1073,7 +1077,10 @@ export class Nucleo {
       const carpetasExtra = [...(carpeta ? [carpeta] : []), ...viva.carpetasExtra]
       const pluginDirs = [await pluginCavemanLigero(), await pluginGuardia()].filter((d): d is string => Boolean(d))
       const carpetaCuenta = this.cuentas.carpetaDe(await this.cuentas.activa())
+      // Pregunta lateral (Haiku, pocas líneas): un CLAUDE.md enorme no aporta y costaría más que la propia respuesta.
+      const claudeMd = await planClaudeMd(viva.cwd)
       await ejecutarSuscripcion({
+        ...(claudeMd.excluir.length ? { excluirClaudeMd: claudeMd.excluir } : {}),
         alUso: (u) => (u.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo })), this.planPronto()),
         prompt: [...enDisco.partes, preguntaSobreTarea(prompt, viva.bitacora.texto())].join('\n\n'),
         presupuestoUsd: 1,

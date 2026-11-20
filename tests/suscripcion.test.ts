@@ -97,7 +97,7 @@ describe('suscripción (CLI claude)', () => {
     expect(anotado).toHaveLength(1)
     expect(anotado[0]).toMatchObject({ modelo: 'claude-sonnet-5-5', entrada: 800, salida: 7, cache: 500 })
     expect(anotado[0]!.costo).toBeCloseTo(0.02)
-    expect(r.resultado.uso).toEqual({ tokensEntrada: 800, tokensSalida: 7 })
+    expect(r.resultado.uso).toEqual({ tokensEntrada: 800, tokensSalida: 7, tokensCache: 500 })
     expect(r.imagenes).toBe(2)
     expect(r.contexto).toBe(100)
     expect(r.acumulado?.['claude-sonnet-5-5']).toMatchObject({ entrada: 1830, salida: 27 })
@@ -106,7 +106,7 @@ describe('suscripción (CLI claude)', () => {
     const v = JSON.parse(await (await import('node:fs/promises')).readFile(volcado, 'utf8'))
     expect(v.entrada).toBe('<contexto_previo>resumen</contexto_previo>\n\nsigue')
     expect(v.args).toEqual(expect.arrayContaining(['--max-budget-usd', '3', '--exclude-dynamic-system-prompt-sections']))
-    expect(v.env).toEqual({ ventana: '200000', pct: '70', bash: '20000' })
+    expect(v.env).toEqual({ ventana: '200000', pct: '50', bash: '20000' })
   })
 
   it('traduce la autonomía a permisos del CLI', () => {

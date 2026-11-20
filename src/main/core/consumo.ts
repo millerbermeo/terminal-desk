@@ -101,7 +101,7 @@ const entero = (v: string | undefined, porDefecto: number): number => {
 }
 
 export const umbralesDeEntorno = (env: NodeJS.ProcessEnv = process.env): UmbralesRotacion => ({
-  contexto: entero(env.ODESK_ROTAR_CONTEXTO, 170_000),
+  contexto: entero(env.ODESK_ROTAR_CONTEXTO, 130_000), // respaldo por encima de la autocompactación del CLI (~100 k)
   imagenes: entero(env.ODESK_ROTAR_IMAGENES, 10),
   inactividadMs: entero(env.ODESK_ROTAR_INACTIVIDAD_MIN, 55) * 60_000,
   contextoMinimoInactivo: entero(env.ODESK_ROTAR_INACTIVO_CONTEXTO, 90_000)

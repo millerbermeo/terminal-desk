@@ -249,8 +249,18 @@ function Linea({ e, todos, raiz }: { e: EventoAgente; todos: EventoAgente[]; rai
       return <div className={`ag-final ${e.estado === 'completado' ? 'ok' : 'mal'}`}>Flujo {e.estado}: {e.resumen}</div>
     case 'fin':
       return e.profundidad === 0 ? (
-        <div className="ag-uso">
-          {e.agente} · {e.resultado.pasos} pasos · {e.resultado.uso.tokensEntrada + e.resultado.uso.tokensSalida} tokens
+        <div
+          className="ag-uso"
+          title={
+            e.resultado.uso.tokensCache
+              ? 'Cada paso reenvía toda la conversación; casi todo sale de la caché del prompt, que cuesta ~10 % de una entrada normal. «Nuevos» = entrada sin caché + respuesta.'
+              : undefined
+          }
+        >
+          {e.agente} · {e.resultado.pasos} pasos · {(e.resultado.uso.tokensEntrada + e.resultado.uso.tokensSalida).toLocaleString()} tokens
+          {e.resultado.uso.tokensCache
+            ? ` (${(e.resultado.uso.tokensEntrada + e.resultado.uso.tokensSalida - e.resultado.uso.tokensCache).toLocaleString()} nuevos · ${e.resultado.uso.tokensCache.toLocaleString()} de caché)`
+            : ''}
         </div>
       ) : null
     default:

@@ -20,13 +20,14 @@ import { confiarCarpeta } from './confianza'
 
 /**
  * Ajustes del CLI que acotan el contexto (lo que más tokens consume: se reenvía entero en cada llamada). Sin ellos los modelos de
- * 1 M de ventana solo compactan al 95 % de 1 M, es decir, casi nunca. Con una ventana de 200 k y el 70 % el CLI compacta solo a
- * los ~140 k, y las salidas gigantes de comandos y de servidores MCP se recortan antes de entrar al contexto. El entorno del
+ * 1 M de ventana solo compactan al 95 % de 1 M, es decir, casi nunca. Con una ventana de 200 k y el 50 % el CLI compacta solo a
+ * los ~100 k (con el 70 %, ~140 k, una conversación de 46 pasos releía ~3,8 M tokens de caché: cada paso reenvía todo el
+ * contexto), y las salidas gigantes de comandos y de servidores MCP se recortan antes de entrar al contexto. El entorno del
  * usuario manda: solo se fijan las que no estén ya definidas.
  */
 export const AJUSTES_CONSUMO: Readonly<Record<string, string>> = {
   CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000',
-  CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '70',
+  CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '50',
   BASH_MAX_OUTPUT_LENGTH: '20000',
   MAX_MCP_OUTPUT_TOKENS: '12000'
 }
@@ -301,6 +302,8 @@ export interface OpcionesEjecucion {
   verificaciones: string[]
   sistemaExtra?: string
   carpetasExtra?: string[]
+  /** CLAUDE.md demasiado grandes que el CLI no debe cargar (`claudeMdExcludes`); su índice va en `sistemaExtra` (`claude-md.ts`). */
+  excluirClaudeMd?: string[]
   senal: AbortSignal
   /** Archivo `--mcp-config` con el servidor MCP de tareas de la app (y se permiten sus herramientas según la autonomía). */
   mcpTareas?: string
@@ -515,7 +518,7 @@ export type Esfuerzo = (typeof ESFUERZOS)[number]
 /** Lo que fija los argumentos del proceso del CLI (si cambia, hay que lanzar otro). */
 export type OpcionesProceso = Pick<
   OpcionesEjecucion,
-  'autonomia' | 'verificaciones' | 'cwd' | 'modelo' | 'reanudar' | 'sistemaExtra' | 'carpetasExtra' | 'mcpTareas' | 'mcpExternos' | 'pluginDirs' | 'carpetaCuenta' | 'presupuestoUsd' | 'esfuerzo' | 'recursos'
+  'autonomia' | 'verificaciones' | 'cwd' | 'modelo' | 'reanudar' | 'sistemaExtra' | 'carpetasExtra' | 'excluirClaudeMd' | 'mcpTareas' | 'mcpExternos' | 'pluginDirs' | 'carpetaCuenta' | 'presupuestoUsd' | 'esfuerzo' | 'recursos'
 >
 
 /** Argumentos de `claude -p`. Con `entradaPorStream` el CLI habla por stdio (permisos, preguntas y peticiones de control). */
@@ -541,6 +544,8 @@ export function argumentosCli(o: OpcionesProceso, entradaPorStream: boolean): st
     ...(o.modelo ? ['--model', o.modelo] : []),
     ...(o.reanudar ? ['--resume', o.reanudar] : []),
     ...(o.sistemaExtra ? ['--append-system-prompt', o.sistemaExtra] : []),
+    // Ajustes de esta ejecución (fuente «flag»: el CLI los aplica aunque `--setting-sources` excluya `user`).
+    ...(o.excluirClaudeMd?.length ? ['--settings', JSON.stringify({ claudeMdExcludes: o.excluirClaudeMd })] : []),
     ...(o.carpetasExtra?.length ? ['--add-dir', ...o.carpetasExtra] : [])
   ]
 }
@@ -830,8 +835,12 @@ export class LectorTurno {
       mensajes: [],
       // El total de la ejecución es la suma de lo consumido por todos los modelos (subagentes incluidos); sin eso, la última llamada.
       uso: this.usoModelos.length
-        ? { tokensEntrada: this.usoModelos.reduce((t, u) => t + u.uso.tokensEntrada, 0), tokensSalida: this.usoModelos.reduce((t, u) => t + u.uso.tokensSalida, 0) }
-        : { tokensEntrada: (uso.input_tokens ?? 0) + (uso.cache_read_input_tokens ?? 0) + (uso.cache_creation_input_tokens ?? 0), tokensSalida: uso.output_tokens ?? 0 },
+        ? {
+            tokensEntrada: this.usoModelos.reduce((t, u) => t + u.uso.tokensEntrada, 0),
+            tokensSalida: this.usoModelos.reduce((t, u) => t + u.uso.tokensSalida, 0),
+            tokensCache: this.usoModelos.reduce((t, u) => t + u.cache, 0)
+          }
+        : { tokensEntrada: (uso.input_tokens ?? 0) + (uso.cache_read_input_tokens ?? 0) + (uso.cache_creation_input_tokens ?? 0), tokensSalida: uso.output_tokens ?? 0, tokensCache: uso.cache_read_input_tokens ?? 0 },
       pasos: this.pasos,
       ...(mensaje ? { error: mensaje } : {})
     }
