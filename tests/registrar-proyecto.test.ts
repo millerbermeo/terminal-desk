@@ -40,6 +40,7 @@ beforeAll(async () => {
   ]).iniciar()
   srv.apuntar()
   proyectos = await import('../src/main/proyectos')
+  proyectos.fijarEquipoActual(async () => '9a9a9a9a-0000-4000-8000-0000000000f1')
   await srv.entrar()
 })
 afterAll(() => srv.cerrar())
@@ -91,18 +92,17 @@ describe('claveRepo', () => {
   })
 })
 
-describe('proyecto local (sin cuenta ni seguimiento remoto)', () => {
-  it('se apunta solo en este equipo: id local-…, sin .odesk/project.json y sin llamar al servidor para crearlo', async () => {
+describe('proyecto local (en la cuenta, solo visible en este equipo)', () => {
+  it('se registra en la cuenta atado a este equipo, sin .odesk/project.json; quitarlo solo lo suelta de aquí', async () => {
     const dir = join(casa, 'solo-aqui')
     await mkdir(dir)
-    const antes = (await proyectos.leerProyectos()).proyectos.filter((p) => !p.local).length
     const r = await proyectos.agregarProyectos({ modo: 'local', proyectos: [{ nombre: 'Solo aquí', ruta: dir }] })
     expect(r.errores).toEqual([])
     const p = r.datos.proyectos.find((x) => x.ruta === dir)
     expect(p?.local).toBe(true)
-    expect(p?.id).toMatch(/^local-/)
+    expect(p?.id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(srv.proyectos.find((x) => x.id === p!.id)?.equipo).toBe('9a9a9a9a-0000-4000-8000-0000000000f1')
     expect(existsSync(join(dir, '.odesk'))).toBe(false)
-    expect(r.datos.proyectos.filter((x) => !x.local).length).toBe(antes)
     expect(await proyectos.carpetaDeProyecto(p!.id)).toBe(dir)
     const repetido = await proyectos.agregarProyectos({ modo: 'local', proyectos: [{ nombre: 'Otra vez', ruta: dir }] })
     expect(repetido.errores[0]?.mensaje).toMatch(/Ya agregado/)

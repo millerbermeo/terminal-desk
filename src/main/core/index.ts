@@ -19,6 +19,7 @@ import { Canales } from '@shared/ipc'
 import { carpetasHermanas, pluginAgentesAsistente } from '../agentes'
 import { pluginCavemanLigero } from '../caveman'
 import { pluginGuardia } from '../guardia'
+import { bloqueAjustes, clasificarLateral, MAX_AJUSTES_POR_TURNO } from './ajuste-tarea'
 import { AVISO_CONTEXTO, AVISO_COSTO_TURNO, bloqueContextoPrevio, bloqueLaterales, conLateral, decidirRotacion, digestDeConversacion, maxContinuarAutomatico, MetaSesionesCli, type MotivoRotacion, presupuestoTurnoUsd, umbralesDeEntorno } from './consumo'
 import { prepararRotacion } from './rotacion'
 import { Bitacora, preguntaSobreTarea } from './bitacora'
@@ -217,7 +218,7 @@ export class Nucleo {
   /** Títulos generados por el modelo que aún no se pudieron aplicar (la conversación se guarda al terminar el turno). */
   private readonly titulosPendientes = new Map<string, string>()
   /** Ejecuciones por suscripción en marcha: su bitácora y entorno, para responder preguntas laterales sin interrumpirlas. */
-  private readonly vivas = new Map<string, { bitacora: Bitacora; sesionId: string; cwd: string; proyecto?: Proyecto; carpetasExtra: string[]; carpetaCuenta?: string; control?: ControlProceso; contexto: number }>()
+  private readonly vivas = new Map<string, { bitacora: Bitacora; sesionId: string; cwd: string; proyecto?: Proyecto; carpetasExtra: string[]; carpetaCuenta?: string; control?: ControlProceso; contexto: number; /** Ajustes de la persona pendientes de aplicar (se aplican al cortar el paso actual). */ ajustes: string[] }>()
 
   constructor(private readonly aprobar?: Aprobador) {
     registrarIntegradas(this.registro)
@@ -702,17 +703,19 @@ export class Nucleo {
         ].filter(Boolean)
         prefijoPrompt = delante.length ? delante.join('\n\n') : undefined
         const eraNueva = !meta
-        const viva: { bitacora: Bitacora; sesionId: string; cwd: string; proyecto?: Proyecto; carpetasExtra: string[]; carpetaCuenta?: string; control?: ControlProceso; contexto: number } = {
+        const viva: { bitacora: Bitacora; sesionId: string; cwd: string; proyecto?: Proyecto; carpetasExtra: string[]; carpetaCuenta?: string; control?: ControlProceso; contexto: number; /** Ajustes de la persona pendientes de aplicar (se aplican al cortar el paso actual). */ ajustes: string[] } = {
           bitacora,
           sesionId,
           contexto: meta?.contexto ?? 0,
           cwd: proyecto?.ruta ?? process.cwd(),
           ...(proyecto ? { proyecto } : {}),
-          carpetasExtra: [...(carpeta ? [carpeta] : []), ...hermanas.map((h) => h.ruta)]
+          carpetasExtra: [...(carpeta ? [carpeta] : []), ...hermanas.map((h) => h.ruta)],
+          ajustes: []
         }
         this.vivas.set(id, viva)
         let promptActual = prompt
         let auto = 0
+        let rondasAjuste = 0
         // El CLI descarta EN SILENCIO un mensaje cuyo `uuid` ya vio (ni salida ni error): reenviar el mismo id en una continuación
         // automática o al cambiar de cuenta dejaba el turno esperando para siempre. Solo el primer envío lleva el id del mensaje.
         let idEnvio = mensajeId
@@ -762,7 +765,7 @@ export class Nucleo {
             senal: ctl.signal,
             alEvento: emitir,
             retenerFin: true,
-            omitirInicio: probadas.size > 1 || auto > 0
+            omitirInicio: probadas.size > 1 || auto > 0 || rondasAjuste > 0
           })
           idEnvio = randomUUID()
           // Una ejecución rechazada por el límite antes de hacer nada no deja conversación válida: no pisa la anterior. Si ya había
@@ -833,6 +836,17 @@ export class Nucleo {
           }
           void this.sesiones.anotarUso(sesionId, r.resultado.uso, costoPendiente).catch(() => undefined)
           costoPendiente = 0
+          // La persona ajustó la tarea mientras corría («Preguntar ahora» con una indicación): se cortó el paso y la MISMA ejecución
+          // sigue con el cambio delante (mismo proceso y conversación, sin repetir lo hecho). Con límite de cuenta se aplica en la vuelta
+          // siguiente, ya con la otra cuenta.
+          if (viva.ajustes.length && !r.limite && !ctl.signal.aborted && rondasAjuste < MAX_AJUSTES_POR_TURNO) {
+            const instrucciones = viva.ajustes.splice(0)
+            rondasAjuste++
+            promptActual = bloqueAjustes(instrucciones)
+            prefijoPrompt = undefined
+            emitir({ tipo: 'tarea_ajustada', instrucciones })
+            continue
+          }
           if (r.limite) {
             await this.cuentas.marcarLimite(cuenta, r.limite.hasta ?? Date.now() + LIMITE_SIN_FECHA_MS)
             const siguiente = (await this.cuentas.automatico()) ? await this.siguienteCuentaConSesion(probadas) : undefined
@@ -1032,6 +1046,27 @@ export class Nucleo {
     const control = viva.contexto <= maxLateral && !bloques.length ? viva.control : undefined
     void (async () => {
       emitir({ tipo: 'inicio', prompt })
+      // ¿Pregunta o ajuste de la tarea? Un ajuste se aplica YA: se corta el paso actual y la tarea sigue con el cambio.
+      const carpetaCuenta = this.cuentas.carpetaDe(await this.cuentas.activa())
+      const clase = await clasificarLateral(prompt, viva.bitacora.texto(), async (sistema, entrada) => {
+        const r = await consultarCli(sistema, entrada, { modelo: MODELO_LATERAL, cwd: viva.cwd, senal: ctl.signal, timeoutMs: 20_000, ...(carpetaCuenta ? { carpeta: carpetaCuenta } : {}) })
+        r.uso.forEach((x) => void this.medidor.registrar(x.modelo, x.uso, { cache: x.cache, costo: x.costo }))
+        return r.texto
+      })
+      if (ctl.signal.aborted) return emitir({ tipo: 'fin', resultado: { estado: 'cancelado', texto: '', mensajes: [], uso: { tokensEntrada: 0, tokensSalida: 0 }, pasos: 0, error: 'Cancelado' } })
+      if (clase.tipo !== 'pregunta' && clase.instruccion) {
+        const aplicado = this.ajustarTarea(ejecucionId, clase.instruccion)
+        const aviso = aplicado
+          ? `✓ Cambio aplicado a la tarea en marcha: «${clase.instruccion}». El asistente corta el paso actual y sigue con esto.`
+          : 'La tarea ya terminó: envía la indicación como mensaje normal.'
+        if (clase.tipo === 'ajuste' || !aplicado) {
+          emitir({ tipo: 'texto', texto: aviso })
+          emitir({ tipo: 'fin', resultado: { estado: aplicado ? 'completado' : 'error', texto: aviso, mensajes: [], uso: { tokensEntrada: 0, tokensSalida: 0 }, pasos: 1, ...(aplicado ? {} : { error: aviso }) } })
+          return
+        }
+        emitir({ tipo: 'texto', texto: aviso }) // y además se responde la pregunta
+      }
+      if (clase.pregunta) prompt = clase.pregunta
       if (control) {
         try {
           const r = await control.control<{ response: string | null }>({ subtype: 'side_question', question: preguntaSobreTarea(prompt, viva.bitacora.texto()) }, 90_000)
@@ -1049,6 +1084,20 @@ export class Nucleo {
     return { ejecucionId: id, sesionId: '' }
   }
 
+  /**
+   * Ajusta la tarea en marcha con una indicación de la persona: la deja pendiente e interrumpe el paso actual (sin matar el proceso);
+   * el bucle de la ejecución la recoge y sigue en la misma conversación con el cambio. `false` si la ejecución ya no está viva.
+   */
+  ajustarTarea(ejecucionId: string, instruccion: string): boolean {
+    const viva = this.vivas.get(ejecucionId)
+    const texto = instruccion.trim()
+    if (!viva || !texto) return false
+    viva.ajustes.push(texto.slice(0, 4000))
+    viva.bitacora.registrar({ tipo: 'texto', texto: `[La persona ajustó la tarea] ${texto}` })
+    viva.control?.interrumpir()
+    return true
+  }
+
   /** Pregunta lateral con otro `claude -p` de modelo rápido y la bitácora de la tarea como contexto. */
   private async lateralPorBitacora(
     viva: NonNullable<ReturnType<Nucleo['vivas']['get']>>,
@@ -1063,7 +1112,7 @@ export class Nucleo {
     const sistemaExtra = [
       'PREGUNTA LATERAL. Otra ejecución (otro proceso) está trabajando AHORA en la petición del usuario, en esta misma conversación y carpeta. No la interrumpas ni repitas su trabajo.',
       'La pregunta del usuario se refiere a ESA tarea y a esta conversación salvo que diga claramente otra cosa: «esto», «eso», «lo que haces», «ya» o «cuánto falta» hablan de ella. Responde en pocas líneas a partir del registro (qué pidió, el plan, qué lleva hecho y qué está ejecutando ahora) y de los mensajes anteriores. Si con eso no basta, puedes leer archivos para comprobarlo; si aun así no lo sabes, dilo, no inventes.',
-      'Si el usuario no pregunta sino que pide un cambio o da una instrucción para la tarea, no la ejecutes tú: dile que queda anotada y que el asistente la verá al terminar el paso actual, con su siguiente mensaje (o que detenga la tarea y la envíe si corre prisa).',
+      'Si el mensaje también trae una indicación para la tarea, NO la ejecutes tú: ya se le pasó a la tarea en marcha, que corta su paso actual y la aplica. Responde solo a lo que pregunta.',
       'Solo lectura: puedes mirar archivos para comprobar algo, pero no modifiques nada ni ejecutes comandos que cambien algo.',
       bloques.length ? 'La persona adjuntó archivos a su pregunta: léelos con Read desde las rutas indicadas en su mensaje.' : '',
       previos.trim() ? `<mensajes_anteriores_de_la_conversacion>\n${previos}\n</mensajes_anteriores_de_la_conversacion>` : ''
@@ -1378,8 +1427,10 @@ export class Nucleo {
   }
 
   /** Tras pasar proyectos de la cuenta a local o al revés: tablero y conversaciones de este equipo siguen al id nuevo. */
-  async reasignarProyectos(proyectos: { viejo: string; nuevo: string }[], grupo?: { viejo: string; nuevo: string }): Promise<void> {
-    await this.tareas.reasignar(Object.fromEntries(proyectos.map((p) => [p.viejo, p.nuevo])), grupo ? { [grupo.viejo]: grupo.nuevo } : {})
+  async reasignarProyectos(proyectos: { viejo: string; nuevo: string }[], grupo?: { viejo: string; nuevo: string } | { viejo: string; nuevo: string }[]): Promise<void> {
+    const grupos = grupo ? (Array.isArray(grupo) ? grupo : [grupo]) : []
+    if (proyectos.length === 0 && grupos.length === 0) return
+    await this.tareas.reasignar(Object.fromEntries(proyectos.map((p) => [p.viejo, p.nuevo])), Object.fromEntries(grupos.map((g) => [g.viejo, g.nuevo])))
     for (const p of proyectos) await this.sesiones.reasignarProyecto(p.viejo, p.nuevo)
   }
 

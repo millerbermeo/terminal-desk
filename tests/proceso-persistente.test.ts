@@ -416,6 +416,32 @@ describe('Nucleo con proceso persistente', () => {
     expect((await lineas()).some((x) => x.control === 'side_question')).toBe(true)
   })
 
+  it('«Preguntar ahora» con una indicación AJUSTA la tarea en marcha: corta el paso y la misma ejecución sigue con el cambio', async () => {
+    await writeFile(volcado, '')
+    vi.stubEnv('ODESK_SIN_TITULO', '1')
+    const n = await nuevo()
+    let ejecucionId = ''
+    const principal = ejecutar(n, 's-ajuste', 'LENTO', (e) => void (ejecucionId = e.ejecucionId))
+    await esperar(700)
+    const lateral: EventoAgente[] = []
+    await new Promise<void>((res) => {
+      void n.preguntarLateral(ejecucionId, 'cambia el color del botón a azul', (e) => {
+        lateral.push(e)
+        if (e.tipo === 'fin') res()
+      })
+    })
+    expect(lateral.find((e) => e.tipo === 'fin')).toMatchObject({ resultado: { estado: 'completado' } })
+    expect((lateral.find((e) => e.tipo === 'texto') as Extract<EventoAgente, { tipo: 'texto' }>).texto).toMatch(/Cambio aplicado/)
+    const eventos = await principal
+    expect(eventos.find((e) => e.tipo === 'tarea_ajustada')).toMatchObject({ instrucciones: ['cambia el color del botón a azul'] })
+    expect(eventos.filter((e) => e.tipo === 'fin')).toHaveLength(1) // una sola ejecución: no se partió en dos turnos
+    expect(eventos.find((e) => e.tipo === 'fin')).toMatchObject({ resultado: { estado: 'completado' } })
+    const todas = await lineas()
+    expect(todas.some((x) => x.control === 'interrupt')).toBe(true)
+    expect(todas.filter((x) => x.arranque && !x.consulta && x.args?.includes('--input-format'))).toHaveLength(1) // mismo proceso
+    expect(todas.some((x) => x.usuario?.includes('<ajuste_de_la_tarea>\ncambia el color del botón a azul'))).toBe(true)
+  })
+
   it('«Preguntar ahora» con una imagen la deja legible para el modelo y no usa side_question (solo admite texto)', async () => {
     await writeFile(volcado, '')
     vi.stubEnv('ODESK_SIN_TITULO', '1')

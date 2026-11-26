@@ -65,6 +65,8 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
   | { tipo: 'aviso_consumo'; motivo: 'contexto' | 'costo'; tokens?: number; costo?: number }
   /** En modo autónomo, la respuesta topó el límite de pasos y se le pidió continuar sola (sin que el usuario lo escriba). */
   | { tipo: 'continuacion_automatica'; ronda: number; max: number }
+  /** La persona ajustó la tarea en marcha («Preguntar ahora» con una indicación): se cortó el paso actual y sigue con el cambio. */
+  | { tipo: 'tarea_ajustada'; instrucciones: string[] }
 )
 
 export type Complejidad = 'simple' | 'media' | 'compleja'

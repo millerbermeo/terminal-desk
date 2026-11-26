@@ -9,6 +9,8 @@ export interface ProyectoFalso {
   ruta: string
   grupo?: string
   repo?: string
+  /** Proyecto local: solo lo ve el equipo con este id. */
+  equipo?: string
 }
 
 /**
@@ -19,9 +21,11 @@ export class ServidorFalso {
   readonly proyectos: ProyectoFalso[]
   /** Comandos con `/` de la cuenta, tal como los guarda la API. */
   readonly comandos: Record<string, unknown>[] = []
-  readonly grupos: { id: string; nombre: string }[] = []
+  readonly grupos: { id: string; nombre: string; equipo?: string }[] = []
   /** Recursos de la biblioteca de agentes y skills, como los devuelve `/agentes`. */
   readonly recursos: Record<string, unknown>[] = []
+  /** Activaciones de la biblioteca (`targetType`, `targetId`, `resourceId`). */
+  readonly activaciones: { targetType: string; targetId: string; resourceId: string }[] = []
   /** Comandos de arranque de la cuenta, como los devuelve `/arranque` (con las mismas reglas de repetidos que la API real). */
   readonly arranque: Record<string, unknown>[] = []
   /** Peticiones recibidas (`METODO ruta`), para comprobar lo que NO se pide. */
@@ -45,11 +49,42 @@ export class ServidorFalso {
       this.peticiones.push(`${req.method} ${req.url}`)
       if (req.url?.startsWith('/arranque')) return this.atenderArranque(req.url, req.method ?? 'GET', req, responder)
       if (req.url === '/auth/login' && req.method === 'POST') return responder(200, { token: 'token-falso', usuario: { id: 'u1', email: 'test@desk.local' } })
-      if (req.url === '/projects' && req.method === 'GET') {
+      if (req.url?.split('?')[0] === '/projects' && req.method === 'GET') {
+        // Como la API real: lo local solo para su equipo (`?device=`); sin equipo, nada local.
+        const equipo = new URL(req.url, 'http://x').searchParams.get('device') ?? undefined
+        const ve = (x: { equipo?: string }): boolean => !x.equipo || x.equipo === equipo
         return responder(200, {
-          groups: this.grupos.map((g) => ({ id: g.id, name: g.nombre })),
-          projects: this.proyectos.map((p) => ({ id: p.id, name: p.nombre, repo: p.repo ?? null, groupId: p.grupo ?? null }))
+          groups: this.grupos.filter(ve).map((g) => ({ id: g.id, name: g.nombre, deviceId: g.equipo ?? null })),
+          projects: this.proyectos.filter(ve).map((p) => ({ id: p.id, name: p.nombre, repo: p.repo ?? null, groupId: p.grupo ?? null, deviceId: p.equipo ?? null }))
         })
+      }
+      const nombreDe = /^\/projects\/([^/?]+)\/name$/.exec(req.url ?? '')
+      if (nombreDe && req.method === 'PUT') {
+        const trozos: Buffer[] = []
+        req.on('data', (t: Buffer) => trozos.push(t))
+        req.on('end', () => {
+          const c = JSON.parse(Buffer.concat(trozos).toString() || '{}') as { name?: string }
+          const p = this.proyectos.find((x) => x.id === decodeURIComponent(nombreDe[1]!))
+          if (!p) return responder(404, { message: 'El proyecto no existe' })
+          p.nombre = String(c.name ?? '').trim()
+          responder(200, { id: p.id, name: p.nombre })
+        })
+        return
+      }
+      const equipoDe = /^\/(projects|groups)\/([^/?]+)\/device$/.exec(req.url ?? '')
+      if (equipoDe && req.method === 'PUT') {
+        const trozos: Buffer[] = []
+        req.on('data', (t: Buffer) => trozos.push(t))
+        req.on('end', () => {
+          const c = JSON.parse(Buffer.concat(trozos).toString() || '{}') as { deviceId?: string | null }
+          const lista: { id: string; equipo?: string }[] = equipoDe[1] === 'projects' ? this.proyectos : this.grupos
+          const x = lista.find((y) => y.id === decodeURIComponent(equipoDe[2]!))
+          if (!x) return responder(404, { message: 'No existe' })
+          if (c.deviceId) x.equipo = c.deviceId
+          else delete x.equipo
+          responder(200, { id: x.id, deviceId: x.equipo ?? null })
+        })
+        return
       }
       const uno = /^\/projects\/([^/?]+)$/.exec(req.url ?? '')
       if (uno && req.method === 'GET') {
@@ -60,10 +95,16 @@ export class ServidorFalso {
         const trozos: Buffer[] = []
         req.on('data', (t: Buffer) => trozos.push(t))
         req.on('end', () => {
-          const c = JSON.parse(Buffer.concat(trozos).toString() || '{}') as { name: string; groupId?: string; repo?: string }
-          const p: ProyectoFalso = { id: randomUUID(), nombre: c.name, ruta: '', ...(c.groupId ? { grupo: c.groupId } : {}), ...(c.repo ? { repo: c.repo } : {}) }
+          const c = JSON.parse(Buffer.concat(trozos).toString() || '{}') as { name: string; groupId?: string; groupName?: string; repo?: string; deviceId?: string }
+          let grupo = c.groupId
+          if (!grupo && c.groupName) {
+            const g = this.grupos.find((x) => x.nombre.toLowerCase() === c.groupName!.toLowerCase() && (x.equipo ?? null) === (c.deviceId ?? null)) ?? { id: randomUUID(), nombre: c.groupName, ...(c.deviceId ? { equipo: c.deviceId } : {}) }
+            if (!this.grupos.includes(g)) this.grupos.push(g)
+            grupo = g.id
+          }
+          const p: ProyectoFalso = { id: randomUUID(), nombre: c.name, ruta: '', ...(grupo ? { grupo } : {}), ...(c.repo ? { repo: c.repo } : {}), ...(c.deviceId ? { equipo: c.deviceId } : {}) }
           this.proyectos.push(p)
-          responder(201, { id: p.id, name: p.nombre, repo: p.repo ?? null, groupId: p.grupo ?? null })
+          responder(201, { id: p.id, name: p.nombre, repo: p.repo ?? null, groupId: p.grupo ?? null, deviceId: p.equipo ?? null })
         })
         return
       }
@@ -91,10 +132,10 @@ export class ServidorFalso {
         const trozos: Buffer[] = []
         req.on('data', (t: Buffer) => trozos.push(t))
         req.on('end', () => {
-          const c = JSON.parse(Buffer.concat(trozos).toString() || '{}') as { name: string }
-          const g = this.grupos.find((x) => x.nombre.toLowerCase() === c.name.toLowerCase()) ?? { id: randomUUID(), nombre: c.name }
+          const c = JSON.parse(Buffer.concat(trozos).toString() || '{}') as { name: string; deviceId?: string }
+          const g = this.grupos.find((x) => x.nombre.toLowerCase() === c.name.toLowerCase() && (x.equipo ?? null) === (c.deviceId ?? null)) ?? { id: randomUUID(), nombre: c.name, ...(c.deviceId ? { equipo: c.deviceId } : {}) }
           if (!this.grupos.includes(g)) this.grupos.push(g)
-          responder(201, { id: g.id, name: g.nombre })
+          responder(201, { id: g.id, name: g.nombre, deviceId: g.equipo ?? null })
         })
         return
       }
@@ -125,7 +166,22 @@ export class ServidorFalso {
         })
         return
       }
-      if (req.url === '/agentes' && req.method === 'GET') return responder(200, { resources: this.recursos, activations: [] })
+      if (req.url === '/agentes' && req.method === 'GET') return responder(200, { resources: this.recursos, activations: this.activaciones })
+      if ((req.url === '/agentes' && req.method === 'PUT') || (req.url === '/agentes/activaciones' && req.method === 'POST')) {
+        const trozos: Buffer[] = []
+        req.on('data', (t: Buffer) => trozos.push(t))
+        req.on('end', () => {
+          const c = JSON.parse(Buffer.concat(trozos).toString() || '{}') as Record<string, unknown>
+          if (req.url === '/agentes/activaciones') {
+            this.activaciones.push(c as (typeof this.activaciones)[number])
+            return responder(201, c)
+          }
+          const fila = { id: randomUUID(), tools: null, model: null, projectId: null, ...c }
+          this.recursos.push(fila)
+          responder(200, fila)
+        })
+        return
+      }
       responder(404, { message: 'no implementado en el servidor falso' })
     })
     await new Promise<void>((ok) => this.http.listen(0, '127.0.0.1', ok))

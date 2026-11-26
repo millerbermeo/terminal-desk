@@ -128,3 +128,10 @@ Biblioteca de recursos (compartidos o individuales de un proyecto) con activaci�
 - Chrome muestra la barra «Odesk Code · Chrome está depurando este navegador» mientras la IA controla una pestaña: es obligatoria y no se puede quitar. «Cancelar» en esa barra pausa el control.
 - Puertos locales 47615–47619 (solo 127.0.0.1): si están todos ocupados, el panel lo avisa.
 - Ver `docs/chrome.md`.
+
+## 15. Proyectos locales (solo visibles en un equipo)
+
+- **Migración del backend**: `pnpm migration:ejecutar` en `terminal-desk-api` (añade `device_id` a `projects` y `groups`; migración `0016_proyectos_locales`). **Ejecútala y reinicia el API antes de abrir la app nueva**: sin ella, crear un proyecto local o pasar un grupo a local falla con error 500.
+- Un proyecto local ahora **está en tu cuenta** (agentes, skills, tablero y conversaciones funcionan y se sincronizan) pero el servidor solo lo devuelve al equipo que lo creó (el id de `~/.odesk-agent/equipo.json`). Si borras ese archivo o reinstalas el sistema, el equipo tendrá otro id y **dejará de ver sus proyectos locales**: haz copia de `equipo.json` si te importan.
+- Los proyectos locales antiguos (`proyectos-locales.json`, ids `local-…`) se suben solos al iniciar sesión, con sus tareas, conversaciones y agentes; sin conexión se reintenta en el siguiente inicio.
+- Una app antigua conectada al API nuevo no ve ningún proyecto local (ni siquiera los suyos): actualiza todos los equipos.

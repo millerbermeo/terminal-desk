@@ -15,7 +15,7 @@ import { eliminarProveedor, enCola as enColaProveedores, guardarProveedor, lista
 import { comprobarAhora, exigirConexion, MonitorConexion, mensajeSinConexion, rutaCaida } from './montajes'
 import { copiarEntreProyectos, listarRecursosDeProyecto } from './copiar-recursos'
 import { sugerirRecursos } from './sugerencias-agentes'
-import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones } from './agentes'
+import { activarRecurso, comandoConAgentes, eliminarRecurso, guardarRecurso, leerBiblioteca, limpiarSesiones, migrarRecursosLocales } from './agentes'
 import { resolverPerfil } from './migracion'
 import { mantenerCavemanActualizado } from './caveman'
 import { mantenerNavegadorPlaywright } from './playwright'
@@ -39,7 +39,7 @@ import { cambiarPerfil } from './perfiles'
 import { Boveda } from './servidor/boveda'
 import { seccionesSecretas } from './servidor/secretos'
 import { FuenteArchivos, FuenteTareas, SincronizadorCuenta } from './servidor/sync-cuenta'
-import { DIR, MIGRACION_DATOS, rutasLocales, agregarProyectos, carpetaDeProyecto, cambiarCarpetaProyecto, cambiarModo, enlazarCarpetaExistente, eliminarGrupo, eliminarProyecto, moverProyectoAGrupo, renombrarProyecto, leerProyectos, proyectosSinCarpeta, sugerirRutas, validarRuta } from './proyectos'
+import { DIR, MIGRACION_DATOS, rutasLocales, agregarProyectos, carpetaDeProyecto, cambiarCarpetaProyecto, cambiarModo, enlazarCarpetaExistente, fijarEquipoActual, migrarProyectosLocales, eliminarGrupo, eliminarProyecto, moverProyectoAGrupo, renombrarProyecto, leerProyectos, proyectosSinCarpeta, sugerirRutas, validarRuta } from './proyectos'
 import { configurarMcpTareas } from './core/tareas/mcp-config'
 import { ejecutarOperacionGit } from './core/git/operaciones'
 import { appendFile, readFile, writeFile } from 'node:fs/promises'
@@ -394,6 +394,16 @@ const depsEquipos: DepsEquipos = {
   alClonar: async (id) => void (await nucleo.hidratar(id))
 }
 const equipos = new ServicioEquipos(depsEquipos)
+// Los proyectos locales son de la cuenta pero atados a este equipo: `proyectos.ts` necesita su id para pedirlos y crearlos.
+fijarEquipoActual(async () => (await equipos.equipo()).id)
+
+/** Sube los proyectos locales antiguos (`local-…`) a la cuenta atados a este equipo y lleva su tablero y conversaciones al id nuevo. */
+async function migrarLocalesAntiguos(): Promise<void> {
+  const r = await migrarProyectosLocales()
+  await nucleo.reasignarProyectos(r.proyectos, r.grupos)
+  await migrarRecursosLocales(r.proyectos, r.grupos)
+  for (const p of r.proyectos) void nucleo.hidratar(p.nuevo).catch(() => undefined) // sube lo que había aquí
+}
 // Cada petición con sesión dice desde qué equipo se hace: el servidor lo muestra en «Dispositivos conectados».
 void equipos
   .equipo()
@@ -696,6 +706,7 @@ async function conSesion(entrar: () => Promise<EstadoSesion>): Promise<Resultado
   }
   cambiandoCuenta = false
   await importarProyectosLocales().catch((err) => console.error('No se pudieron importar los proyectos locales:', err))
+  await migrarLocalesAntiguos().catch((err) => console.error('No se pudieron subir los proyectos locales antiguos:', err))
   void nucleo.hidratarTodos()
   iniciarBucleCuenta()
   return { ok: true, estado }
@@ -876,8 +887,9 @@ function registrarIpc(): void {
   })
   ipcMain.handle(Canales.proyectosCambiarModo, async (_e, grupoId: string | null, modo: string) => {
     if (modo !== 'local' && modo !== 'remoto') throw new Error('Modo desconocido.')
+    await migrarLocalesAntiguos() // lo antiguo (`local-…`) se sube antes, con sus tareas, conversaciones y agentes
     const r = await cambiarModo(grupoId ? String(grupoId) : null, modo)
-    // Lo de este equipo (tablero, conversaciones) sigue al proyecto con su id nuevo; al pasar a remoto se sube solo.
+    // Hoy los ids no cambian; si cambió alguno (antiguo que no se pudo subir antes), su tablero y conversaciones lo siguen.
     await nucleo.reasignarProyectos(r.proyectos, r.grupo)
     return { datos: r.datos, avisos: r.avisos }
   })

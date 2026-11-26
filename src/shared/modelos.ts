@@ -1,7 +1,7 @@
 export interface Grupo {
   id: string
   nombre: string
-  /** Grupo solo de este equipo (id `local-…`): sus proyectos son locales y no está en la cuenta. */
+  /** Grupo local: está en la cuenta pero atado a este equipo (el servidor no lo devuelve a otros). Solo admite proyectos locales. */
   local?: boolean
 }
 
@@ -10,7 +10,10 @@ export interface Proyecto {
   nombre: string
   ruta: string
   grupo?: string // id de Grupo
-  /** Proyecto solo de este equipo: sin id en el servidor, sin `.odesk/project.json`, sin sincronización ni seguimiento remoto. */
+  /**
+   * Proyecto local: está en la cuenta (UUID, agentes/skills, tablero y conversaciones sincronizados) pero atado a ESTE equipo: el
+   * servidor no lo devuelve a ningún otro. Sin `.odesk/project.json`. (Los antiguos `local-…` se suben solos al iniciar sesión.)
+   */
   local?: boolean
 }
 

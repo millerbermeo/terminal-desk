@@ -1,3 +1,4 @@
+import { entradaParaCli } from '@shared/core/comandos'
 import { CREDENCIALES_SIEMPRE_CONFIRMAN, sinValoresCredencial } from '@shared/credenciales-herramientas'
 import { execFile } from 'node:child_process'
 import { buscarEnPath, buscarHabitual, lanzar, WINDOWS } from '../plataforma'
@@ -631,6 +632,43 @@ export type EntradaTurno = Pick<
   esperarEco?: boolean
 }
 
+const enteroEnv = (v: string | undefined, porDefecto: number): number => {
+  const n = Number(v)
+  return v?.trim() && Number.isFinite(n) && n > 0 ? n : porDefecto
+}
+
+/**
+ * Vigía de bloqueo de un turno: si el CLI ya tomó el mensaje y deja de dar señales (ni texto, ni pensamiento, ni herramientas, ni
+ * reintentos) durante este tiempo SIN estar esperando a la persona ni ejecutando una herramienta, se da por trabado: se cierra en el
+ * acto y el turno termina con error (no se espera indefinidamente). Con el stream parcial activo, un modelo que trabaja manda algo
+ * cada pocos segundos.
+ */
+export const SILENCIO_TURNO_MS = enteroEnv(process.env.ODESK_SILENCIO_TURNO_S, 75) * 1000
+/** Lo mismo, pero con una herramienta en marcha (un `Bash` largo, un build): el CLI corta las suyas a los 10 min como mucho. */
+export const SILENCIO_HERRAMIENTA_MS = enteroEnv(process.env.ODESK_SILENCIO_HERRAMIENTA_S, 11 * 60) * 1000
+/** Cada cuánto se mira. */
+const REVISION_BLOQUEO_MS = 3000
+
+/** Límites del vigía de bloqueo (se pueden cambiar en los tests). */
+export interface LimitesBloqueo {
+  silencioMs: number
+  herramientaMs: number
+}
+
+/**
+ * ¿Está trabado el turno? Puro. No lo está si aún no tomó el mensaje (de eso se encarga la espera del eco), si ya terminó, o si espera
+ * a la persona (permiso, contraseña…): eso puede tardar lo que haga falta.
+ */
+export function motivoBloqueo(e: { conEco: boolean; terminado: boolean; esperandoPersona: number; herramientasAbiertas: number; silencioMs: number }, l: LimitesBloqueo): string | undefined {
+  if (!e.conEco || e.terminado || e.esperandoPersona > 0) return undefined
+  const limite = e.herramientasAbiertas > 0 ? l.herramientaMs : l.silencioMs
+  if (e.silencioMs < limite) return undefined
+  const s = Math.round(e.silencioMs / 1000)
+  return e.herramientasAbiertas > 0
+    ? `El asistente se quedó trabado en una herramienta (${s} s sin ninguna señal) y se cerró para no seguir esperando. La conversación se conserva: vuelve a enviar el mensaje o pídele que continúe.`
+    : `El asistente dejó de responder (${s} s sin ninguna señal) y se cerró para no seguir esperando. La conversación se conserva: vuelve a enviar el mensaje o pídele que continúe.`
+}
+
 /** Lo que se guarda del resultado de cada herramienta de un subagente (solo se muestra en «Ver trabajo»). */
 const MAX_RESULTADO_SUBAGENTE = 2000
 
@@ -654,19 +692,47 @@ export class LectorTurno {
   private final: { error?: string; texto?: string; uso?: UsoCli; esError: boolean } | undefined
   private cortado: string | undefined
   private eco: boolean
+  /** Vigía de bloqueo: última señal del CLI, herramientas sin resultado y permisos esperando a la persona. */
+  private ultimaSenal = Date.now()
+  private readonly abiertas = new Set<string>()
+  private esperandoPersona = 0
+  private vigia: NodeJS.Timeout | undefined
+  private bloqueado: string | undefined
 
   /**
    * @param responder escribe una línea en el stdin del CLI (respuestas a permisos)
    * @param alResultado el CLI informó el resultado del turno
    * @param alExceso demasiados pasos en un solo turno: quien llama interrumpe o mata el proceso
+   * @param alBloqueo el turno se trabó (sin señales): quien llama mata el proceso YA; el turno termina con el motivo como error
    */
   constructor(
     private readonly o: EntradaTurno,
     private readonly responder: (linea: string) => void,
     private readonly alResultado: () => void,
-    private readonly alExceso: () => void = () => undefined
+    private readonly alExceso: () => void = () => undefined,
+    private readonly alBloqueo?: () => void,
+    private readonly limites: LimitesBloqueo = { silencioMs: SILENCIO_TURNO_MS, herramientaMs: SILENCIO_HERRAMIENTA_MS }
   ) {
     this.eco = !o.esperarEco
+  }
+
+  /** Estado del vigía ahora mismo (para decidir si está trabado). */
+  revisarBloqueo(ahora = Date.now()): string | undefined {
+    if (this.bloqueado) return this.bloqueado
+    const motivo = motivoBloqueo(
+      { conEco: this.eco, terminado: this.final !== undefined || this.o.senal.aborted, esperandoPersona: this.esperandoPersona, herramientasAbiertas: this.abiertas.size, silencioMs: ahora - this.ultimaSenal },
+      this.limites
+    )
+    if (!motivo) return undefined
+    this.bloqueado = motivo
+    this.pararVigia()
+    this.alBloqueo?.()
+    return motivo
+  }
+
+  private pararVigia(): void {
+    clearInterval(this.vigia)
+    this.vigia = undefined
   }
 
   get listo(): boolean {
@@ -679,10 +745,16 @@ export class LectorTurno {
   }
 
   iniciar(): void {
+    this.ultimaSenal = Date.now()
+    if (this.alBloqueo && !this.vigia) {
+      this.vigia = setInterval(() => void this.revisarBloqueo(), Math.min(REVISION_BLOQUEO_MS, this.limites.silencioMs))
+      this.vigia.unref?.()
+    }
     if (!this.o.omitirInicio) this.o.alEvento({ tipo: 'inicio', prompt: this.o.prompt, ...(this.o.mensajeId ? { mensajeId: this.o.mensajeId } : {}) })
   }
 
   procesar(m: MensajeCli): void {
+    this.ultimaSenal = Date.now() // cualquier cosa del CLI (texto, pensamiento, reintentos, permisos) es señal de vida
     if (typeof m.session_id === 'string') this.sesionCli = m.session_id
     if (!this.eco) {
       // Resto de un turno anterior (resultado tardío de una interrupción…): no es de este turno. Los permisos sí se responden, o el CLI se queda esperando.
@@ -699,9 +771,15 @@ export class LectorTurno {
         const entrada = r.input ?? {}
         const responder = (response: Record<string, unknown>): void =>
           this.responder(JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: id, response } }) + '\n')
+        // Mientras la persona decide, el vigía no cuenta el silencio (puede tardar lo que quiera).
+        this.esperandoPersona++
+        const listo = (): void => {
+          this.esperandoPersona--
+          this.ultimaSenal = Date.now()
+        }
         o.alPermiso({ herramienta: r.tool_name ?? '', entrada }).then(
-          (d) => responder(d.permitir ? { behavior: 'allow', updatedInput: d.entrada ?? entrada } : { behavior: 'deny', message: d.mensaje }),
-          () => responder({ behavior: 'deny', message: 'El usuario no respondió.' })
+          (d) => (listo(), responder(d.permitir ? { behavior: 'allow', updatedInput: d.entrada ?? entrada } : { behavior: 'deny', message: d.mensaje })),
+          () => (listo(), responder({ behavior: 'deny', message: 'El usuario no respondió.' }))
         )
         return
       }
@@ -746,6 +824,7 @@ export class LectorTurno {
           // Los valores de una credencial que se guarda no pasan a los eventos (conversación, trazas, bitácora).
           const llamada = { id: b.id, nombre: b.name ?? 'herramienta', entrada: sinValoresCredencial(b.name ?? '', b.input ?? {}) }
           this.llamadas.set(b.id, llamada)
+          this.abiertas.add(b.id)
           this.herramientas++
           this.anotarSubagente(llamada, 1)
           o.alEvento({ tipo: 'herramienta_inicio', llamada })
@@ -757,6 +836,7 @@ export class LectorTurno {
         if (!Array.isArray(m.message?.content)) return // (el eco de los mensajes del usuario trae el texto como cadena)
         for (const b of m.message.content) {
           if (b.type !== 'tool_result' || !b.tool_use_id) continue
+          this.abiertas.delete(b.tool_use_id)
           const llamada = this.llamadas.get(b.tool_use_id)
           // Los valores de las credenciales de prueba llegan al modelo, pero no se guardan en la transcripción (que se sincroniza con la cuenta).
           const texto = llamada?.nombre.endsWith('credenciales_obtener') && !b.is_error ? '[valores de la credencial entregados al asistente]' : textoDe(b.content)
@@ -804,10 +884,12 @@ export class LectorTurno {
       else if (m.type === 'assistant' && b.type === 'tool_use' && b.id) {
         const llamada = { id: b.id, nombre: b.name ?? 'herramienta', entrada: sinValoresCredencial(b.name ?? '', b.input ?? {}) }
         this.llamadas.set(b.id, llamada)
+        this.abiertas.add(b.id)
         this.herramientas++ // también cuenta para no repetir un turno que ya cambió archivos (`cuenta_cambiada`)
         this.anotarSubagente(llamada, sub.profundidad + 1)
         this.o.alEvento({ ...quien, tipo: 'herramienta_inicio', llamada })
       } else if (m.type === 'user' && b.type === 'tool_result' && b.tool_use_id) {
+        this.abiertas.delete(b.tool_use_id)
         const llamada = this.llamadas.get(b.tool_use_id)
         if (!llamada) continue
         const texto = llamada.nombre.endsWith('credenciales_obtener') && !b.is_error ? '[valores de la credencial entregados al asistente]' : textoDe(b.content)
@@ -819,18 +901,19 @@ export class LectorTurno {
 
   /** Cierra el turno (el CLI informó su resultado o el proceso terminó) y arma lo que se devuelve. */
   finalizar(codigo: number | null, errores: string): SalidaEjecucion {
+    this.pararVigia()
     const o = this.o
-    const cancelado = o.senal.aborted
+    const cancelado = o.senal.aborted && !this.bloqueado
     if (this.usoModelos.length) o.alUso?.(this.usoModelos)
     const contexto = (this.ultimoUso.input_tokens ?? 0) + (this.ultimoUso.cache_read_input_tokens ?? 0) + (this.ultimoUso.cache_creation_input_tokens ?? 0)
     if (contexto > 0) o.alEvento({ tipo: 'uso_contexto', tokens: contexto, ...(this.modelo ? { modelo: this.modelo } : {}), ...(this.ventana ? { ventana: this.ventana } : {}) })
 
     const uso = this.final?.uso ?? this.ultimoUso
     // Topar MAX_PASOS no es un fallo del CLI (la ejecución iba bien): se corta por seguridad, no porque algo se rompió.
-    const fallo = this.cortado ? false : this.final ? this.final.esError : codigo !== 0
-    const mensaje = cancelado ? undefined : this.cortado ? this.cortado : fallo ? (this.final?.error || errores.trim() || `El CLI terminó con código ${codigo}`) : undefined
+    const fallo = this.bloqueado ? true : this.cortado ? false : this.final ? this.final.esError : codigo !== 0
+    const mensaje = cancelado ? undefined : this.bloqueado ? this.bloqueado : this.cortado ? this.cortado : fallo ? (this.final?.error || errores.trim() || `El CLI terminó con código ${codigo}`) : undefined
     const resultado: ResultadoAgente = {
-      estado: cancelado ? 'cancelado' : this.cortado ? 'limite_pasos' : fallo ? 'error' : 'completado',
+      estado: cancelado ? 'cancelado' : this.bloqueado ? 'error' : this.cortado ? 'limite_pasos' : fallo ? 'error' : 'completado',
       texto: this.final?.texto || this.ultimoTexto,
       mensajes: [],
       // El total de la ejecución es la suma de lo consumido por todos los modelos (subagentes incluidos); sin eso, la última llamada.
@@ -933,7 +1016,19 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<SalidaE
   }
   const canal = new CanalControl(escribir)
   // Con entrada por stream el CLI espera más mensajes tras el resultado: no hay más, se cierra la entrada.
-  const lector = new LectorTurno(o, (l) => void escribir(l), () => { if (o.alPermiso) hijo.stdin.end() }, () => hijo.kill())
+  // Trabado (sin señales): se mata en el acto (SIGKILL si no sale) y, aunque `close` no llegue (un nieto retiene las tuberías), el
+  // turno se da por terminado a los 4 s; `finalizar` devuelve el motivo como error.
+  let forzarCierre: (() => void) | undefined
+  const cortarTrabado = (): void => {
+    hijo.kill()
+    const t = setTimeout(() => {
+      if (hijo.exitCode === null && hijo.signalCode === null) hijo.kill('SIGKILL')
+    }, 3000)
+    t.unref()
+    const f = setTimeout(() => forzarCierre?.(), 4000)
+    f.unref()
+  }
+  const lector = new LectorTurno(o, (l) => void escribir(l), () => { if (o.alPermiso) hijo.stdin.end() }, () => hijo.kill(), cortarTrabado)
   o.alProceso?.({ control: (r, t) => canal.enviar(r, t), interrumpir: () => void canal.enviar({ subtype: 'interrupt' }, 2000).catch(() => hijo.kill()) })
   let errores = ''
   lector.iniciar()
@@ -942,13 +1037,14 @@ export async function ejecutarSuscripcion(o: OpcionesEjecucion): Promise<SalidaE
   hijo.stderr.on('data', (d: Buffer) => (errores = (errores + d.toString('utf8')).slice(-2000)))
 
   hijo.stdin.on('error', () => undefined)
-  const entradaCli = o.prefijoPrompt ? `${o.prefijoPrompt}\n\n${o.prompt}` : o.prompt
+  const entradaCli = entradaParaCli(o.prompt, o.prefijoPrompt)
   if (o.alPermiso) hijo.stdin.write(JSON.stringify({ type: 'user', ...(o.mensajeId ? { uuid: o.mensajeId } : {}), message: { role: 'user', content: entradaCli } }) + '\n')
   else hijo.stdin.end(entradaCli)
 
   const codigo = await new Promise<number | null>((res, rej) => {
     hijo.on('error', rej)
     hijo.on('close', res)
+    forzarCierre = () => res(null)
   }).finally(() => o.senal.removeEventListener('abort', abortar))
   canal.cerrar()
   return lector.finalizar(codigo, errores)

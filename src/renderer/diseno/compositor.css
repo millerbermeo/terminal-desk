@@ -43,8 +43,11 @@
 @keyframes cmp-girar { to { --cmp-angulo: 360deg; } }
 @keyframes cmp-respirar { 50% { opacity: 0.35; transform: scale(0.94); } }
 
+/* La altura la pone `useAutoAltura` (crece con el texto hasta max-height y luego se desplaza): `flex: none` para que el flex de la
+   tarjeta (basis 0) no la ignore. */
 .cmp .ag-entrada textarea, .cmp .ag-entrada textarea:hover, .cmp .ag-entrada textarea:focus {
-  width: 100%; min-height: 46px; max-height: 40vh; padding: 10px 10px 4px; font-size: 13.5px; line-height: 1.55;
+  flex: none; width: 100%; min-height: 46px; max-height: 50vh; padding: 10px 10px 4px; font-size: 13.5px; line-height: 1.55;
+  overflow-y: hidden; scrollbar-width: thin;
   background: transparent; border: 0; box-shadow: none; resize: none; outline: none; caret-color: var(--acento);
 }
 .cmp .ag-entrada textarea::placeholder { color: var(--texto-tenue); transition: opacity var(--medio) ease-out, transform var(--muelle-t) var(--muelle); }

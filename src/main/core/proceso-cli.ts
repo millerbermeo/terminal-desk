@@ -1,3 +1,4 @@
+import { entradaParaCli } from '@shared/core/comandos'
 import type { ChildProcess } from 'node:child_process'
 import { lanzar } from '../plataforma'
 import { createHash, randomUUID } from 'node:crypto'
@@ -35,7 +36,7 @@ const entero = (v: string | undefined, porDefecto: number): number => {
  * Si el CLI no repite el mensaje y además no saca nada en este tiempo, es que no lo va a atender: se mata y el turno termina con error en
  * vez de esperar para siempre. Mientras saque algo (p. ej. compactando el contexto antes de tomarlo) se le sigue esperando.
  */
-const ESPERA_ECO_MS = entero(process.env.ODESK_ESPERA_ECO_S, 120) * 1000
+const ESPERA_ECO_MS = entero(process.env.ODESK_ESPERA_ECO_S, 60) * 1000
 
 /** El proceso ya había terminado: quien llama puede lanzar otro y repetir (el mensaje no llegó a enviarse). */
 export class ProcesoCerrado extends Error {
@@ -185,11 +186,13 @@ export class ProcesoCli implements ControlProceso {
         }
         // Todo mensaje lleva un uuid propio: con él se reconoce su eco (y el CLI ignora los repetidos).
         const mensajeId = o.mensajeId ?? randomUUID()
-        const lector = new LectorTurno({ ...o, mensajeId, esperarEco: true }, (l) => void this.escribir(l), () => terminar(0), () => interrumpirOMatar(10_000))
+        // Trabado tras tomar el mensaje (sin señales): se mata ya; al cerrarse, `terminar` devuelve el motivo como error y el siguiente
+        // mensaje reanuda la conversación en un proceso nuevo.
+        const lector = new LectorTurno({ ...o, mensajeId, esperarEco: true }, (l) => void this.escribir(l), () => terminar(0), () => interrumpirOMatar(10_000), () => this.cortarTrabado())
         this.turno = { lector, terminar }
         o.senal.addEventListener('abort', alAbortar, { once: true })
         lector.iniciar()
-        const entrada = o.prefijoPrompt ? `${o.prefijoPrompt}\n\n${o.prompt}` : o.prompt
+        const entrada = entradaParaCli(o.prompt, o.prefijoPrompt)
         const enviado = this.escribir(JSON.stringify({ type: 'user', uuid: mensajeId, message: { role: 'user', content: entrada } }) + '\n')
         if (!enviado) {
           this.turno = undefined
@@ -225,6 +228,21 @@ export class ProcesoCli implements ControlProceso {
 
   matar(): void {
     this.hijo.kill()
+    // Un CLI colgado puede ignorar SIGTERM: a los 3 s, SIGKILL.
+    const t = setTimeout(() => {
+      if (this.vivo) this.hijo.kill('SIGKILL')
+    }, 3000)
+    t.unref()
+  }
+
+  /**
+   * Turno trabado: se mata el CLI y, aunque el proceso no llegue a cerrarse (un hijo suyo puede retener las tuberías y `close` no
+   * llegar nunca), a los 4 s se da por terminado igualmente: el turno acaba con el error del vigía y el proceso no se reutiliza.
+   */
+  private cortarTrabado(): void {
+    this.matar()
+    const t = setTimeout(() => this.terminado(null), 4000)
+    t.unref()
   }
 }
 

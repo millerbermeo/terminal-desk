@@ -199,7 +199,15 @@ export function ModalAgregar({ datos, onGuardado, onCerrar, rutasIniciales }: Pr
         </div>
         <div className="modal-modo" role="radiogroup" aria-label="Tipo de proyecto">
           <label>
-            <input type="radio" name="modo-proyecto" checked={modo === 'compartido'} onChange={() => setModo('compartido')} /> <b>Compartido</b>
+            <input
+              type="radio"
+              name="modo-proyecto"
+              checked={modo === 'compartido'}
+              onChange={() => {
+                setModo('compartido')
+                if (datos.grupos.some((g) => g.id === grupo && g.local)) setGrupo(SIN_GRUPO) // un proyecto de la cuenta no entra en un grupo local
+              }}
+            /> <b>Compartido</b>
             <span className="cfg-nota"> — en tu cuenta: se enlaza con un <code>.odesk/project.json</code>, sincroniza tareas, conversaciones y estado con tus otros equipos y con GitHub.</span>
           </label>
           <label>
@@ -207,25 +215,25 @@ export function ModalAgregar({ datos, onGuardado, onCerrar, rutasIniciales }: Pr
               type="radio"
               name="modo-proyecto"
               checked={modo === 'local'}
-              onChange={() => {
-                setModo('local')
-                if (grupo === NUEVO) setGrupo(SIN_GRUPO)
-              }}
+              onChange={() => setModo('local')}
             />{' '}
             <b>Local</b>
-            <span className="cfg-nota"> — solo en este equipo: no crea id de Odesk ni archivos en la carpeta y no tiene seguimiento remoto.</span>
+            <span className="cfg-nota"> — se sube a tu cuenta igual que los demás (agentes, skills, tareas y conversaciones funcionan), pero <b>solo aparece en este equipo</b>: ningún otro PC donde abras la cuenta lo verá. No escribe archivos en la carpeta.</span>
           </label>
         </div>
         <label>
           Grupo
           <select value={grupo} onChange={(e) => setGrupo(e.target.value)}>
             <option value={SIN_GRUPO}>Sin grupo</option>
-            {datos.grupos.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.nombre}
-              </option>
-            ))}
-            {modo === 'compartido' && <option value={NUEVO}>+ Nuevo grupo…</option>}
+            {datos.grupos
+              .filter((g) => modo === 'local' || !g.local)
+              .map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.nombre}
+                  {g.local ? ' (local)' : ''}
+                </option>
+              ))}
+            <option value={NUEVO}>+ Nuevo grupo{modo === 'local' ? ' local' : ''}…</option>
           </select>
         </label>
         {grupo === NUEVO && (

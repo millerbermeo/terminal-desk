@@ -120,3 +120,25 @@ export function expandirPlantilla(plantilla: string, argumentos: string): string
 export function dividirArgumentos(texto: string): string[] {
   return [...texto.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3]!)
 }
+
+/**
+ * ¿El texto es un comando `/nombre`? Solo si la primera palabra es `/` + un nombre (letras, cifras, `-`, `_`) y termina ahí (espacio,
+ * salto de línea o fin). Una ruta como `/home/dev/mi proyecto/assets` o `/etc/hosts` NO lo es: su primera palabra lleva más `/`
+ * (o `.`, `~`…), así que se envía como mensaje normal.
+ */
+export function esComandoSlash(texto: string): boolean {
+  return /^\/[a-z0-9_-]+(?=\s|$)/i.test(texto.trimStart())
+}
+
+/** Línea que se antepone a un mensaje que empieza por `/` sin ser un comando (una ruta): el CLI lo trataría como comando. */
+export const AVISO_RUTA_INICIAL = 'Mensaje del usuario (empieza por una ruta; no es un comando):'
+
+/**
+ * Texto que se escribe al CLI de Claude Code: el CLI interpreta como comando todo lo que empiece por `/`, así que un mensaje que
+ * empieza por una ruta (`/home/dev/…`) fallaba con «comando desconocido». A ese se le antepone `AVISO_RUTA_INICIAL`; los comandos
+ * de verdad (`/compact`…) van tal cual.
+ */
+export function entradaParaCli(prompt: string, prefijo?: string): string {
+  if (prefijo) return `${prefijo}\n\n${prompt}` // ya no empieza por «/»
+  return prompt.trimStart().startsWith('/') && !esComandoSlash(prompt) ? `${AVISO_RUTA_INICIAL}\n${prompt}` : prompt
+}

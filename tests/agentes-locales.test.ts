@@ -25,6 +25,7 @@ beforeAll(async () => {
   srv.apuntar()
   agentes = await import('../src/main/agentes')
   proyectos = await import('../src/main/proyectos')
+  proyectos.fijarEquipoActual(async () => '9a9a9a9a-0000-4000-8000-0000000000e1')
   await srv.entrar()
   const r = await proyectos.agregarProyectos({ modo: 'local', proyectos: [{ nombre: 'App local', ruta: join(casa, 'app') }] })
   localId = (await proyectos.leerProyectos()).proyectos.find((p) => p.nombre === 'App local')!.id
@@ -33,29 +34,45 @@ beforeAll(async () => {
 afterAll(() => srv.cerrar())
 
 describe('agentes y skills en proyectos locales', () => {
-  it('activar un compartido en un proyecto local se guarda en este equipo y no llama al servidor', async () => {
-    expect(localId.startsWith('local-')).toBe(true)
-    const b = await agentes.activarRecurso({ tipo: 'proyecto', id: localId }, COMPARTIDO, true)
-    expect(b.activaciones.proyectos[localId]).toEqual([COMPARTIDO])
-    expect(srv.peticiones.some((x) => x.includes('/agentes/activaciones'))).toBe(false)
-    expect(existsSync(join(casa, '.odesk-agent', 'agentes-locales.json'))).toBe(true)
-    const b2 = await agentes.activarRecurso({ tipo: 'proyecto', id: localId }, COMPARTIDO, false)
-    expect(b2.activaciones.proyectos[localId]).toBeUndefined()
+  it('un proyecto local es de la cuenta (UUID atado a este equipo): usa la biblioteca del servidor como los demás', async () => {
+    expect(localId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(srv.proyectos.find((p) => p.id === localId)?.equipo).toBe('9a9a9a9a-0000-4000-8000-0000000000e1')
+    expect((await agentes.leerBiblioteca()).recursos.map((x) => x.id)).toContain(COMPARTIDO)
   })
 
-  it('un agente propio de un proyecto local se guarda, se lista y se elimina en local', async () => {
-    const r = await agentes.guardarRecurso({ id: '', tipo: 'agente', nombre: 'Revisor', descripcion: 'Revisa', contenido: 'Revisa el código', ambito: 'proyecto', proyectoId: localId, herramientas: [], modelo: '' } as Recurso)
-    expect(r.ok).toBe(true)
-    const propio = (await agentes.leerBiblioteca()).recursos.find((x) => x.nombre === 'Revisor')!
-    expect(propio.id.startsWith('local-')).toBe(true)
-    expect(propio.proyectoId).toBe(localId)
-    const b = await agentes.eliminarRecurso(propio.id)
-    expect(b.recursos.some((x) => x.id === propio.id)).toBe(false)
+  it('(antiguo, id local-…) activar un compartido se guarda en este equipo y no llama al servidor', async () => {
+    const antiguo = 'local-antiguo'
+    const b = await agentes.activarRecurso({ tipo: 'proyecto', id: antiguo }, COMPARTIDO, true)
+    expect(b.activaciones.proyectos[antiguo]).toEqual([COMPARTIDO])
+    expect(srv.peticiones.some((x) => x.includes('/agentes/activaciones'))).toBe(false)
+    expect(existsSync(join(casa, '.odesk-agent', 'agentes-locales.json'))).toBe(true)
+    const b2 = await agentes.activarRecurso({ tipo: 'proyecto', id: antiguo }, COMPARTIDO, false)
+    expect(b2.activaciones.proyectos[antiguo]).toBeUndefined()
+  })
+
+  it('(antiguo) al subir el proyecto, sus agentes propios y activaciones pasan al servidor con el id nuevo', async () => {
+    await writeFile(
+      join(casa, '.odesk-agent', 'agentes-locales.json'),
+      JSON.stringify({
+        recursos: [{ id: 'local-r1', tipo: 'agente', nombre: 'Revisor', descripcion: 'Revisa', contenido: 'Revisa el código', ambito: 'proyecto', proyectoId: 'local-viejo', herramientas: [], modelo: '' }],
+        activaciones: { proyectos: { 'local-viejo': [COMPARTIDO] }, grupos: {} }
+      })
+    )
+    await agentes.migrarRecursosLocales([{ viejo: 'local-viejo', nuevo: localId }])
+    const b = await agentes.leerBiblioteca()
+    const revisor = b.recursos.find((x) => x.nombre === 'Revisor')!
+    expect(revisor.id.startsWith('local-')).toBe(false) // ya está en el servidor
+    expect(revisor.proyectoId).toBe(localId)
+    expect(b.activaciones.proyectos[localId]).toEqual([COMPARTIDO])
+    expect(b.activaciones.proyectos['local-viejo']).toBeUndefined()
+    expect(b.recursos.filter((x) => x.nombre === 'Revisor')).toHaveLength(1)
   })
 
   it('un archivo local ilegible no rompe la biblioteca', async () => {
     await writeFile(join(casa, '.odesk-agent', 'agentes-locales.json'), '{ roto')
-    expect((await agentes.leerBiblioteca()).recursos.map((x) => x.id)).toEqual([COMPARTIDO])
+    const ids = (await agentes.leerBiblioteca()).recursos.map((x) => x.id)
+    expect(ids).toContain(COMPARTIDO)
+    expect(ids.some((id) => id.startsWith('local-'))).toBe(false)
   })
 })
 

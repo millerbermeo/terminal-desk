@@ -116,10 +116,16 @@ export function PanelTrabajo({ turno, onCerrar }: { turno: Turno; onCerrar: () =
       aria-modal="false"
       aria-labelledby="trb-titulo"
       onAnimationEnd={(e) => e.target === e.currentTarget && saliendo && onCerrar()}
+      data-vivo={enCurso ? 'si' : 'no'}
     >
+      <div className="trb-fondo" aria-hidden="true">
+        <span className="trb-rejilla" />
+        <span className="trb-aurora" />
+        <span className="trb-barrido" />
+      </div>
       <header className="trb-cab">
         <div className="trb-titulo">
-          <span className={`trb-pulso estado-${raiz.estado}`} aria-hidden="true" />
+          <Nucleo estado={raiz.estado} />
           <div>
             <h3 id="trb-titulo">Trabajo del asistente</h3>
             <p title={turno.prompt}>{turno.prompt || '(sin mensaje)'}</p>
@@ -164,7 +170,10 @@ export function PanelTrabajo({ turno, onCerrar }: { turno: Turno; onCerrar: () =
         </div>
       </dl>
 
+      <Telemetria tr={tr} vivo={enCurso} ahora={ahora} />
+
       <div className="trb-pestanas" role="tablist" aria-label="Vistas del trabajo" onKeyDown={moverPestana}>
+        <span className="trb-indicador" aria-hidden="true" style={{ '--i': VISTAS.findIndex((v) => v.id === vista), '--n': VISTAS.length } as React.CSSProperties} />
         {VISTAS.map((v, i) => (
           <button
             key={v.id}
@@ -185,7 +194,7 @@ export function PanelTrabajo({ turno, onCerrar }: { turno: Turno; onCerrar: () =
         ))}
       </div>
 
-      <div className="trb-cuerpo" role="tabpanel" id={`trb-vista-${vista}`} aria-labelledby={`trb-tab-${vista}`}>
+      <div key={vista} className="trb-cuerpo" role="tabpanel" id={`trb-vista-${vista}`} aria-labelledby={`trb-tab-${vista}`}>
         {vista === 'arbol' && <VistaArbol tr={tr} />}
         {vista === 'skills' && <VistaSkills tr={tr} vivo={enCurso} />}
         {vista === 'tiempo' && <VistaTiempo tr={tr} />}
@@ -194,6 +203,43 @@ export function PanelTrabajo({ turno, onCerrar }: { turno: Turno; onCerrar: () =
       {tr.relativo && <p className="trb-nota">Turno recuperado del historial: sin tiempos reales, la escala sigue el orden de los pasos.</p>}
     </aside>,
     document.body
+  )
+}
+
+// ---------------------------------------------------------------- HUD
+
+/** Núcleo del estado general: anillos que giran mientras trabaja, se detienen en verde al terminar y en rojo si falla. */
+function Nucleo({ estado }: { estado: EstadoNodo }) {
+  return (
+    <span className={`trb-nucleo estado-${estado}`} aria-hidden="true">
+      <span className="trb-anillo a1" />
+      <span className="trb-anillo a2" />
+      <span className="trb-anillo a3" />
+      <span className="trb-centro" />
+    </span>
+  )
+}
+
+/** Barras de telemetría: cuántas acciones hubo en cada tramo del turno (la última se rellena en vivo). */
+const TRAMOS = 32
+export function tramosActividad(tr: Pick<Trabajo, 'actividad' | 'desde' | 'hasta'>, ahora: number, vivo: boolean, tramos = TRAMOS): number[] {
+  const fin = vivo ? Math.max(tr.hasta, ahora) : tr.hasta
+  const ancho = Math.max(1, (fin - tr.desde) / tramos)
+  const cuenta = new Array<number>(tramos).fill(0)
+  for (const a of tr.actividad) cuenta[Math.min(tramos - 1, Math.max(0, Math.floor((a.t - tr.desde) / ancho)))]!++
+  return cuenta
+}
+
+function Telemetria({ tr, vivo, ahora }: { tr: Trabajo; vivo: boolean; ahora: number }) {
+  const cuenta = useMemo(() => tramosActividad(tr, ahora, vivo), [tr, ahora, vivo])
+  const max = Math.max(1, ...cuenta)
+  if (tr.actividad.length === 0) return null
+  return (
+    <div className={`trb-telemetria${vivo ? ' viva' : ''}`} role="img" aria-label={`Actividad del turno: ${tr.actividad.length} acciones`}>
+      {cuenta.map((c, i) => (
+        <span key={i} className={c ? 'con' : undefined} style={{ '--h': `${Math.max(6, Math.round((c / max) * 100))}%`, '--d': `${i * 18}ms` } as React.CSSProperties} />
+      ))}
+    </div>
   )
 }
 
@@ -234,7 +280,11 @@ function RamaArbol({ tr, id }: { tr: Trabajo; id: string }) {
 const TarjetaAgente = memo(function TarjetaAgente({ n, tr }: { n: NodoTrabajo; tr: Trabajo }) {
   const ultimo = n.pasos.at(-1)
   return (
-    <article className={`trb-tarjeta estado-${n.estado} tono-${tonoDe(n.agente)}`} aria-label={`${n.agente}: ${ESTADO[n.estado]}`}>
+    <article
+      className={`trb-tarjeta estado-${n.estado} tono-${tonoDe(n.agente)}`}
+      aria-label={`${n.agente}: ${ESTADO[n.estado]}`}
+      style={{ '--orden': Math.max(0, Math.min(12, tr.orden.indexOf(n.id))) } as React.CSSProperties}
+    >
       <div className="trb-tarjeta-cab">
         <span className={`trb-orbe${n.categoriaActual ? ` cat-${n.categoriaActual}` : ''}`} aria-hidden="true">
           {n.estado === 'completado' ? <IconoHecho /> : n.estado === 'error' ? '!' : n.categoriaActual ? <IconoCategoria categoria={n.categoriaActual} /> : <span className="trb-punto" />}

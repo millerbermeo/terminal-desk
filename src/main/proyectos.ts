@@ -1,5 +1,4 @@
 import { exigirConexion } from './montajes'
-import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { access, mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
@@ -20,7 +19,11 @@ export const DIR = MIGRACION_DATOS.dir
 /** Carpeta de cada proyecto en ESTE equipo: el servidor no guarda rutas. */
 export const rutasLocales = new RutasLocales(join(DIR, 'rutas.json'))
 
-/** Proyectos locales: solo viven en este equipo (`proyectos-locales.json`), con id `local-…` (nunca un UUID: nada los sube al servidor). */
+/**
+ * Proyectos locales ANTIGUOS (`proyectos-locales.json`, id `local-…`): ya no se crean. Hoy un proyecto local es uno normal de la cuenta
+ * con `deviceId` = este equipo (el servidor solo lo devuelve aquí). `migrarProyectosLocales` sube los antiguos al arrancar; mientras
+ * no se pueda (sin conexión) se siguen mostrando desde el archivo.
+ */
 interface ProyectoLocal {
   id: string
   nombre: string
@@ -42,6 +45,8 @@ let colaLocales: Promise<unknown> = Promise.resolve()
 export const esProyectoLocal = (id: unknown): id is string => typeof id === 'string' && id.startsWith('local-')
 /** Mismo prefijo que los proyectos: un grupo `local-…` nunca va al servidor. */
 export const esGrupoLocal = esProyectoLocal
+/** Grupo local (antiguo `local-…` o de la cuenta atado a este equipo). */
+const esGrupoLocalEn = (datos: DatosProyectos, id: string): boolean => esGrupoLocal(id) || datos.grupos.some((g) => g.id === id && g.local)
 
 async function leerArchivoLocales(): Promise<ArchivoLocales> {
   try {
@@ -80,12 +85,37 @@ function cambiarLocales(fn: (l: ProyectoLocal[]) => ProyectoLocal[]): Promise<vo
 interface GrupoApi {
   id: string
   name: string
+  /** Grupo local de este equipo (el servidor no devuelve los de otros equipos). */
+  deviceId?: string | null
 }
 interface ProyectoApi {
   id: string
   name: string
   repo: string | null
   groupId: string | null
+  /** Proyecto local de este equipo (el servidor no devuelve los de otros equipos). */
+  deviceId?: string | null
+}
+
+/** Id de ESTE equipo (`equipo.json`); lo fija `index.ts` con `fijarEquipoActual`. Sin él no se pueden crear ni ver proyectos locales. */
+let equipoActual: (() => Promise<string>) | undefined
+export function fijarEquipoActual(fn: () => Promise<string>): void {
+  equipoActual = fn
+  olvidarProyectos()
+}
+async function idEquipo(): Promise<string | undefined> {
+  return equipoActual ? equipoActual().catch(() => undefined) : undefined
+}
+async function exigirEquipo(): Promise<string> {
+  const id = await idEquipo()
+  if (!id) throw new Error('No se pudo identificar este equipo: los proyectos locales necesitan su id (equipo.json).')
+  return id
+}
+
+/** `GET /projects` con el id de este equipo: así el servidor incluye sus proyectos y grupos locales (y nunca los de otro equipo). */
+async function pedirLista(): Promise<{ groups: GrupoApi[]; projects: ProyectoApi[] }> {
+  const equipo = await idEquipo()
+  return servidor.get<{ groups: GrupoApi[]; projects: ProyectoApi[] }>(equipo ? `/projects?device=${encodeURIComponent(equipo)}` : '/projects')
 }
 
 // Las lecturas se repiten mucho (cada operación de git o archivos resuelve la carpeta del proyecto): se guardan un instante.
@@ -110,7 +140,7 @@ export async function leerProyectos(): Promise<DatosProyectos> {
   let vigente = true
   try {
     const usuario = (await servidor.estado()).email // antes de pedir: si la cuenta cambia durante la petición, no se etiqueta con la nueva
-    r = await servidor.get<{ groups: GrupoApi[]; projects: ProyectoApi[] }>('/projects')
+    r = await pedirLista()
     ultimaLectura = { ...r, usuario }
   } catch (err) {
     // Sin conexión (o el servidor caído) se sigue con lo último que respondió para esta cuenta: enviar un mensaje al Asistente, abrir un
@@ -121,11 +151,14 @@ export async function leerProyectos(): Promise<DatosProyectos> {
   }
   const locales = await rutasLocales.todas()
   const archivo = await leerArchivoLocales()
-  const grupos = [...r.groups.map((g) => ({ id: g.id, nombre: g.name })), ...archivo.grupos.map((g) => ({ id: g.id, nombre: g.nombre, local: true as const }))]
+  const grupos = [...r.groups.map((g) => ({ id: g.id, nombre: g.name, ...(g.deviceId ? { local: true as const } : {}) })), ...archivo.grupos.map((g) => ({ id: g.id, nombre: g.nombre, local: true as const }))]
   const soloAqui = archivo.proyectos.map((p) => ({ id: p.id, nombre: p.nombre, ruta: p.ruta, local: true as const, ...(p.grupo && grupos.some((g) => g.id === p.grupo) ? { grupo: p.grupo } : {}) }))
   const datos: DatosProyectos = {
     grupos,
-    proyectos: [...r.projects.flatMap((p) => (locales[p.id] ? [{ id: p.id, nombre: p.name, ruta: locales[p.id], ...(p.groupId ? { grupo: p.groupId } : {}) }] : [])), ...soloAqui]
+    proyectos: [
+      ...r.projects.flatMap((p) => (locales[p.id] ? [{ id: p.id, nombre: p.name, ruta: locales[p.id], ...(p.groupId ? { grupo: p.groupId } : {}), ...(p.deviceId ? { local: true as const } : {}) }] : [])),
+      ...soloAqui
+    ]
   }
   memoria = { datos, hasta: Date.now() + VIGENCIA_MS }
   if (vigente) void completarRepos(r.projects, locales)
@@ -272,17 +305,32 @@ export async function agregarProyectos(sol: SolicitudAgregar): Promise<Resultado
   if (errores.length > 0) return { datos, errores }
 
   if (sol.modo === 'local') {
-    if (sol.grupoNuevo?.trim()) return { datos, errores: [{ indice: -1, mensaje: 'Un proyecto local usa un grupo que ya exista: crear grupos es cosa de la cuenta.' }] }
-    // Sin servidor, sin `.odesk/project.json`, sin seguimiento remoto: solo se apunta la carpeta en este equipo.
+    // Se sube a la cuenta como cualquier otro (agentes, skills, tablero y conversaciones funcionan igual), pero atado a ESTE equipo:
+    // el servidor no lo devuelve en ningún otro. Sin `.odesk/project.json` (no debe retomarse en otro equipo al clonar el repo).
     const yaAqui = new Set([...datos.proyectos.map((p) => p.ruta), ...(await leerLocales()).map((p) => p.ruta)])
     for (const [i, p] of sol.proyectos.entries()) if (yaAqui.has(rutas[i])) errores.push({ indice: i, mensaje: `Esa carpeta ya es un proyecto: ${p.nombre.trim()}` })
     if (errores.length > 0) return { datos, errores }
-    await cambiarLocales((l) => [...l, ...sol.proyectos.map((p, i) => ({ id: `local-${randomUUID()}`, nombre: p.nombre.trim(), ruta: rutas[i], ...(sol.grupoId ? { grupo: sol.grupoId } : {}) }))])
-    olvidarProyectos()
+    const deviceId = await exigirEquipo()
+    const nombreGrupoLocal = sol.grupoNuevo?.trim()
+    const destinoLocal = sol.grupoId ? { groupId: sol.grupoId } : nombreGrupoLocal ? { groupName: nombreGrupoLocal } : {}
+    try {
+      for (const [i, p] of sol.proyectos.entries()) {
+        try {
+          const repo = await repoDe(rutas[i]).catch(() => undefined)
+          const creado = await servidor.post<{ id: string }>('/projects', { name: p.nombre.trim(), ...(repo ? { repo } : {}), ...destinoLocal, deviceId })
+          await rutasLocales.fijar(creado.id, rutas[i])
+        } catch (err) {
+          if (err instanceof ErrorSesion || (err instanceof ErrorServidor && err.estado === undefined) || !(err instanceof Error)) throw err
+          errores.push({ indice: i, mensaje: err.message })
+        }
+      }
+    } finally {
+      olvidarProyectos()
+    }
     return { datos: await leerProyectos(), errores }
   }
 
-  if (sol.grupoId && esGrupoLocal(sol.grupoId)) return { datos, errores: [{ indice: -1, mensaje: 'Ese grupo es local: solo admite proyectos locales. Pásalo a remoto o agrega los proyectos como locales.' }] }
+  if (sol.grupoId && esGrupoLocalEn(datos, sol.grupoId)) return { datos, errores: [{ indice: -1, mensaje: 'Ese grupo es local: solo admite proyectos locales. Pásalo a remoto o agrega los proyectos como locales.' }] }
 
   // El servidor crea (o reutiliza por nombre) el grupo nuevo con el primer proyecto; los demás ya lo encuentran.
   const nombreGrupo = sol.grupoNuevo?.trim()
@@ -323,8 +371,8 @@ export function claveRepo(url: string): string | undefined {
 async function proyectoPorRepo(repo: string): Promise<string | undefined> {
   const clave = claveRepo(repo)
   if (!clave) return undefined
-  const { projects } = await servidor.get<{ projects: { id: string; repo?: string | null }[] }>('/projects')
-  const candidatos = projects.filter((p) => p.repo && claveRepo(p.repo) === clave)
+  const { projects } = await pedirLista()
+  const candidatos = projects.filter((p) => !p.deviceId && p.repo && claveRepo(p.repo) === clave)
   if (candidatos.length !== 1) return undefined
   const locales = await rutasLocales.todas()
   return locales[candidatos[0]!.id] ? undefined : candidatos[0]!.id
@@ -386,7 +434,8 @@ export async function moverProyectoAGrupo(id: string, grupoId: string | null): P
     olvidarProyectos()
     return leerProyectos()
   }
-  if (grupoId && esGrupoLocal(grupoId)) throw new Error('Ese grupo es local: un proyecto de la cuenta no puede entrar. Pasa el grupo a remoto o este proyecto a local.')
+  const actuales = await leerProyectos()
+  if (grupoId && esGrupoLocalEn(actuales, grupoId) && !actuales.proyectos.some((p) => p.id === id && p.local)) throw new Error('Ese grupo es local: un proyecto de la cuenta no puede entrar. Pasa el grupo a remoto o este proyecto a local.')
   try {
     await servidor.put(`/projects/${encodeURIComponent(id)}/group`, { groupId: grupoId })
   } finally {
@@ -431,7 +480,7 @@ export async function registrarProyecto(ruta: string, nombre: string, grupoId?: 
 
 /** Proyectos de la cuenta que aún no tienen carpeta en este equipo (candidatos a clonar, o a enlazar con su carpeta si no tienen repositorio). Conservan su grupo de la cuenta. */
 export async function proyectosSinCarpeta(): Promise<{ id: string; nombre: string; repo: string; grupoId?: string }[]> {
-  const r = await servidor.get<{ groups: GrupoApi[]; projects: ProyectoApi[] }>('/projects')
+  const r = await pedirLista()
   const locales = await rutasLocales.todas()
   return r.projects.flatMap((p) => (!locales[p.id] ? [{ id: p.id, nombre: p.name, repo: p.repo ?? '', ...(p.groupId ? { grupoId: p.groupId } : {}) }] : []))
 }
@@ -501,92 +550,115 @@ export async function vincularCarpetaAProyecto(ruta: string, proyectoId: string)
 /** Id viejo → id nuevo de cada proyecto que cambió de modo (tareas y conversaciones se reasignan con esto). */
 export interface ResultadoModo {
   datos: DatosProyectos
+  /** Hoy solo cambian de id los proyectos locales antiguos (`local-…`) al subirse; los demás conservan el suyo. */
   proyectos: { viejo: string; nuevo: string }[]
-  /** Si el grupo cambió de id (de la cuenta a local o al revés). */
+  /** Si el grupo cambió de id (grupo local antiguo que se sube). */
   grupo?: { viejo: string; nuevo: string }
   avisos: string[]
 }
 
 /**
- * Pasa un grupo entero (o los proyectos «sin grupo» de este equipo, `grupoId = null`) a local o a remoto.
- * - A local: cada proyecto de la cuenta se apunta en `proyectos-locales.json` con un id `local-…`, se suelta su `.odesk/project.json`
- *   (si no está versionado) y **se borra del servidor** (con sus tareas, conversaciones y trazas allí; aquí se conservan). El grupo se
- *   recrea como local y se borra el de la cuenta. Si el grupo tiene proyectos de la cuenta sin carpeta en este equipo, no se hace nada.
- * - A remoto: cada proyecto local se registra en la cuenta (o reanuda el suyo por `.odesk/project.json`/remoto de git) y deja de ser
- *   local; el grupo local se crea (o reutiliza por nombre) en la cuenta.
+ * Pasa un grupo entero (o los proyectos «sin grupo» de este equipo, `grupoId = null`) a local o a remoto. Los proyectos **siguen en la
+ * cuenta con el mismo id** (tablero, conversaciones, agentes y skills no se pierden): solo cambia quién los ve.
+ * - A local: el servidor los ata a este equipo (`deviceId`) y deja de devolverlos a los demás. Se suelta su `.odesk/project.json`
+ *   (si no está versionado) para que otro equipo no intente retomarlos. Se niega si el grupo tiene proyectos de la cuenta sin carpeta
+ *   aquí (desaparecerían de todos lados).
+ * - A remoto: vuelven a la cuenta (visibles en todos los equipos) y se escribe su `.odesk/project.json`.
  * Se hace proyecto a proyecto: si algo falla a mitad, lo ya movido queda movido y el error lo dice.
  */
 export async function cambiarModo(grupoId: string | null, modo: 'local' | 'remoto'): Promise<ResultadoModo> {
+  // Lo antiguo (`local-…`) primero se sube: así todo lo que sigue trabaja con ids de la cuenta.
+  const migrado = await migrarProyectosLocales()
+  if (grupoId) grupoId = migrado.grupos.find((g) => g.viejo === grupoId)?.nuevo ?? grupoId
   const datos = await leerProyectos()
   const grupo = grupoId ? datos.grupos.find((g) => g.id === grupoId) : undefined
   if (grupoId && !grupo) throw new Error('El grupo no existe.')
+  if (esGrupoLocal(grupoId) || datos.proyectos.some((p) => esProyectoLocal(p.id))) throw new Error('Hay proyectos locales antiguos que aún no se pudieron subir a la cuenta. Revisa la conexión y vuelve a intentarlo.')
   const enGrupo = (p: (typeof datos.proyectos)[number]): boolean => (grupoId ? p.grupo === grupoId : !p.grupo || !datos.grupos.some((g) => g.id === p.grupo))
   const proyectos = datos.proyectos.filter(enGrupo)
-  const cambios: { viejo: string; nuevo: string }[] = []
   const avisos: string[] = []
-  let grupoNuevo: { viejo: string; nuevo: string } | undefined
+  const deviceId = modo === 'local' ? await exigirEquipo() : null
 
   try {
-    if (modo === 'local') {
-      let destino: string | undefined
-      if (grupoId && !esGrupoLocal(grupoId)) {
-        const fuera = (await proyectosSinCarpeta()).filter((p) => p.grupoId === grupoId)
-        if (fuera.length) {
-          throw new Error(`El grupo tiene ${fuera.length === 1 ? 'un proyecto' : `${fuera.length} proyectos`} de tu cuenta sin carpeta en este equipo (${fuera.map((p) => `«${p.nombre}»`).join(', ')}). Clónalos o enlázalos aquí, o sácalos del grupo, antes de pasarlo a local.`)
-        }
-        destino = `local-${randomUUID()}`
-        await cambiarArchivoLocales((a) => ({ ...a, grupos: [...a.grupos, { id: destino!, nombre: grupo!.nombre }] }))
-        grupoNuevo = { viejo: grupoId, nuevo: destino }
-      } else if (grupoId) destino = grupoId
-      for (const p of proyectos) {
-        if (p.local) {
-          if (destino && p.grupo !== destino) await cambiarLocales((l) => l.map((x) => (x.id === p.id ? { ...x, grupo: destino } : x)))
-          continue
-        }
-        const nuevo = `local-${randomUUID()}`
-        await cambiarLocales((l) => [...l, { id: nuevo, nombre: p.nombre, ruta: p.ruta, ...(destino ? { grupo: destino } : {}) }])
-        try {
-          await servidor.delete(`/projects/${encodeURIComponent(p.id)}`)
-        } catch (err) {
-          if (!(err instanceof ErrorServidor) || err.estado !== 404) {
-            await cambiarLocales((l) => l.filter((x) => x.id !== nuevo)) // sigue en la cuenta: no se duplica
-            throw new Error(`«${p.nombre}»: ${(err as Error).message}`, { cause: err })
-          }
-        }
-        await rutasLocales.quitar(p.id)
+    if (modo === 'local' && grupoId) {
+      const fuera = (await proyectosSinCarpeta()).filter((p) => p.grupoId === grupoId)
+      if (fuera.length) {
+        throw new Error(`El grupo tiene ${fuera.length === 1 ? 'un proyecto' : `${fuera.length} proyectos`} de tu cuenta sin carpeta en este equipo (${fuera.map((p) => `«${p.nombre}»`).join(', ')}). Clónalos o enlázalos aquí, o sácalos del grupo, antes de pasarlo a local.`)
+      }
+    }
+    for (const p of proyectos) {
+      if (Boolean(p.local) === (modo === 'local')) continue
+      try {
+        await servidor.put(`/projects/${encodeURIComponent(p.id)}/device`, { deviceId })
+      } catch (err) {
+        throw new Error(`«${p.nombre}»: ${(err as Error).message}`, { cause: err })
+      }
+      if (modo === 'local') {
         const r = await quitarVinculoLocal(p.ruta, p.id).catch(() => 'sin-enlace' as const)
         if (r === 'versionado') avisos.push(`«${p.nombre}» tiene .odesk/project.json subido a git: bórralo con git rm para que otro equipo no intente retomarlo.`)
-        cambios.push({ viejo: p.id, nuevo })
-      }
-      if (grupoNuevo) await servidor.delete(`/groups/${encodeURIComponent(grupoNuevo.viejo)}`).catch((err) => {
-        if (!(err instanceof ErrorServidor) || err.estado !== 404) throw err
-      })
-    } else {
-      let destino: object = {}
-      let groupId: string | undefined
-      if (grupoId && esGrupoLocal(grupoId)) {
-        const creado = await servidor.post<{ id: string }>('/groups', { name: grupo!.nombre })
-        groupId = creado.id
-        grupoNuevo = { viejo: grupoId, nuevo: creado.id }
-      } else if (grupoId) groupId = grupoId
-      if (groupId) destino = { groupId }
-      for (const p of proyectos) {
-        if (!p.local) continue
-        const { id } = await resolverProyecto(p.nombre, p.ruta, destino)
-        if (groupId) await servidor.put(`/projects/${encodeURIComponent(id)}/group`, { groupId }) // si se reanudó uno que ya existía, queda en este grupo
-        await rutasLocales.fijar(id, p.ruta)
-        await cambiarLocales((l) => l.filter((x) => x.id !== p.id))
-        cambios.push({ viejo: p.id, nuevo: id })
+      } else {
+        try {
+          if ((await leerVinculo(p.ruta)) !== p.id) await vincularProyectoLocal(p.ruta, p.id)
+        } catch (err) {
+          avisos.push(`«${p.nombre}»: no se pudo escribir .odesk/project.json (${(err as Error).message}); otro equipo lo reconocerá solo por su remoto de git.`)
+        }
         const aviso = await avisoDeGit(p.ruta)
         if (aviso) avisos.push(`«${p.nombre}»: ${aviso}`)
       }
-      if (grupoNuevo) {
-        const viejo = grupoNuevo.viejo
-        await cambiarArchivoLocales((a) => ({ grupos: a.grupos.filter((g) => g.id !== viejo), proyectos: a.proyectos.map((p) => (p.grupo === viejo ? { ...p, grupo: grupoNuevo!.nuevo } : p)) }))
-      }
     }
+    if (grupoId && Boolean(grupo!.local) !== (modo === 'local')) await servidor.put(`/groups/${encodeURIComponent(grupoId)}/device`, { deviceId })
   } finally {
     olvidarProyectos()
   }
-  return { datos: await leerProyectos(), proyectos: cambios, ...(grupoNuevo ? { grupo: grupoNuevo } : {}), avisos }
+  return { datos: await leerProyectos(), proyectos: migrado.proyectos, ...(migrado.grupos[0] ? { grupo: migrado.grupos[0] } : {}), avisos }
+}
+
+/** Ids que cambiaron al subir los proyectos y grupos locales antiguos (`local-…`) a la cuenta. */
+export interface ResultadoMigracionLocales {
+  proyectos: { viejo: string; nuevo: string }[]
+  grupos: { viejo: string; nuevo: string }[]
+}
+
+let migrando: Promise<ResultadoMigracionLocales> | undefined
+
+/**
+ * Sube a la cuenta, atados a este equipo, los proyectos y grupos locales antiguos de `proyectos-locales.json` (id `local-…`), para
+ * que tengan agentes, skills y sincronización como los demás sin dejar de ser solo de este equipo. Uno a uno: lo que falla (sin
+ * conexión) se queda en el archivo y se reintenta la próxima vez. Quien llama reasigna tareas y conversaciones con el resultado.
+ */
+export function migrarProyectosLocales(): Promise<ResultadoMigracionLocales> {
+  migrando ??= (async () => {
+    const hecho: ResultadoMigracionLocales = { proyectos: [], grupos: [] }
+    const archivo = await leerArchivoLocales()
+    if (archivo.grupos.length === 0 && archivo.proyectos.length === 0) return hecho
+    const deviceId = await idEquipo()
+    if (!deviceId) return hecho
+    try {
+      for (const g of archivo.grupos) {
+        const creado = await servidor.post<{ id: string }>('/groups', { name: g.nombre, deviceId })
+        hecho.grupos.push({ viejo: g.id, nuevo: creado.id })
+        await cambiarArchivoLocales((a) => ({ grupos: a.grupos.filter((x) => x.id !== g.id), proyectos: a.proyectos.map((p) => (p.grupo === g.id ? { ...p, grupo: creado.id } : p)) }))
+      }
+      for (const p of (await leerArchivoLocales()).proyectos) {
+        const repo = await repoDe(p.ruta).catch(() => undefined)
+        const grupo = p.grupo && !esGrupoLocal(p.grupo) ? { groupId: p.grupo } : {}
+        const creado = await servidor.post<{ id: string }>('/projects', { name: p.nombre, ...(repo ? { repo } : {}), ...grupo, deviceId }).catch(async (err) => {
+          // Un grupo de la cuenta que ya no existe: se sube sin grupo antes que perder el proyecto.
+          if (err instanceof ErrorServidor && err.estado === 404 && 'groupId' in grupo) return servidor.post<{ id: string }>('/projects', { name: p.nombre, ...(repo ? { repo } : {}), deviceId })
+          throw err
+        })
+        await rutasLocales.fijar(creado.id, p.ruta)
+        await cambiarLocales((l) => l.filter((x) => x.id !== p.id))
+        hecho.proyectos.push({ viejo: p.id, nuevo: creado.id })
+      }
+    } catch (err) {
+      console.warn('No se pudieron subir todos los proyectos locales antiguos (se reintenta más tarde):', (err as Error).message)
+    } finally {
+      olvidarProyectos()
+    }
+    return hecho
+  })().finally(() => {
+    migrando = undefined
+  })
+  return migrando
 }

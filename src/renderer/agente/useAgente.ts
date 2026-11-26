@@ -1,3 +1,4 @@
+import { esComandoSlash } from '@shared/core/comandos'
 import { notificarRespuesta } from './notificaciones'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EventoAgente, SolicitudAgente } from '@shared/core/agente'
@@ -247,7 +248,7 @@ export function useAgente(opciones: { clave?: string; /** ¿Este chat se ve ahor
       try {
         // Las salidas de comandos `/` recientes se adjuntan al mensaje para que el agente sepa qué pasó.
         // Un comando oficial de Claude Code (`/compact`…) va solo: cualquier texto delante dejaría de ser un comando.
-        const esComando = solicitud.prompt.startsWith('/')
+        const esComando = esComandoSlash(solicitud.prompt) // una ruta al principio (`/home/…`) no es un comando
         const compactado = ref.current.slice(fijadoDesde.current).some((t) => t.eventos.some((e) => e.tipo === 'contexto_compactado' || e.tipo === 'contexto'))
         const fijo = esComando ? undefined : bloqueFijado(fijadoRef.current, sesionId ? leerHuellaEnviada(sesionId) : '', compactado)
         const contexto = esComando ? '' : [fijo, ...salidasPendientes.current.splice(0), oculto].filter(Boolean).join('\n\n')

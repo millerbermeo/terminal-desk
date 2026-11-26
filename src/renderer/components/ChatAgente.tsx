@@ -1,10 +1,11 @@
 import { AvisoPermiso } from './AvisoPermiso'
+import { useAutoAltura } from '../agente/auto-altura'
 import { explicarDenegacion } from '../agente/permisos-denegados'
 import { coincide } from '@shared/atajos'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EventoAgente } from '@shared/core/agente'
 import { LIMITES_ADJUNTOS, type Adjunto } from '@shared/core/adjuntos'
-import { COMANDOS_CLAUDE, COMANDOS_INCLUIDOS, NOMBRES_CLAUDE_CODE, PLANTILLAS_INCLUIDAS, expandirPlantilla, type ComandoUsuario } from '@shared/core/comandos'
+import { COMANDOS_CLAUDE, COMANDOS_INCLUIDOS, NOMBRES_CLAUDE_CODE, PLANTILLAS_INCLUIDAS, expandirPlantilla, type ComandoUsuario, esComandoSlash } from '@shared/core/comandos'
 import type { ModoAutonomia } from '@shared/core/permisos'
 import type { DatosProyectos } from '@shared/modelos'
 import type { EstadoTarea, Tarea } from '@shared/tareas'
@@ -231,6 +232,12 @@ function Linea({ e, todos, raiz }: { e: EventoAgente; todos: EventoAgente[]; rai
       return (
         <div className="ag-nota">
           ↻ Topó el límite de pasos de una sola respuesta; sigue sola (ronda {e.ronda} de {e.max}).
+        </div>
+      )
+    case 'tarea_ajustada':
+      return (
+        <div className="ag-nota ag-ajuste" role="status">
+          ✎ Ajustaste la tarea en marcha: se cortó el paso y sigue con {e.instrucciones.length === 1 ? <q>{e.instrucciones[0]}</q> : `${e.instrucciones.length} indicaciones`}.
         </div>
       )
     case 'comando_salida':
@@ -509,6 +516,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   const [cola, setCola] = useState<{ prompt: string; adjuntos: Adjunto[] }[]>([]) // mensajes escritos mientras el agente trabaja
   const [arrastrando, setArrastrando] = useState(false)
   const areaTexto = useRef<HTMLTextAreaElement>(null)
+  useAutoAltura(areaTexto, texto) // crece con lo escrito: siempre se ve todo el texto
   // Buscar dentro de la conversación (Ctrl+F).
   const [busqueda, setBusqueda] = useState<{ consulta: string; indice: number } | null>(null)
   const campoBusqueda = useRef<HTMLInputElement>(null)
@@ -1018,7 +1026,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
       setPendientes([])
       return
     }
-    if (prompt.startsWith('/')) return comandoSlash(prompt)
+    if (esComandoSlash(prompt)) return comandoSlash(prompt) // una ruta (`/home/…`) no es un comando: va como mensaje
     lanzar(prompt)
   }
 
@@ -1049,7 +1057,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
   /** Responde ya, en paralelo, sin interrumpir la tarea en marcha (a diferencia de «Encolar», que espera a que termine). */
   const preguntarAhora = (): void => {
     const prompt = texto.trim() || (pendientes.length ? 'Revisa los archivos adjuntos.' : '')
-    if (!prompt || prompt.startsWith('/') || subiendo > 0) return
+    if (!prompt || esComandoSlash(prompt) || subiendo > 0) return
     const adjuntos = pendientes
     setTexto('')
     setPendientes([])
@@ -1069,7 +1077,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
     const [sig, ...resto] = cola
     if (!sig) return
     setCola(resto)
-    if (sig.prompt.startsWith('/')) return comandoSlash(sig.prompt)
+    if (esComandoSlash(sig.prompt)) return comandoSlash(sig.prompt)
     lanzar(sig.prompt, false, sig.adjuntos)
   }
 
@@ -1728,7 +1736,7 @@ export function ChatAgente({ datos, agente, proyectoFijo }: Props) {
               )}
             </Desplegable>
             {agente.enCurso && (
-              <button className="cmp-lateral" onClick={preguntarAhora} disabled={(!texto.trim() && pendientes.length === 0) || texto.trim().startsWith('/') || subiendo > 0} title="Responde ya, en paralelo y sin interrumpir lo que está haciendo (solo suscripción, en solo lectura)">
+              <button className="cmp-lateral" onClick={preguntarAhora} disabled={(!texto.trim() && pendientes.length === 0) || esComandoSlash(texto.trim()) || subiendo > 0} title="Ahora mismo, sin esperar a que termine: si preguntas (qué haces, cómo va, por qué…) responde aparte sin interrumpir; si das una indicación (cambia, no uses, agrega también…) se la aplica a la tarea en marcha (solo suscripción)">
                 Preguntar<span className="cmp-lateral-largo"> ahora</span>
               </button>
             )}

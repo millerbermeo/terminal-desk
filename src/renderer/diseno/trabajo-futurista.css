@@ -1,0 +1,341 @@
+/*
+ * «Ver trabajo» · capa futurista (va DESPUÉS de trabajo.css y solo la refina):
+ * fondo HUD (rejilla en perspectiva, aurora y barrido de escáner), núcleo de estado con anillos que giran, telemetría en vivo,
+ * pestañas con indicador deslizante, tarjetas de cristal con esquinas de mira y brillo que recorre el borde mientras trabajan,
+ * conectores con flujo de datos. Todo el movimiento depende de `data-vivo="si"` (solo mientras el turno está en curso) y se apaga
+ * con `prefers-reduced-motion`. Sin JavaScript extra: solo transform/opacity (compositor de la GPU).
+ */
+
+.trb {
+  --neon: #7c8cff;
+  --neon-2: #22d3ee;
+  --neon-3: #c084fc;
+  --hud-linea: color-mix(in srgb, var(--neon) 22%, transparent);
+  --hud-tenue: color-mix(in srgb, var(--neon) 9%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--neon) 7%, transparent), transparent 30%),
+    var(--material-grueso);
+  border-color: color-mix(in srgb, var(--neon) 28%, var(--borde));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--neon-2) 8%, transparent),
+    0 30px 80px -30px color-mix(in srgb, var(--neon) 55%, transparent),
+    var(--canto-luz),
+    var(--sombra);
+  isolation: isolate;
+}
+/* Borde con gradiente que gira despacio (solo en vivo) */
+.trb::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  padding: 1px;
+  border-radius: inherit;
+  background: conic-gradient(from var(--trb-giro, 0deg), transparent 0 62%, var(--neon-2) 72%, var(--neon) 80%, var(--neon-3) 88%, transparent 96%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 600ms ease;
+}
+.trb[data-vivo='si']::before { opacity: 0.85; animation: trb-girar-borde 6s linear infinite; }
+@property --trb-giro { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes trb-girar-borde { to { --trb-giro: 360deg; } }
+
+.trb > *:not(.trb-fondo) { position: relative; z-index: 1; }
+
+/* ---------------------------------------------------------------- fondo HUD */
+.trb-fondo { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; border-radius: inherit; }
+.trb-rejilla {
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  bottom: -10%;
+  height: 70%;
+  background-image:
+    linear-gradient(var(--hud-tenue) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hud-tenue) 1px, transparent 1px);
+  background-size: 34px 34px;
+  transform: perspective(520px) rotateX(62deg);
+  transform-origin: center bottom;
+  -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 85%);
+  mask-image: linear-gradient(to top, #000 0%, transparent 85%);
+  opacity: 0.7;
+}
+.trb[data-vivo='si'] .trb-rejilla { animation: trb-avanzar 2.4s linear infinite; }
+@keyframes trb-avanzar { to { background-position: 0 34px, 0 0; } }
+
+.trb-aurora {
+  position: absolute;
+  inset: -30% -20% auto;
+  height: 70%;
+  background:
+    radial-gradient(40% 50% at 25% 40%, color-mix(in srgb, var(--neon) 26%, transparent), transparent 70%),
+    radial-gradient(35% 45% at 75% 30%, color-mix(in srgb, var(--neon-2) 18%, transparent), transparent 70%),
+    radial-gradient(30% 40% at 55% 70%, color-mix(in srgb, var(--neon-3) 16%, transparent), transparent 70%);
+  filter: blur(18px);
+  opacity: 0.55;
+}
+.trb[data-vivo='si'] .trb-aurora { animation: trb-aurora 14s ease-in-out infinite alternate; }
+@keyframes trb-aurora {
+  0% { transform: translate3d(-4%, 0, 0) scale(1); }
+  50% { transform: translate3d(5%, 3%, 0) scale(1.08); }
+  100% { transform: translate3d(-2%, -2%, 0) scale(1.02); }
+}
+
+/* Barrido de escáner: una línea de luz que baja cada pocos segundos */
+.trb-barrido {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 120px;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--neon-2) 10%, transparent) 85%, color-mix(in srgb, var(--neon-2) 35%, transparent) 99%, transparent);
+  opacity: 0;
+  transform: translateY(-130px);
+}
+.trb[data-vivo='si'] .trb-barrido { animation: trb-escanear 5.5s cubic-bezier(0.55, 0, 0.45, 1) infinite; }
+@keyframes trb-escanear {
+  0% { transform: translateY(-130px); opacity: 0; }
+  10% { opacity: 1; }
+  60% { opacity: 1; }
+  75%, 100% { transform: translateY(110vh); opacity: 0; }
+}
+
+/* ---------------------------------------------------------------- cabecera y núcleo */
+.trb-titulo h3 {
+  background: linear-gradient(90deg, var(--texto) 0%, color-mix(in srgb, var(--neon-2) 70%, var(--texto)) 45%, var(--texto) 90%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: 0.01em;
+}
+.trb[data-vivo='si'] .trb-titulo h3 { animation: trb-holo 4s linear infinite; }
+@keyframes trb-holo { to { background-position: -220% 0; } }
+
+.trb-nucleo {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+}
+.trb-anillo { position: absolute; border-radius: 50%; border: 1.5px solid transparent; }
+.trb-anillo.a1 { inset: 0; border-top-color: var(--estado); border-right-color: color-mix(in srgb, var(--estado) 35%, transparent); }
+.trb-anillo.a2 { inset: 5px; border-bottom-color: var(--neon-2); border-left-color: color-mix(in srgb, var(--neon-2) 30%, transparent); }
+.trb-anillo.a3 { inset: 10px; border: 1px dashed color-mix(in srgb, var(--estado) 55%, transparent); }
+.trb-centro {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--estado);
+  box-shadow: 0 0 10px var(--estado), 0 0 22px color-mix(in srgb, var(--estado) 60%, transparent);
+}
+.trb-nucleo.estado-trabajando .a1, .trb-nucleo.estado-esperando .a1 { animation: trb-rotar 1.6s linear infinite; }
+.trb-nucleo.estado-trabajando .a2, .trb-nucleo.estado-esperando .a2 { animation: trb-rotar 2.4s linear infinite reverse; }
+.trb-nucleo.estado-trabajando .a3 { animation: trb-rotar 9s linear infinite; }
+.trb-nucleo.estado-trabajando .trb-centro, .trb-nucleo.estado-esperando .trb-centro { animation: trb-latir 1.4s ease-in-out infinite; }
+.trb-nucleo.estado-completado .a1, .trb-nucleo.estado-completado .a2 { border-color: color-mix(in srgb, var(--ok) 70%, transparent); animation: trb-cerrar 600ms var(--muelle) both; }
+.trb-nucleo.estado-error .a1 { border-color: var(--error); }
+@keyframes trb-rotar { to { transform: rotate(360deg); } }
+@keyframes trb-latir { 50% { transform: scale(0.65); opacity: 0.7; } }
+@keyframes trb-cerrar { from { transform: scale(1.35) rotate(-90deg); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---------------------------------------------------------------- resumen HUD */
+.trb-resumen { background: transparent; gap: 6px; border-radius: 0; overflow: visible; }
+.trb-resumen > div {
+  position: relative;
+  background: color-mix(in srgb, var(--neon) 5%, var(--bg-sutil));
+  border: 1px solid var(--hud-tenue);
+  border-radius: 10px;
+  clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 9px 100%, 0 calc(100% - 9px));
+  transition: border-color var(--medio), transform var(--muelle-t) var(--muelle);
+}
+.trb-resumen > div::after {
+  /* esquina de mira */
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 12px;
+  height: 12px;
+  background: linear-gradient(225deg, var(--hud-linea) 0 45%, transparent 46%);
+}
+.trb-resumen > div:hover { border-color: var(--hud-linea); transform: translateY(-1px); }
+.trb-resumen dt { font-family: var(--mono, ui-monospace, monospace); letter-spacing: 0.12em; }
+.trb-resumen dd { font-family: var(--mono, ui-monospace, monospace); text-shadow: 0 0 14px color-mix(in srgb, var(--neon) 40%, transparent); }
+.trb-estado { text-shadow: 0 0 12px color-mix(in srgb, var(--estado) 55%, transparent); }
+
+/* ---------------------------------------------------------------- telemetría */
+.trb-telemetria {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 30px;
+  margin: 0 16px 12px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background:
+    repeating-linear-gradient(0deg, var(--hud-tenue) 0 1px, transparent 1px 7px),
+    color-mix(in srgb, var(--neon) 4%, transparent);
+  border: 1px solid var(--hud-tenue);
+}
+.trb-telemetria span {
+  flex: 1;
+  height: var(--h);
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: color-mix(in srgb, var(--neon) 22%, transparent);
+  transform-origin: bottom;
+  animation: trb-crecer 500ms var(--muelle) both;
+  animation-delay: var(--d);
+  transition: height 400ms var(--muelle);
+}
+.trb-telemetria span.con { background: linear-gradient(180deg, var(--neon-2), var(--neon)); box-shadow: 0 0 8px color-mix(in srgb, var(--neon-2) 45%, transparent); }
+.trb-telemetria.viva span:last-child.con { animation: trb-crecer 500ms var(--muelle) both, trb-parpadeo 1s ease-in-out infinite 500ms; }
+@keyframes trb-crecer { from { transform: scaleY(0); } to { transform: none; } }
+@keyframes trb-parpadeo { 50% { opacity: 0.45; } }
+
+/* ---------------------------------------------------------------- pestañas */
+.trb-pestanas {
+  position: relative;
+  background: color-mix(in srgb, var(--neon) 5%, var(--bg-hundido));
+  border: 1px solid var(--hud-tenue);
+}
+.trb-pestanas button { position: relative; z-index: 1; transition: color var(--rapido), transform var(--rapido); }
+.trb-pestanas button.activa { background: transparent; box-shadow: none; color: var(--texto); text-shadow: 0 0 12px color-mix(in srgb, var(--neon-2) 60%, transparent); }
+.trb-indicador {
+  position: absolute;
+  z-index: 0;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px - (var(--n) - 1) * 2px) / var(--n));
+  transform: translateX(calc(var(--i) * (100% + 2px)));
+  border-radius: var(--radio-sm);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--neon) 30%, var(--bg-elevado)), var(--bg-elevado));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--neon) 40%, transparent), 0 6px 18px -6px color-mix(in srgb, var(--neon) 70%, transparent);
+  transition: transform var(--muelle-t) var(--muelle);
+}
+.trb-indicador::after {
+  content: '';
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--neon-2), transparent);
+}
+
+/* Cambio de vista: entra con un leve desenfoque */
+.trb-cuerpo { animation: trb-vista 320ms var(--muelle) both; }
+@keyframes trb-vista { from { opacity: 0; transform: translateY(6px); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+
+/* ---------------------------------------------------------------- tarjetas */
+.trb-tarjeta {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--tono, var(--neon)) 9%, transparent), transparent 55%),
+    color-mix(in srgb, var(--bg-sutil) 88%, transparent);
+  border-color: color-mix(in srgb, var(--tono, var(--neon)) 22%, var(--borde-tenue));
+  backdrop-filter: blur(6px);
+  animation-delay: calc(var(--orden, 0) * 45ms);
+  overflow: hidden;
+}
+.trb-tarjeta::after {
+  /* esquinas de mira */
+  content: '';
+  position: absolute;
+  inset: 5px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--tono, var(--neon)), var(--tono, var(--neon))) top left / 10px 1.5px,
+    linear-gradient(var(--tono, var(--neon)), var(--tono, var(--neon))) top left / 1.5px 10px,
+    linear-gradient(var(--tono, var(--neon)), var(--tono, var(--neon))) bottom right / 10px 1.5px,
+    linear-gradient(var(--tono, var(--neon)), var(--tono, var(--neon))) bottom right / 1.5px 10px;
+  background-repeat: no-repeat;
+  opacity: 0.45;
+  transition: opacity var(--medio);
+}
+.trb-tarjeta:hover::after { opacity: 0.9; }
+.trb-tarjeta.estado-trabajando {
+  border-color: color-mix(in srgb, var(--tono, var(--acento)) 45%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tono, var(--acento)) 18%, transparent), 0 10px 30px -14px color-mix(in srgb, var(--tono, var(--acento)) 80%, transparent);
+}
+/* Destello que recorre la tarjeta mientras el agente trabaja */
+.trb[data-vivo='si'] .trb-tarjeta.estado-trabajando .trb-tarjeta-cab::after {
+  content: '';
+  position: absolute;
+  top: -14px;
+  bottom: -200px;
+  left: -40%;
+  width: 35%;
+  background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--tono, var(--neon)) 16%, transparent), transparent);
+  transform: skewX(-18deg);
+  animation: trb-destello 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+.trb-tarjeta-cab { position: relative; }
+@keyframes trb-destello { 0% { left: -40%; } 60%, 100% { left: 130%; } }
+
+.trb-tarjeta.estado-completado::before { box-shadow: 0 0 10px var(--ok); }
+.trb-tarjeta.estado-trabajando::before { box-shadow: 0 0 12px var(--estado); animation: trb-barra-viva 1.6s ease-in-out infinite; }
+@keyframes trb-barra-viva { 50% { opacity: 0.45; } }
+
+.trb-orbe { box-shadow: 0 0 0 1px color-mix(in srgb, var(--tono, var(--neon)) 35%, transparent), 0 0 14px -2px color-mix(in srgb, var(--tono, var(--neon)) 60%, transparent); }
+
+/* ---------------------------------------------------------------- conectores: flujo de datos */
+.trb-enlace.estado-trabajando > .trb-conector {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--neon-2), var(--neon-2)) left top / 1.5px 0 no-repeat;
+}
+.trb-enlace.estado-trabajando > .trb-conector::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 -1.5px;
+  width: 1.5px;
+  height: 36px;
+  background: repeating-linear-gradient(180deg, var(--neon-2) 0 5px, transparent 5px 10px);
+  background-size: 100% 20px;
+  animation: trb-flujo 0.8s linear infinite;
+  filter: drop-shadow(0 0 3px var(--neon-2));
+}
+.trb-enlace.estado-trabajando > .trb-conector::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  bottom: -1.5px;
+  width: 10px;
+  height: 1.5px;
+  background: repeating-linear-gradient(90deg, var(--neon-2) 0 4px, transparent 4px 7px);
+  animation: trb-flujo-h 0.8s linear infinite;
+}
+@keyframes trb-flujo { to { background-position: 0 20px; } }
+@keyframes trb-flujo-h { to { background-position: 7px 0; } }
+.trb-enlace.estado-trabajando > .trb-conector .trb-particula { width: 7px; height: 7px; background: #fff; box-shadow: 0 0 6px var(--neon-2), 0 0 14px var(--neon); }
+
+/* ---------------------------------------------------------------- línea de tiempo y actividad */
+.trb-barra { background: color-mix(in srgb, var(--neon) 6%, var(--bg-hundido)); }
+.trb-segmento { box-shadow: 0 0 8px -1px color-mix(in srgb, var(--tono, var(--neon)) 70%, transparent); }
+.trb-fila.estado-trabajando .trb-barra { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--neon-2) 35%, transparent); }
+.trb-item { animation-delay: 0ms; }
+.trb-item:hover { background: color-mix(in srgb, var(--neon) 6%, transparent); }
+.trb-ahora .trb-brillo { text-shadow: 0 0 10px color-mix(in srgb, var(--neon-2) 35%, transparent); }
+
+/* ---------------------------------------------------------------- accesibilidad */
+@media (prefers-reduced-motion: reduce) {
+  .trb::before, .trb-rejilla, .trb-aurora, .trb-barrido, .trb-titulo h3, .trb-anillo, .trb-centro, .trb-telemetria span,
+  .trb-cuerpo, .trb-tarjeta, .trb-tarjeta::before, .trb-tarjeta-cab::after,
+  .trb-enlace > .trb-conector::before, .trb-enlace > .trb-conector::after { animation: none !important; }
+  .trb-barrido, .trb-tarjeta-cab::after { display: none; }
+  .trb-indicador { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .trb-aurora, .trb-barrido { display: none; }
+  .trb-tarjeta { backdrop-filter: none; background: var(--bg-sutil); }
+}

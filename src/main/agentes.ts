@@ -218,6 +218,62 @@ export async function activarRecurso(destino: DestinoActivacion, recursoId: stri
   return leerBiblioteca()
 }
 
+/**
+ * Un proyecto o grupo local antiguo (`local-…`) se subió a la cuenta con otro id: sus activaciones y sus agentes/skills propios, que
+ * vivían en `agentes-locales.json`, pasan al servidor con el id nuevo. Lo que el servidor rechace se queda en este equipo pero
+ * apuntando al id nuevo, para que siga funcionando. Nunca lanza.
+ */
+export async function migrarRecursosLocales(proyectos: { viejo: string; nuevo: string }[], grupos: { viejo: string; nuevo: string }[] = []): Promise<void> {
+  if (proyectos.length === 0 && grupos.length === 0) return
+  const nuevoDe = new Map([...proyectos, ...grupos].map((c) => [c.viejo, c.nuevo]))
+  const datos = await leerLocales()
+  const quedan: Recurso[] = []
+  const subidos = new Set<string>()
+  for (const r of datos.recursos) {
+    const nuevo = r.proyectoId ? nuevoDe.get(r.proyectoId) : undefined
+    if (!nuevo) continue
+    try {
+      await servidor.put('/agentes', {
+        kind: r.tipo,
+        name: r.nombre,
+        description: r.descripcion,
+        content: r.contenido,
+        scope: 'proyecto',
+        projectId: nuevo,
+        ...(r.tipo === 'agente' ? { tools: r.herramientas ?? [], model: r.modelo ?? '' } : {})
+      })
+      subidos.add(r.id)
+    } catch {
+      quedan.push({ ...r, proyectoId: nuevo })
+    }
+  }
+  const activacionesPendientes: { tipo: 'proyectos' | 'grupos'; id: string; recursos: string[] }[] = []
+  for (const tipo of ['proyectos', 'grupos'] as const) {
+    for (const [viejo, recursos] of Object.entries(datos.activaciones[tipo])) {
+      const nuevo = nuevoDe.get(viejo)
+      if (!nuevo) continue
+      const fallan: string[] = []
+      for (const recursoId of recursos) {
+        try {
+          await servidor.post('/agentes/activaciones', { targetType: tipo === 'grupos' ? 'grupo' : 'proyecto', targetId: nuevo, resourceId: recursoId })
+        } catch {
+          fallan.push(recursoId)
+        }
+      }
+      activacionesPendientes.push({ tipo, id: viejo, recursos: fallan })
+    }
+  }
+  await cambiarLocales((d) => {
+    const cambiados = new Map(quedan.map((r) => [r.id, r]))
+    d.recursos = d.recursos.filter((r) => !subidos.has(r.id)).map((r) => cambiados.get(r.id) ?? r)
+    for (const a of activacionesPendientes) {
+      delete d.activaciones[a.tipo][a.id]
+      // Lo que no se pudo subir sigue valiendo aquí con el id nuevo.
+      if (a.recursos.length) d.activaciones[a.tipo][nuevoDe.get(a.id)!] = a.recursos
+    }
+  }).catch((err) => console.warn('No se pudieron mover los agentes locales al proyecto subido:', (err as Error).message))
+}
+
 // ---------------------------------------------------------------- plugin por proyecto
 
 const esClaude = (comando: string): boolean => {

@@ -30,6 +30,7 @@ import './diseno/compositor.css'
 import './diseno/proveedores.css'
 import './diseno/asistente-pro.css'
 import './diseno/trabajo.css'
+import './diseno/trabajo-futurista.css'
 import { Cargando } from './components/Cargando'
 
 // ?ventana=<token> => ventana separada (solo terminales); sin parámetro => ventana principal

@@ -151,3 +151,17 @@ describe('vistas del panel', () => {
     expect(html).toContain('Falló')
   })
 })
+
+describe('telemetría de «Ver trabajo»', () => {
+  it('reparte las acciones en tramos del turno (la última cae en el último tramo)', async () => {
+    const { tramosActividad } = await import('../src/renderer/components/PanelTrabajo')
+    const act = (t: number) => ({ clave: String(t), t, nodo: 'r', agente: 'a', tipo: 'herramienta', texto: '' }) as never
+    const c = tramosActividad({ desde: 0, hasta: 1000, actividad: [act(0), act(10), act(999), act(1000)] }, 1000, false, 10)
+    expect(c).toHaveLength(10)
+    expect(c[0]).toBe(2)
+    expect(c[9]).toBe(2)
+    expect(c.reduce((a, b) => a + b, 0)).toBe(4)
+    // en vivo la escala llega hasta «ahora»
+    expect(tramosActividad({ desde: 0, hasta: 100, actividad: [act(100)] }, 1000, true, 10)[1]).toBe(1)
+  })
+})

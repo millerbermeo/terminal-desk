@@ -69,7 +69,7 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
       setCambiando(null)
     }
   }
-  /** Pasa el grupo (o «Sin grupo») a local o a remoto, confirmando antes: a local borra los proyectos de la cuenta. */
+  /** Pasa el grupo (o «Sin grupo») a local o a remoto, confirmando antes. Nada se borra: solo cambia en qué equipos se ve. */
   const cambiarModo = async (grupoId: string | undefined, nombre: string, modo: 'local' | 'remoto', proyectos: number): Promise<void> => {
     const clave = grupoId ?? 'sin-grupo'
     const de = grupoId ? `el grupo «${nombre}»` : 'los proyectos sin grupo'
@@ -77,15 +77,15 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
       modo === 'local'
         ? {
             titulo: `¿Pasar ${de} a local?`,
-            tono: 'peligro',
+            tono: 'aviso',
             etiqueta: 'Pasar a local',
-            texto: `${proyectos === 1 ? 'Su proyecto se borra' : `Sus ${proyectos} proyectos se borran`} de tu cuenta en el servidor (con el tablero, las conversaciones y las trazas guardadas allí) y ${grupoId ? 'el grupo queda' : 'quedan'} solo en este equipo. Aquí no se pierde nada ni se toca tu código, pero otros equipos dejarán de verlos.`
+            texto: `${proyectos === 1 ? 'Su proyecto sigue' : `Sus ${proyectos} proyectos siguen`} en tu cuenta (agentes, skills, tablero y conversaciones intactos), pero ${grupoId ? 'el grupo y sus proyectos solo se verán' : 'solo se verán'} en este equipo: tus otros PCs dejarán de verlos. Se quita el .odesk/project.json de cada carpeta si no está subido a git. Tu código no se toca.`
           }
         : {
-            titulo: `¿Subir ${de} a tu cuenta?`,
+            titulo: `¿Compartir ${de} con tus otros equipos?`,
             tono: 'aviso',
             etiqueta: 'Pasar a remoto',
-            texto: `${grupoId ? 'El grupo y sus proyectos se registran' : 'Los proyectos se registran'} en tu cuenta y se sincronizan con tus otros equipos. Cada carpeta recibe su .odesk/project.json. El tablero y las conversaciones de este equipo se suben.`
+            texto: `${grupoId ? 'El grupo y sus proyectos aparecerán' : 'Los proyectos aparecerán'} en todos los equipos donde abras tu cuenta, con el mismo tablero y conversaciones. Cada carpeta recibe su .odesk/project.json para que otro equipo la reconozca al clonarla.`
           }
     )
     if (!sigue) return
@@ -94,7 +94,7 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
     try {
       const r = await window.api.proyectos.cambiarModo(grupoId ?? null, modo)
       onDatos(r.datos)
-      const texto = [modo === 'local' ? 'Ahora es local: solo en este equipo.' : 'Ahora es remoto: está en tu cuenta.', ...r.avisos].join('\n')
+      const texto = [modo === 'local' ? 'Ahora es local: solo se ve en este equipo.' : 'Ahora es remoto: se ve en todos tus equipos.', ...r.avisos].join('\n')
       setAvisoGrupo((a) => ({ ...a, [clave]: { tipo: 'ok', texto } }))
     } catch (err) {
       setAvisoGrupo((a) => ({ ...a, [clave]: { tipo: 'error', texto: mensajeDe(err) } }))
@@ -167,7 +167,7 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
                   className={`pj-modo-op${modo === m ? ' activo' : ''}`}
                   aria-pressed={modo === m}
                   disabled={ocupado || modo === m || (m === 'local' && todos.length === 0 && !grupoId)}
-                  title={m === 'local' ? 'Solo en este equipo (se borra de tu cuenta)' : 'En tu cuenta: se sincroniza con tus otros equipos'}
+                  title={m === 'local' ? 'En tu cuenta, pero solo visible en este equipo' : 'En tu cuenta y visible en todos tus equipos'}
                   onClick={() => void cambiarModo(grupoId, nombre, m, todos.length)}
                 >
                   {m === 'local' ? 'Local' : 'Remoto'}
@@ -216,7 +216,7 @@ export function ConfigProyectos({ datos, onDatos }: Props) {
                       )}
                       <div className="pj-chips">
                         {repetidos.has(p.id) && !edit && <span className="chip chip-repetido" title="Otro proyecto tiene este mismo nombre: edítalo para distinguirlos">nombre repetido</span>}
-                        {p.local && <span className="chip" title="Solo en este equipo: sin seguimiento remoto">local</span>}
+                        {p.local && <span className="chip" title="En tu cuenta, pero solo visible en este equipo">local</span>}
                       </div>
                     </div>
                     {edit ? (
