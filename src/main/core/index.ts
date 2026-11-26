@@ -828,7 +828,8 @@ export class Nucleo {
               ...(r.limite ? { limite: true } : {}),
               ...(r.imagenes ? { imagenes: r.imagenes } : {})
             })
-            if (r.resultado.estado === 'error' && !r.limite) {
+            // Un paso cortado a propósito para aplicar un ajuste de la persona sale como error del CLI: no es un fallo.
+            if (r.resultado.estado === 'error' && !r.limite && !viva.ajustes.length) {
               const error = r.resultado.error ?? 'Error sin detalle'
               this.bitacoraUso.anotar({ tipo: 'fallo', ts: Date.now(), conversacion: sesionId, ...(proyecto ? { proyecto: proyecto.nombre } : {}), mensaje: sol.prompt.replace(/\s+/g, ' ').trim(), error, causa: clasificarFallo(error), modelo: principal?.modelo ?? sol.modelo ?? 'auto', duracionMs })
               this.alFallo?.({ conversacion: sesionId, error, causa: clasificarFallo(error) })

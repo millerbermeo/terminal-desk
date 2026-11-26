@@ -421,6 +421,8 @@ describe('Nucleo con proceso persistente', () => {
     vi.stubEnv('ODESK_SIN_TITULO', '1')
     const n = await nuevo()
     let ejecucionId = ''
+    const fallos: unknown[] = []
+    n.alFallo = (f) => void fallos.push(f)
     const principal = ejecutar(n, 's-ajuste', 'LENTO', (e) => void (ejecucionId = e.ejecucionId))
     await esperar(700)
     const lateral: EventoAgente[] = []
@@ -440,6 +442,7 @@ describe('Nucleo con proceso persistente', () => {
     expect(todas.some((x) => x.control === 'interrupt')).toBe(true)
     expect(todas.filter((x) => x.arranque && !x.consulta && x.args?.includes('--input-format'))).toHaveLength(1) // mismo proceso
     expect(todas.some((x) => x.usuario?.includes('<ajuste_de_la_tarea>\ncambia el color del botón a azul'))).toBe(true)
+    expect(fallos).toEqual([]) // el paso cortado para aplicar el ajuste no se avisa como fallo
   })
 
   it('«Preguntar ahora» con una imagen la deja legible para el modelo y no usa side_question (solo admite texto)', async () => {
