@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { LectorTurno, motivoBloqueo } from '../src/main/core/suscripcion'
+import { LectorTurno, limitesBloqueo, motivoBloqueo } from '../src/main/core/suscripcion'
 
 const L = { silencioMs: 1000, herramientaMs: 5000 }
 const base = { conEco: true, terminado: false, esperandoPersona: 0, herramientasAbiertas: 0, silencioMs: 0 }
@@ -31,6 +31,7 @@ describe('vigía de bloqueo del turno', () => {
       const r = l.finalizar(null, '')
       expect(r.resultado.estado).toBe('error')
       expect(r.resultado.error).toMatch(/dejó de responder/)
+      expect(r.bloqueo).toBe(true) // quien llama sabe que puede reanudar
       expect(eventos.at(-1)).toMatchObject({ tipo: 'fin', resultado: { estado: 'error' } })
     } finally {
       vi.useRealTimers()
@@ -81,5 +82,12 @@ describe('vigía de bloqueo del turno', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('límites del vigía', () => {
+  it('por defecto 300 s sin herramienta (la API puede tardar 75–185 s en dar el primer token) y 660 s con una', () => {
+    expect(limitesBloqueo({})).toEqual({ silencioMs: 300_000, herramientaMs: 660_000 })
+    expect(limitesBloqueo({ ODESK_SILENCIO_TURNO_S: '90', ODESK_SILENCIO_HERRAMIENTA_S: 'x' })).toEqual({ silencioMs: 90_000, herramientaMs: 660_000 })
   })
 })

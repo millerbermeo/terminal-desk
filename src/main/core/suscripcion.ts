@@ -491,6 +491,8 @@ export interface SalidaEjecucion {
   imagenes: number
   /** El CLI compactó el contexto durante esta ejecución: lo anterior (imágenes incluidas) ya no se reenvía. */
   compactado?: boolean
+  /** El vigía de bloqueo cortó la ejecución (el CLI se quedó sin dar señales): quien llama puede reanudar la sesión y seguir. */
+  bloqueo?: boolean
   /** Acumulado que informó el CLI por modelo (para restárselo la próxima vez); ausente si no llegó a informarlo. */
   acumulado?: Record<string, AcumuladoModelo>
 }
@@ -641,11 +643,18 @@ const enteroEnv = (v: string | undefined, porDefecto: number): number => {
  * Vigía de bloqueo de un turno: si el CLI ya tomó el mensaje y deja de dar señales (ni texto, ni pensamiento, ni herramientas, ni
  * reintentos) durante este tiempo SIN estar esperando a la persona ni ejecutando una herramienta, se da por trabado: se cierra en el
  * acto y el turno termina con error (no se espera indefinidamente). Con el stream parcial activo, un modelo que trabaja manda algo
- * cada pocos segundos.
+ * cada pocos segundos, PERO entre una petición a la API y su primer token el CLI no emite nada: con contexto grande, pensamiento
+ * largo o reintentos por sobrecarga eso dura 75–185 s (medido en transcripciones reales; con 75 s se mataban turnos sanos, sobre
+ * todo en sesiones largas). El CLI espera hasta 600 s por petición, así que 300 s solo corta lo realmente trabado.
  */
-export const SILENCIO_TURNO_MS = enteroEnv(process.env.ODESK_SILENCIO_TURNO_S, 75) * 1000
+const SILENCIO_TURNO_S = 300
 /** Lo mismo, pero con una herramienta en marcha (un `Bash` largo, un build): el CLI corta las suyas a los 10 min como mucho. */
-export const SILENCIO_HERRAMIENTA_MS = enteroEnv(process.env.ODESK_SILENCIO_HERRAMIENTA_S, 11 * 60) * 1000
+const SILENCIO_HERRAMIENTA_S = 11 * 60
+/** Límites del vigía, leídos del entorno en cada turno (`ODESK_SILENCIO_TURNO_S`, `ODESK_SILENCIO_HERRAMIENTA_S`). */
+export const limitesBloqueo = (env: NodeJS.ProcessEnv = process.env): LimitesBloqueo => ({
+  silencioMs: enteroEnv(env.ODESK_SILENCIO_TURNO_S, SILENCIO_TURNO_S) * 1000,
+  herramientaMs: enteroEnv(env.ODESK_SILENCIO_HERRAMIENTA_S, SILENCIO_HERRAMIENTA_S) * 1000
+})
 /** Cada cuánto se mira. */
 const REVISION_BLOQUEO_MS = 3000
 
@@ -711,7 +720,7 @@ export class LectorTurno {
     private readonly alResultado: () => void,
     private readonly alExceso: () => void = () => undefined,
     private readonly alBloqueo?: () => void,
-    private readonly limites: LimitesBloqueo = { silencioMs: SILENCIO_TURNO_MS, herramientaMs: SILENCIO_HERRAMIENTA_MS }
+    private readonly limites: LimitesBloqueo = limitesBloqueo()
   ) {
     this.eco = !o.esperarEco
   }
@@ -937,6 +946,7 @@ export class LectorTurno {
       ...(this.ventana ? { ventana: this.ventana } : {}),
       imagenes: this.imagenes,
       ...(this.compactado ? { compactado: true } : {}),
+      ...(this.bloqueado ? { bloqueo: true } : {}),
       ...(this.acumulado ? { acumulado: this.acumulado } : {})
     }
   }

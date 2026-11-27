@@ -312,7 +312,8 @@ export async function ejecutarEnProceso(pool: ProcesosCli, clave: string, o: Opc
     entrada.alProceso?.(proceso)
     try {
       const r = await proceso.ejecutar(iniciado ? { ...entrada, omitirInicio: true } : entrada)
-      if (r.resultado.estado === 'limite_pasos') pool.cerrar(clave)
+      // Tras un corte o un bloqueo el proceso no se reutiliza (uno trabado puede seguir «vivo» si `close` no llega).
+      if (r.resultado.estado === 'limite_pasos' || r.bloqueo) pool.cerrar(clave)
       return r
     } catch (err) {
       if (err instanceof ProcesoCerrado) iniciado ||= err.iniciado

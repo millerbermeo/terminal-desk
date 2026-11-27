@@ -231,7 +231,9 @@ function Linea({ e, todos, raiz }: { e: EventoAgente; todos: EventoAgente[]; rai
     case 'continuacion_automatica':
       return (
         <div className="ag-nota">
-          ↻ Topó el límite de pasos de una sola respuesta; sigue sola (ronda {e.ronda} de {e.max}).
+          {e.motivo === 'bloqueo'
+            ? `↻ El asistente dejó de dar señales y se reinició; retoma la conversación donde quedó (intento ${e.ronda} de ${e.max}).`
+            : `↻ Topó el límite de pasos de una sola respuesta; sigue sola (ronda ${e.ronda} de ${e.max}).`}
         </div>
       )
     case 'tarea_ajustada':

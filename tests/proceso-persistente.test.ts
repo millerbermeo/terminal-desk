@@ -86,6 +86,18 @@ function recibir(m) {
       const marca = process.env.FALSO_VOLCADO + '.mudo1'
       if (!fs.existsSync(marca)) { fs.writeFileSync(marca, ''); return }
     } else if (texto.includes('MUDO')) return
+    // COLGADO: toma el mensaje, da un paso y se queda callado (API que no responde), también en los procesos que reanuden (marca
+    // .siempre). COLGADO1: solo el primer proceso se cuelga
+    const siempre = process.env.FALSO_VOLCADO + '.siempre'
+    if (texto.includes('COLGADO') && !texto.includes('COLGADO1')) fs.writeFileSync(siempre, '')
+    if (texto.includes('COLGADO') || fs.existsSync(siempre)) {
+      const marca = process.env.FALSO_VOLCADO + '.colgado1'
+      if (!texto.includes('COLGADO1') || !fs.existsSync(marca)) {
+        if (texto.includes('COLGADO1')) fs.writeFileSync(marca, '')
+        l({ type: 'user', uuid: m.uuid, session_id: sid, message: m.message }); paso('empiezo')
+        return
+      }
+    }
     if (texto.includes('COMPACTA')) {
       const aviso = setInterval(() => l({ type: 'system', subtype: 'status', session_id: sid }), 300)
       setTimeout(() => { clearInterval(aviso); l({ type: 'user', uuid: m.uuid, session_id: sid, message: m.message }); paso('compactado'); resultado(false) }, 2500)
@@ -375,6 +387,45 @@ describe('Nucleo con proceso persistente', () => {
     await n.preferencias.fijar('suscripcion')
     return n
   }
+
+  it('si el CLI se cuelga tras tomar el mensaje, el vigía lo mata y la MISMA ejecución reanuda la sesión y termina bien', async () => {
+    await writeFile(volcado, '')
+    vi.stubEnv('ODESK_SIN_TITULO', '1')
+    vi.stubEnv('ODESK_SILENCIO_TURNO_S', '1')
+    try {
+      const n = await nuevo()
+      const ev = await ejecutar(n, 's-colgado', 'COLGADO1 tarea')
+      const cont = ev.find((e) => e.tipo === 'continuacion_automatica')
+      expect(cont).toMatchObject({ motivo: 'bloqueo', ronda: 1, max: 2 })
+      expect(ev.filter((e) => e.tipo === 'inicio')).toHaveLength(1)
+      expect(ev.at(-1)).toMatchObject({ tipo: 'fin', resultado: { estado: 'completado' } })
+      const arranques = (await lineas()).filter((x) => x.arranque)
+      expect(arranques).toHaveLength(2)
+      expect(arranques[1]!.reanuda).toBeTruthy() // el proceso nuevo retoma la transcripción del colgado
+      const reanudado = (await lineas()).filter((x) => x.pid === arranques[1]!.pid && x.usuario)
+      expect(reanudado[0]!.usuario).toMatch(/Continúa exactamente donde quedaste/)
+    } finally {
+      vi.stubEnv('ODESK_SILENCIO_TURNO_S', '')
+    }
+  }, 30_000)
+
+  it('si sigue colgado tras las reanudaciones permitidas, el turno termina con el error del vigía', async () => {
+    await writeFile(volcado, '')
+    vi.stubEnv('ODESK_SIN_TITULO', '1')
+    vi.stubEnv('ODESK_SILENCIO_TURNO_S', '1')
+    vi.stubEnv('ODESK_MAX_REANUDAR_BLOQUEO', '1')
+    try {
+      const n = await nuevo()
+      const ev = await ejecutar(n, 's-colgado2', 'COLGADO siempre')
+      expect(ev.filter((e) => e.tipo === 'continuacion_automatica')).toHaveLength(1)
+      expect(ev.at(-1)).toMatchObject({ tipo: 'fin', resultado: { estado: 'error', error: expect.stringMatching(/dejó de responder/) } })
+      expect((await lineas()).filter((x) => x.arranque)).toHaveLength(2)
+    } finally {
+      await rm(volcado + '.siempre', { force: true })
+      vi.stubEnv('ODESK_SILENCIO_TURNO_S', '')
+      vi.stubEnv('ODESK_MAX_REANUDAR_BLOQUEO', '')
+    }
+  }, 30_000)
 
   it('reutiliza el proceso entre mensajes y la traza guarda el consumo real y el estado', async () => {
     await writeFile(volcado, '')

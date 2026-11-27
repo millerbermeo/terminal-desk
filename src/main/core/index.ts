@@ -124,6 +124,18 @@ const PROMPT_SEGUIR_OTRA_CUENTA =
   'no es que hayas terminado. Lo que ya hiciste (archivos editados, comandos ejecutados, herramientas usadas) está hecho y aparece en el historial: no lo repitas. ' +
   'Si dudas de si un paso llegó a aplicarse, compruébalo antes de rehacerlo.'
 
+// El vigía de bloqueo mató al CLI (sin señales: API lenta, reintentos, herramienta colgada): la misma ejecución reanuda la sesión.
+const PROMPT_SEGUIR_TRAS_BLOQUEO =
+  'Continúa exactamente donde quedaste. Tu respuesta anterior se cortó porque el proceso dejó de responder (fallo técnico, no porque terminaste). ' +
+  'Lo que ya hiciste está hecho y aparece en el historial: no lo repitas. Si dudas de si un paso llegó a aplicarse, compruébalo antes de rehacerlo. ' +
+  'Si un comando o herramienta se quedó colgado, no lo relances igual: usa un tiempo límite o una alternativa.'
+const ESPERA_ANTES_DE_REANUDAR_MS = 3500
+/** Reanudaciones automáticas tras un bloqueo por ejecución (`ODESK_MAX_REANUDAR_BLOQUEO`, 0 las apaga). */
+const maxReanudarBloqueo = (): number => {
+  const n = Number(process.env.ODESK_MAX_REANUDAR_BLOQUEO)
+  return process.env.ODESK_MAX_REANUDAR_BLOQUEO?.trim() && Number.isInteger(n) && n >= 0 ? n : 2
+}
+
 // Modelo barato para resumir la conversación al comprimir el contexto.
 const MODELO_RESUMEN = 'claude-haiku-5-5'
 
@@ -716,6 +728,8 @@ export class Nucleo {
         let promptActual = prompt
         let auto = 0
         let rondasAjuste = 0
+        let reanudaciones = 0
+        const maxReanudar = maxReanudarBloqueo()
         // El CLI descarta EN SILENCIO un mensaje cuyo `uuid` ya vio (ni salida ni error): reenviar el mismo id en una continuación
         // automática o al cambiar de cuenta dejaba el turno esperando para siempre. Solo el primer envío lleva el id del mensaje.
         let idEnvio = mensajeId
@@ -765,7 +779,7 @@ export class Nucleo {
             senal: ctl.signal,
             alEvento: emitir,
             retenerFin: true,
-            omitirInicio: probadas.size > 1 || auto > 0 || rondasAjuste > 0
+            omitirInicio: probadas.size > 1 || auto > 0 || rondasAjuste > 0 || reanudaciones > 0
           })
           idEnvio = randomUUID()
           // Una ejecución rechazada por el límite antes de hacer nada no deja conversación válida: no pisa la anterior. Si ya había
@@ -869,6 +883,22 @@ export class Nucleo {
               if (motivoFallo) await rotar(motivoFallo)
               continue
             }
+          }
+          // El CLI se quedó sin dar señales y el vigía lo mató: su transcripción (con el mensaje y lo ya hecho) está guardada, así que
+          // la misma ejecución la reanuda en un proceso nuevo y le pide seguir, en vez de dejarle al usuario el «vuelve a enviar».
+          if (r.bloqueo && r.sesionCli && !ctl.signal.aborted && reanudaciones < maxReanudar) {
+            reanudaciones++
+            // El proceso viejo recibe SIGKILL a los 3 s: se espera a que muera para que no escriba a la vez que el nuevo en la transcripción.
+            await new Promise((ok) => setTimeout(ok, ESPERA_ANTES_DE_REANUDAR_MS))
+            if (ctl.signal.aborted) {
+              emitir({ tipo: 'fin', resultado: { ...r.resultado, estado: 'cancelado' } })
+              estado = 'cancelado'
+              break
+            }
+            promptActual = PROMPT_SEGUIR_TRAS_BLOQUEO
+            prefijoPrompt = undefined
+            emitir({ tipo: 'continuacion_automatica', ronda: reanudaciones, max: maxReanudar, motivo: 'bloqueo' })
+            continue
           }
           // La respuesta topó el límite de pasos de una sola llamada (posible bucle) pero iba bien: en autónomo se le
           // pide seguir sola, como ya hace el usuario a mano («continúa»), en vez de cortar la tarea cada vez.

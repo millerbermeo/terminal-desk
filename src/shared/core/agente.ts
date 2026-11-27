@@ -64,7 +64,7 @@ export type EventoAgente = { ejecucionId: string; agente: string; profundidad: n
   /** Aviso de consumo: el contexto de la conversación o el gasto de una ejecución son altos. */
   | { tipo: 'aviso_consumo'; motivo: 'contexto' | 'costo'; tokens?: number; costo?: number }
   /** En modo autónomo, la respuesta topó el límite de pasos y se le pidió continuar sola (sin que el usuario lo escriba). */
-  | { tipo: 'continuacion_automatica'; ronda: number; max: number }
+  | { tipo: 'continuacion_automatica'; ronda: number; max: number; /** Por qué sigue sola: límite de pasos (por defecto) o el CLI se quedó trabado y se reanudó. */ motivo?: 'pasos' | 'bloqueo' }
   /** La persona ajustó la tarea en marcha («Preguntar ahora» con una indicación): se cortó el paso actual y sigue con el cambio. */
   | { tipo: 'tarea_ajustada'; instrucciones: string[] }
 )
